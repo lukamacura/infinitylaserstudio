@@ -1,113 +1,285 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
-  X,
-  ChevronRight,
-  Smile,
-  SmilePlus,
-  Frown,
-  Hand,
-  Footprints,
-  CircleDot,
-  Sparkles,
-  User,
-  Shirt,
-  ArrowLeft,
-  Clock,
-  PersonStanding,
+  X, ChevronRight, Smile, SmilePlus, Hand, Footprints,
+  CircleDot, Sparkles, User, Shirt, ArrowLeft, Clock,
+  PersonStanding, Loader2, CheckCircle2, AlertCircle,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import {
+  supabase, calcBookingDuration, getAvailableSlots,
+  minutesToTime, timeToMinutes, BUSINESS_END, SLOT_SIZE,
+} from "@/lib/supabase";
+import type { Service } from "@/lib/database.types";
 
 interface BookingModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-interface ServiceItem {
-  id: string;
-  name: string;
-  duration: number;
-  pause: number;
-  total: number;
-  icon: LucideIcon;
-}
-
-const zenski: ServiceItem[] = [
-  { id: "z-nausnice", name: "Nausnice", duration: 5, pause: 5, total: 10, icon: Smile },
-  { id: "z-nausnice-brada", name: "Nausnice i brada", duration: 5, pause: 5, total: 10, icon: SmilePlus },
-  { id: "z-celo-lice", name: "Celo lice", duration: 5, pause: 5, total: 10, icon: Frown },
-  { id: "z-pazuh", name: "Pazuh", duration: 5, pause: 5, total: 10, icon: Hand },
-  { id: "z-ruke", name: "Ruke", duration: 10, pause: 10, total: 20, icon: Hand },
-  { id: "z-linija-stomaka", name: "Linija stomaka", duration: 5, pause: 5, total: 10, icon: CircleDot },
-  { id: "z-stomak", name: "Stomak", duration: 5, pause: 5, total: 10, icon: CircleDot },
-  { id: "z-intimna", name: "Intimna regija", duration: 10, pause: 10, total: 20, icon: Sparkles },
-  { id: "z-noge", name: "Noge", duration: 15, pause: 15, total: 30, icon: Footprints },
-  { id: "z-celo-telo", name: "Celo telo", duration: 40, pause: 10, total: 50, icon: PersonStanding },
-];
-
-const muski: ServiceItem[] = [
-  { id: "m-grudi", name: "Grudi", duration: 10, pause: 10, total: 20, icon: Shirt },
-  { id: "m-stomak", name: "Stomak", duration: 5, pause: 5, total: 10, icon: CircleDot },
-  { id: "m-pola-ledja", name: "1/2 leđa", duration: 5, pause: 5, total: 10, icon: User },
-  { id: "m-cela-ledja", name: "Cela leđa", duration: 10, pause: 10, total: 20, icon: User },
-  { id: "m-lice", name: "Lice", duration: 5, pause: 5, total: 10, icon: Smile },
-  { id: "m-pola-lica", name: "1/2 lica", duration: 5, pause: 5, total: 10, icon: SmilePlus },
-  { id: "m-ruke", name: "Ruke", duration: 10, pause: 10, total: 20, icon: Hand },
-  { id: "m-noge", name: "Noge", duration: 15, pause: 15, total: 30, icon: Footprints },
-  { id: "m-celo-telo", name: "Celo telo", duration: 45, pause: 15, total: 60, icon: PersonStanding },
-];
-
+type Step = 1 | 2 | 3 | "success";
 type Gender = "zene" | "muskarci";
 
+// ── Icon mapping ──────────────────────────────────────────────────────────────
+function getIcon(name: string): LucideIcon {
+  const n = name.toLowerCase();
+  if (n.includes("nausnice") && n.includes("brada")) return SmilePlus;
+  if (n.includes("nausnice")) return Smile;
+  if (n.includes("lice") || n.includes("lica") || n.includes("brada")) return Smile;
+  if (n.includes("intimna")) return Sparkles;
+  if (n.includes("pazuh") || n.includes("ruke")) return Hand;
+  if (n.includes("linija") || n.includes("stomak")) return CircleDot;
+  if (n.includes("noge")) return Footprints;
+  if (n.includes("telo")) return PersonStanding;
+  if (n.includes("grudi")) return Shirt;
+  if (n.includes("leđ") || n.includes("ledj")) return User;
+  return CircleDot;
+}
+
+// ── Date & day helpers ────────────────────────────────────────────────────────
+const SR_DAYS_FULL = [
+  "Ponedeljak", "Utorak", "Sreda", "Četvrtak", "Petak", "Subota", "Nedelja",
+];
+const SR_MONTHS = [
+  "januar", "februar", "mart", "april", "maj", "jun",
+  "jul", "avgust", "septembar", "oktobar", "novembar", "decembar",
+];
+const SR_MONTHS_SHORT = [
+  "jan", "feb", "mar", "apr", "maj", "jun",
+  "jul", "avg", "sep", "okt", "nov", "dec",
+];
+
+/** Returns Monday-index (0=Mon, 6=Sun) for a JS Date */
+function monIdx(d: Date) { return (d.getDay() + 6) % 7; }
+
+function toDateStr(d: Date) { return d.toISOString().split("T")[0]; }
+
+function formatDateFull(dateStr: string) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  return `${SR_DAYS_FULL[monIdx(d)]}, ${d.getDate()}. ${SR_MONTHS[d.getMonth()]} ${d.getFullYear()}.`;
+}
+
+interface DayOption {
+  date: string;       // YYYY-MM-DD
+  label: string;      // "Ponedeljak"
+  shortDate: string;  // "24. feb"
+  isToday: boolean;
+}
+
+/**
+ * Build the next 6 bookable weekdays (Mon–Sat).
+ * Today is included only when there is theoretical time left:
+ *   currentTime + 120 min (notice) + totalDuration <= 17:00
+ */
+function buildDayOptions(totalDuration: number): DayOption[] {
+  const now = new Date();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const minStartToday = nowMinutes + 120; // 2-hour notice
+
+  const days: DayOption[] = [];
+
+  for (let offset = 0; days.length < 6 && offset < 14; offset++) {
+    const d = new Date(now);
+    d.setDate(now.getDate() + offset);
+
+    const idx = monIdx(d); // 0=Mon … 6=Sun
+    if (idx === 6) continue; // skip Sunday
+
+    const isToday = offset === 0;
+
+    // For today: only show if at least one slot fits within business hours
+    if (isToday) {
+      const earliestSlot = Math.ceil(minStartToday / SLOT_SIZE) * SLOT_SIZE;
+      if (earliestSlot + totalDuration > BUSINESS_END) continue;
+    }
+
+    days.push({
+      date: toDateStr(d),
+      label: SR_DAYS_FULL[idx],
+      shortDate: `${d.getDate()}. ${SR_MONTHS_SHORT[d.getMonth()]}`,
+      isToday,
+    });
+  }
+
+  return days;
+}
+
+// ── Accent theme ──────────────────────────────────────────────────────────────
+const ACCENTS = {
+  zene: {
+    hex: "#E85D8A",
+    border: "border-pink",
+    bg: "bg-pink",
+    bgLight: "bg-pink/8",
+    bgMed: "bg-pink/25",
+  },
+  muskarci: {
+    hex: "#0D9488",
+    border: "border-teal",
+    bg: "bg-teal",
+    bgLight: "bg-teal/8",
+    bgMed: "bg-teal/25",
+  },
+} as const;
+
+const STEP_LABELS: Record<Step, [string, string]> = {
+  1: ["KORAK 1 OD 3", "Za koga zakazuješ?"],
+  2: ["KORAK 2 OD 3", "Odaberi regije za tretman"],
+  3: ["KORAK 3 OD 3", "Izaberi datum i vreme"],
+  success: ["POTVRĐENO", "Termin je uspešno zakazan"],
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
 export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
   const [isAnimating, setIsAnimating] = useState(false);
-  const [gender, setGender] = useState<Gender | null>(null);
-  const [selected, setSelected] = useState<string[]>([]);
+  const [step, setStep]               = useState<Step>(1);
+  const [gender, setGender]           = useState<Gender | null>(null);
+  const [services, setServices]       = useState<Service[]>([]);
+  const [loadingServices, setLoadingServices] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
+  // Step 3 state
+  const [selectedDate, setSelectedDate]   = useState("");
+  const [selectedTime, setSelectedTime]   = useState("");
+  const [daySlots, setDaySlots]           = useState<{ start_time: string; end_time: string; status: string }[]>([]);
+  const [loadingSlots, setLoadingSlots]   = useState(false);
+  const [form, setForm]                   = useState({ name: "", email: "", phone: "" });
+  const [fieldErrors, setFieldErrors]     = useState({ name: false, email: false });
+  const [submitting, setSubmitting]       = useState(false);
+  const [submitError, setSubmitError]     = useState<string | null>(null);
+  const [bookingRef, setBookingRef]       = useState<string | null>(null);
+
+  // ── Derived ───────────────────────────────────────────────────────────────
+  const selectedServices = services.filter((s) => selectedIds.includes(s.id));
+  const totalDuration    = selectedServices.length > 0 ? calcBookingDuration(selectedServices) : 0;
+  const accent           = ACCENTS[gender ?? "zene"];
+
+  // Day options rebuild whenever totalDuration changes
+  const dayOptions = useMemo(() => buildDayOptions(totalDuration), [totalDuration]);
+
+  // For today: slots must start ≥ now+120min
+  const nowMinutes = useMemo(() => {
+    const now = new Date();
+    return now.getHours() * 60 + now.getMinutes();
+  }, []);
+
+  const isToday = dayOptions.find((d) => d.date === selectedDate)?.isToday ?? false;
+  const minStart = isToday ? nowMinutes + 120 : undefined;
+
+  const availableSlots = getAvailableSlots(daySlots, totalDuration, minStart);
+
+  // ── Side-effects ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (isOpen) {
       requestAnimationFrame(() => setIsAnimating(true));
       document.body.style.overflow = "hidden";
     } else {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsAnimating(false);
       document.body.style.overflow = "";
     }
-    return () => {
-      document.body.style.overflow = "";
-    };
+    return () => { document.body.style.overflow = ""; };
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!gender) return;
+    setLoadingServices(true);
+    supabase
+      .from("services")
+      .select("*")
+      .eq("gender", gender)
+      .order("sort_order")
+      .then(({ data }) => { setServices(data ?? []); setLoadingServices(false); });
+  }, [gender]);
+
+  useEffect(() => {
+    if (!selectedDate) return;
+    setLoadingSlots(true);
+    setSelectedTime("");
+    supabase
+      .from("reservations")
+      .select("start_time, end_time, status")
+      .eq("date", selectedDate)
+      .then(({ data }) => { setDaySlots(data ?? []); setLoadingSlots(false); });
+  }, [selectedDate]);
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
+  function resetAll() {
+    setStep(1); setGender(null); setServices([]); setSelectedIds([]);
+    setSelectedDate(""); setSelectedTime(""); setDaySlots([]);
+    setForm({ name: "", email: "", phone: "" });
+    setFieldErrors({ name: false, email: false });
+    setSubmitError(null); setBookingRef(null);
+  }
 
   function handleClose() {
     setIsAnimating(false);
-    setTimeout(() => {
-      onClose();
-      setGender(null);
-      setSelected([]);
-    }, 300);
+    setTimeout(() => { onClose(); resetAll(); }, 300);
   }
 
   function handleBack() {
-    setGender(null);
-    setSelected([]);
+    if (step === 2) { setStep(1); setGender(null); setSelectedIds([]); setServices([]); }
+    else if (step === 3) { setStep(2); setSelectedDate(""); setSelectedTime(""); }
   }
 
   function toggleService(id: string) {
-    setSelected((prev) =>
-      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
-    );
+    setSelectedIds((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
   }
 
-  const services = gender === "muskarci" ? muski : zenski;
-  const selectedServices = services.filter((s) => selected.includes(s.id));
-  const totalTime =
-    selectedServices.length === 1
-      ? selectedServices[0].duration
-      : selectedServices.reduce((sum, s) => sum + s.total, 0);
+  function handleDaySelect(date: string) {
+    if (date === selectedDate) return;
+    setSelectedDate(date);
+    setSelectedTime("");
+  }
+
+  async function handleSubmit() {
+    // Validate – highlight empty required fields instead of blocking silently
+    const errors = { name: !form.name.trim(), email: !form.email.trim() };
+    setFieldErrors(errors);
+    if (errors.name || errors.email || !selectedDate || !selectedTime || !gender) return;
+
+    setSubmitting(true);
+    setSubmitError(null);
+
+    const endTime = minutesToTime(timeToMinutes(selectedTime) + totalDuration);
+
+    const { data: res, error } = await supabase
+      .from("reservations")
+      .insert({
+        customer_name:  form.name.trim(),
+        customer_email: form.email.trim(),
+        customer_phone: form.phone.trim() || null,
+        date:           selectedDate,
+        start_time:     `${selectedTime}:00`,
+        end_time:       `${endTime}:00`,
+        total_duration: totalDuration,
+        status:         "pending",
+      })
+      .select()
+      .single();
+
+    if (error || !res) {
+      setSubmitError("Greška pri zakazivanju. Pokušajte ponovo.");
+      setSubmitting(false);
+      return;
+    }
+
+    if (selectedIds.length > 0) {
+      await supabase.from("reservation_services").insert(
+        selectedIds.map((id) => ({ reservation_id: res.id, service_id: id }))
+      );
+    }
+
+    setBookingRef(res.id.slice(-8).toUpperCase());
+    setStep("success");
+    setSubmitting(false);
+  }
 
   if (!isOpen) return null;
 
+  const [stepLabel, stepSub] = STEP_LABELS[step];
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
@@ -116,50 +288,39 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
         onClick={handleClose}
       />
 
-      {/* Modal */}
+      {/* Modal shell */}
       <div
         className={`relative bg-white rounded-3xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col overflow-hidden transition-all duration-300 ${isAnimating ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-95 translate-y-4"}`}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
           <div className="flex items-center gap-3">
-            {gender && (
-              <button
-                onClick={handleBack}
-                className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-foreground/5 transition-colors cursor-pointer"
-                aria-label="Nazad"
-              >
+            {(step === 2 || step === 3) && (
+              <button onClick={handleBack} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-foreground/5 transition-colors cursor-pointer" aria-label="Nazad">
                 <ArrowLeft size={18} />
               </button>
             )}
             <h2 className="text-2xl font-bold font-playfair">Zakaži tretman</h2>
           </div>
-          <button
-            onClick={handleClose}
-            className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-foreground/5 transition-colors cursor-pointer"
-            aria-label="Zatvori"
-          >
+          <button onClick={handleClose} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-foreground/5 transition-colors cursor-pointer" aria-label="Zatvori">
             <X size={20} />
           </button>
         </div>
 
         {/* Step indicator */}
         <div className="px-6 pb-4 shrink-0">
-          <p className="text-xs text-foreground/50 tracking-[3px] font-semibold font-poppins">
-            {gender ? "KORAK 2 OD 3" : "KORAK 1 OD 3"}
-          </p>
-          <p className="text-sm text-foreground/60 font-poppins mt-1">
-            {gender ? "Odaberi regije za tretman" : "Za koga zakazuješ?"}
-          </p>
+          <p className="text-xs text-foreground/50 tracking-[3px] font-semibold font-poppins">{stepLabel}</p>
+          <p className="text-sm text-foreground/60 font-poppins mt-1">{stepSub}</p>
         </div>
 
-        {/* Content */}
+        {/* Scrollable content */}
         <div className="px-6 pb-6 overflow-y-auto flex-1">
-          {!gender ? (
-            /* Gender selection */
+
+          {/* ══ STEP 1: Gender ══════════════════════════════════════════════ */}
+          {step === 1 && (
             <div className="flex flex-col gap-3">
               <button
-                onClick={() => setGender("zene")}
+                onClick={() => { setGender("zene"); setStep(2); }}
                 className="group flex items-center gap-4 w-full p-5 rounded-2xl border-2 border-foreground/10 hover:border-pink transition-colors text-left cursor-pointer"
               >
                 <div className="w-14 h-14 rounded-xl bg-pink/15 flex items-center justify-center shrink-0 group-hover:bg-pink/25 transition-colors">
@@ -173,7 +334,7 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
               </button>
 
               <button
-                onClick={() => setGender("muskarci")}
+                onClick={() => { setGender("muskarci"); setStep(2); }}
                 className="group flex items-center gap-4 w-full p-5 rounded-2xl border-2 border-foreground/10 hover:border-teal transition-colors text-left cursor-pointer"
               >
                 <div className="w-14 h-14 rounded-xl bg-teal/15 flex items-center justify-center shrink-0 group-hover:bg-teal/25 transition-colors">
@@ -186,95 +347,276 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
                 <ChevronRight size={20} className="text-foreground/30 group-hover:text-teal transition-colors" />
               </button>
             </div>
-          ) : (
-            /* Service selection */
+          )}
+
+          {/* ══ STEP 2: Services ════════════════════════════════════════════ */}
+          {step === 2 && (
             <div className="flex flex-col gap-2">
-              {services.map((service) => {
-                const isSelected = selected.includes(service.id);
-                const Icon = service.icon;
+              {loadingServices ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 size={28} className="animate-spin text-foreground/30" />
+                </div>
+              ) : services.map((service) => {
+                const isSelected = selectedIds.includes(service.id);
+                const Icon = getIcon(service.name);
                 return (
                   <button
                     key={service.id}
                     onClick={() => toggleService(service.id)}
-                    className={`group flex items-center gap-3 w-full p-3.5 rounded-xl border-2 transition-all text-left cursor-pointer ${
+                    className={`flex items-center gap-3 w-full p-3.5 rounded-xl border-2 transition-all text-left cursor-pointer ${
                       isSelected
-                        ? gender === "zene"
-                          ? "border-pink bg-pink/8"
-                          : "border-teal bg-teal/8"
+                        ? `${accent.border} ${accent.bgLight}`
                         : "border-foreground/8 hover:border-foreground/20"
                     }`}
                   >
-                    <div
-                      className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
-                        isSelected
-                          ? gender === "zene"
-                            ? "bg-pink/25"
-                            : "bg-teal/25"
-                          : "bg-foreground/5"
-                      }`}
-                    >
-                      <Icon
-                        size={20}
-                        className={
-                          isSelected
-                            ? gender === "zene"
-                              ? "text-[#E85D8A]"
-                              : "text-[#0D9488]"
-                            : "text-foreground/40"
-                        }
-                      />
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 transition-colors ${isSelected ? accent.bgMed : "bg-foreground/5"}`}>
+                      <Icon size={20} style={{ color: isSelected ? accent.hex : undefined }} className={isSelected ? "" : "text-foreground/40"} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold font-poppins">{service.name}</p>
                       <span className="flex items-center gap-1 text-xs text-foreground/40 font-poppins mt-0.5">
                         <Clock size={11} />
-                        {service.duration} min
+                        {service.service_duration} min
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <div
-                        className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
-                          isSelected
-                            ? gender === "zene"
-                              ? "border-pink bg-pink"
-                              : "border-teal bg-teal"
-                            : "border-foreground/20"
-                        }`}
-                      >
-                        {isSelected && (
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M20 6L9 17l-5-5" />
-                          </svg>
-                        )}
-                      </div>
+                    <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all shrink-0 ${isSelected ? `${accent.border} ${accent.bg}` : "border-foreground/20"}`}>
+                      {isSelected && (
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M20 6L9 17l-5-5" />
+                        </svg>
+                      )}
                     </div>
                   </button>
                 );
               })}
             </div>
           )}
+
+          {/* ══ STEP 3: Date / Time / Form ══════════════════════════════════ */}
+          {step === 3 && (
+            <div className="flex flex-col gap-6">
+
+              {/* Day picker */}
+              <div>
+                <p className="text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-3">IZABERI DAN</p>
+
+                {dayOptions.length === 0 ? (
+                  <div className="flex items-center gap-2 p-4 rounded-xl bg-foreground/5 text-foreground/50 text-sm font-poppins">
+                    <AlertCircle size={16} />
+                    Nema dostupnih termina u narednih 7 dana.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {dayOptions.map((day) => {
+                      const isSelected = selectedDate === day.date;
+                      return (
+                        <button
+                          key={day.date}
+                          onClick={() => handleDaySelect(day.date)}
+                          className={`relative flex flex-col items-start p-4 rounded-2xl border-2 text-left cursor-pointer transition-all ${
+                            isSelected
+                              ? `${accent.border} ${accent.bgLight}`
+                              : "border-foreground/8 hover:border-foreground/20"
+                          }`}
+                        >
+                          {day.isToday && (
+                            <span
+                              className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md text-[10px] font-bold font-poppins text-white"
+                              style={{ backgroundColor: accent.hex }}
+                            >
+                              DANAS
+                            </span>
+                          )}
+                          <p
+                            className="text-sm font-bold font-poppins leading-tight"
+                            style={isSelected ? { color: accent.hex } : undefined}
+                          >
+                            {day.label}
+                          </p>
+                          <p className="text-xs text-foreground/50 font-poppins mt-0.5">{day.shortDate}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Time slots */}
+              {selectedDate && (
+                <div>
+                  <p className="text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-3">SLOBODNI TERMINI</p>
+                  {loadingSlots ? (
+                    <div className="flex justify-center py-6">
+                      <Loader2 size={22} className="animate-spin text-foreground/30" />
+                    </div>
+                  ) : availableSlots.length === 0 ? (
+                    <div className="flex items-center gap-2 p-4 rounded-xl bg-foreground/5 text-foreground/50 text-sm font-poppins">
+                      <AlertCircle size={16} />
+                      Nema slobodnih termina za ovaj datum.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {availableSlots.map((slot) => (
+                        <button
+                          key={slot}
+                          onClick={() => setSelectedTime(slot)}
+                          className="py-2.5 rounded-lg text-sm font-semibold font-poppins transition-all cursor-pointer"
+                          style={
+                            selectedTime === slot
+                              ? { backgroundColor: accent.hex, color: "white" }
+                              : { backgroundColor: "rgba(0,0,0,0.05)", color: "rgba(0,0,0,0.6)" }
+                          }
+                        >
+                          {slot}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Customer form — shown once a time is picked */}
+              {selectedTime && (
+                <div className="flex flex-col gap-3">
+                  <p className="text-xs font-semibold tracking-widest text-foreground/40 font-poppins">VAŠI PODACI</p>
+
+                  {/* Name */}
+                  <div>
+                    <label className="block text-xs text-foreground/50 font-poppins mb-1">Ime i prezime *</label>
+                    <input
+                      type="text"
+                      placeholder="Ana Marković"
+                      value={form.name}
+                      onChange={(e) => { setForm((p) => ({ ...p, name: e.target.value })); setFieldErrors((p) => ({ ...p, name: false })); }}
+                      className={`w-full px-4 py-3 rounded-xl border-2 focus:outline-none font-poppins text-sm transition-colors ${fieldErrors.name ? "border-red-400 bg-red-50" : "border-foreground/10"}`}
+                      onFocus={(e) => { if (!fieldErrors.name) e.target.style.borderColor = accent.hex; }}
+                      onBlur={(e) => { e.target.style.borderColor = ""; }}
+                    />
+                    {fieldErrors.name && <p className="text-xs text-red-500 font-poppins mt-1">Unesite ime i prezime.</p>}
+                  </div>
+
+                  {/* Email */}
+                  <div>
+                    <label className="block text-xs text-foreground/50 font-poppins mb-1">Email *</label>
+                    <input
+                      type="email"
+                      placeholder="ana@primer.rs"
+                      value={form.email}
+                      onChange={(e) => { setForm((p) => ({ ...p, email: e.target.value })); setFieldErrors((p) => ({ ...p, email: false })); }}
+                      className={`w-full px-4 py-3 rounded-xl border-2 focus:outline-none font-poppins text-sm transition-colors ${fieldErrors.email ? "border-red-400 bg-red-50" : "border-foreground/10"}`}
+                      onFocus={(e) => { if (!fieldErrors.email) e.target.style.borderColor = accent.hex; }}
+                      onBlur={(e) => { e.target.style.borderColor = ""; }}
+                    />
+                    {fieldErrors.email && <p className="text-xs text-red-500 font-poppins mt-1">Unesite email adresu.</p>}
+                  </div>
+
+                  {/* Phone */}
+                  <div>
+                    <label className="block text-xs text-foreground/50 font-poppins mb-1">Telefon</label>
+                    <input
+                      type="tel"
+                      placeholder="+381 60 123 4567"
+                      value={form.phone}
+                      onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
+                      className="w-full px-4 py-3 rounded-xl border-2 border-foreground/10 focus:outline-none font-poppins text-sm transition-colors"
+                      onFocus={(e) => (e.target.style.borderColor = accent.hex)}
+                      onBlur={(e) => (e.target.style.borderColor = "")}
+                    />
+                  </div>
+
+                  {submitError && (
+                    <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 text-red-600 text-sm font-poppins">
+                      <AlertCircle size={15} />
+                      {submitError}
+                    </div>
+                  )}
+
+                  {/* ── Submit button lives HERE, at the bottom of the form ── */}
+                  <button
+                    onClick={handleSubmit}
+                    disabled={submitting}
+                    className="w-full py-3.5 rounded-full text-sm font-semibold tracking-widest font-poppins text-white mt-2 transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: accent.hex }}
+                  >
+                    {submitting ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <Loader2 size={16} className="animate-spin" />
+                        Zakazivanje...
+                      </span>
+                    ) : "POTVRDI TERMIN"}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ══ SUCCESS ════════════════════════════════════════════════════ */}
+          {step === "success" && (
+            <div className="flex flex-col items-center text-center py-4">
+              <div className="w-20 h-20 rounded-full bg-green-50 flex items-center justify-center mb-5">
+                <CheckCircle2 size={44} className="text-green-500" strokeWidth={1.5} />
+              </div>
+              <h3 className="text-2xl font-bold font-playfair mb-2">Termin zakazan!</h3>
+              <p className="text-sm text-foreground/50 font-poppins mb-6">Potvrda je poslata na {form.email}</p>
+
+              <div className="w-full bg-foreground/4 rounded-2xl p-5 text-left space-y-3">
+                {[
+                  ["Datum",    selectedDate ? formatDateFull(selectedDate) : ""],
+                  ["Vreme",    `${selectedTime} – ${minutesToTime(timeToMinutes(selectedTime) + totalDuration)}`],
+                  ["Trajanje", `${totalDuration} min`],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex justify-between text-sm font-poppins">
+                    <span className="text-foreground/50">{label}</span>
+                    <span className="font-semibold">{value}</span>
+                  </div>
+                ))}
+                <div className="border-t border-foreground/10 pt-3">
+                  <p className="text-xs text-foreground/40 font-poppins mb-1.5">USLUGE</p>
+                  <p className="text-sm font-poppins font-semibold text-foreground/50">Konsultacija pre tretmana (15 min)</p>
+                  {selectedServices.map((s) => (
+                    <p key={s.id} className="text-sm font-poppins font-semibold">{s.name}</p>
+                  ))}
+                </div>
+                {bookingRef && (
+                  <div className="border-t border-foreground/10 pt-3">
+                    <p className="text-xs text-foreground/40 font-poppins mb-1">REF. BROJ</p>
+                    <p className="text-sm font-mono font-bold tracking-wider" style={{ color: accent.hex }}>
+                      #{bookingRef}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={handleClose}
+                className="mt-6 w-full py-3 rounded-full text-sm font-semibold tracking-widest font-poppins text-white cursor-pointer transition-opacity hover:opacity-90"
+                style={{ backgroundColor: accent.hex }}
+              >
+                ZATVORI
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Footer with total & continue */}
-        {gender && selected.length > 0 && (
+        {/* ── Footer: step 2 continue ───────────────────────────────────── */}
+        {step === 2 && selectedIds.length > 0 && (
           <div className="px-6 py-4 border-t border-foreground/10 shrink-0 flex items-center justify-between">
             <div>
-              <p className="text-xs text-foreground/50 font-poppins">Ukupno trajanje (pauze su uključene)</p>
-              <p className="text-lg font-bold font-poppins">{totalTime} min</p>
+              <p className="text-xs text-foreground/50 font-poppins">Ukupno vreme termina</p>
+              <p className="text-lg font-bold font-poppins">{totalDuration} min</p>
+              <p className="text-[11px] text-foreground/40 font-poppins">uklj. konsultacija i pauze</p>
             </div>
             <button
-              className={`px-6 py-3 rounded-full text-xs font-semibold tracking-widest font-poppins transition-colors cursor-pointer ${
-                gender === "zene"
-                  ? "bg-pink text-white hover:bg-[#D14A78]"
-                  : "bg-teal hover:bg-[#7DD3D0]"
-              }`}
+              onClick={() => setStep(3)}
+              className="px-6 py-3 rounded-full text-xs font-semibold tracking-widest font-poppins text-white transition-opacity hover:opacity-90 cursor-pointer"
+              style={{ backgroundColor: accent.hex }}
             >
               NASTAVI
             </button>
           </div>
         )}
 
-        {/* Bottom accent */}
+        {/* Bottom accent bar */}
         <div className="h-1 bg-linear-to-r from-teal via-pink to-rose shrink-0" />
       </div>
     </div>

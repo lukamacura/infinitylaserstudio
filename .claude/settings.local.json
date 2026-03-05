@@ -1,7 +1,19 @@
 {
   "permissions": {
     "allow": [
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "mcp__claude_ai_Supabase__list_projects",
+      "mcp__claude_ai_Supabase__get_project_url",
+      "mcp__claude_ai_Supabase__get_publishable_keys",
+      "Bash(npm install:*)",
+      "mcp__claude_ai_Supabase__apply_migration",
+      "Bash(npm run build:*)",
+      "mcp__claude_ai_Supabase__generate_typescript_types",
+      "mcp__claude_ai_Supabase__get_advisors",
+      "mcp__claude_ai_Figma__get_design_context",
+      "Bash(npx tsc:*)",
+      "Bash(npm run lint:*)",
+      "mcp__claude_ai_Supabase__execute_sql"
     ]
   }
 }
