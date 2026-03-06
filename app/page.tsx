@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import BookingModal from "@/components/BookingModal";
+import PromoPopup from "@/components/PromoPopup";
 import Hero from "@/components/Hero";
 import FeaturedServices from "@/components/FeaturedServices";
 import BrandStory from "@/components/BrandStory";
@@ -37,6 +38,7 @@ export default function Home() {
       <CommunitySection onOpen={open} />
       <Footer onOpen={open} />
       <BookingModal isOpen={bookingOpen} onClose={() => setBookingOpen(false)} />
+      <PromoPopup onOpenBooking={open} isBookingOpen={bookingOpen} />
       {showSticky && (
         <button
           onClick={open}

@@ -99,7 +99,7 @@ export default function CostComparison({ onOpen }: Props) {
             onClick={onOpen}
             className="inline-block px-8 py-3 rounded-full bg-teal font-poppins text-sm font-medium text-gray-800 hover:bg-mint transition-colors cursor-pointer"
           >
-            Izračunaj svoju uštedu - besplatno
+            Zakaži tretman i uštedi novac
           </button>
         </div>
       </motion.div>

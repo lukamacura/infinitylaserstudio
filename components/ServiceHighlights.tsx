@@ -85,17 +85,15 @@ export default function ServiceHighlights() {
 
           {/* Center image */}
           <div className="flex justify-center">
-            <div className="relative">
-              <div className="absolute -inset-6 rounded-full bg-pink opacity-30" />
-              <div className="relative z-10 w-56 h-64 rounded-[2rem] bg-gradient-to-b from-teal via-mint to-cream shadow-xl overflow-hidden">
-                <Image
-                  src="/ATON-magnum.png"
-                  alt="ATON Magnum laser uređaj"
-                  fill
-                  className="object-contain"
-                  sizes="224px"
-                />
-              </div>
+            <div className="relative w-[32rem] h-[38rem]">
+              <div className="absolute inset-20 rounded-full bg-pink opacity-50" />
+              <Image
+                src="/ATON-magnum.png"
+                alt="ATON Magnum laser uređaj"
+                fill
+                className="object-contain z-10"
+                sizes="384px"
+              />
             </div>
           </div>
 

@@ -171,7 +171,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
                 initial={prefersReduced ? false : { opacity: 0, scaleX: 0.85 }}
                 animate={{ opacity: 1, scaleX: 1 }}
                 transition={{ duration: 0.35, delay: gradientDelay, ease: "easeOut" }}
-                className="bg-pink text-foreground rounded-sm px-1.5 py-0.5 inline-block origin-left"
+                className="bg-gradient-to-r from-black to-rose bg-clip-text text-transparent inline-block origin-left"
               >
                 {h.gradient}
               </motion.span>

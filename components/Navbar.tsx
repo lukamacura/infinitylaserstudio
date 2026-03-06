@@ -11,23 +11,12 @@ const navLinks = [
 ] as const;
 
 export default function Navbar() {
-  const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50">
       <div
-        className={`border-b backdrop-blur-xl transition-all duration-500 ${
-          scrolled
-            ? "bg-black/55 border-white/10"
-            : "bg-transparent border-transparent"
-        }`}
+        className="border-b border-white/10 backdrop-blur-xl bg-black/65"
       >
         <div className="max-w-7xl mx-auto flex items-center justify-between px-6 lg:px-12 py-3">
           <a href="#" aria-label="Infinity Laser Studio" className="flex items-center gap-3">
@@ -40,9 +29,7 @@ export default function Navbar() {
               priority
             />
             <span
-              className={`hidden sm:block font-playfair text-lg leading-tight tracking-wide transition-colors duration-500 ${
-                scrolled ? "text-white/90" : "text-foreground/80"
-              }`}
+              className="hidden sm:block font-playfair text-lg leading-tight tracking-wide text-white/90"
             >
               INFINITY
             </span>
@@ -53,11 +40,7 @@ export default function Navbar() {
               <li key={link.label}>
                 <a
                   href={link.href}
-                  className={`text-sm font-poppins transition-colors duration-500 ${
-                    scrolled
-                      ? "text-white/70 hover:text-white"
-                      : "text-foreground/65 hover:text-foreground"
-                  }`}
+                  className="text-sm font-poppins text-white/70 hover:text-white transition-colors duration-500"
                 >
                   {link.label}
                 </a>
@@ -65,16 +48,10 @@ export default function Navbar() {
             ))}
           </ul>
 
-          <div
-            className={`flex items-center gap-3 transition-colors duration-500 ${
-              scrolled ? "text-white/60" : "text-foreground/55"
-            }`}
-          >
+          <div className="flex items-center gap-3 text-white/60">
             <button
               aria-label="Pozovi"
-              className={`p-2 transition-colors duration-500 cursor-pointer ${
-                scrolled ? "hover:text-white" : "hover:text-foreground"
-              }`}
+              className="p-2 hover:text-white transition-colors duration-500 cursor-pointer"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                 <rect x="7" y="2" width="10" height="20" rx="3" stroke="currentColor" strokeWidth="1.8" />
@@ -84,9 +61,7 @@ export default function Navbar() {
             </button>
             <button
               aria-label="Email"
-              className={`p-2 transition-colors duration-500 cursor-pointer ${
-                scrolled ? "hover:text-white" : "hover:text-foreground"
-              }`}
+              className="p-2 hover:text-white transition-colors duration-500 cursor-pointer"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2" y="4" width="20" height="16" rx="2" />
@@ -98,9 +73,7 @@ export default function Navbar() {
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Instagram"
-              className={`p-2 transition-colors duration-500 ${
-                scrolled ? "hover:text-white" : "hover:text-foreground"
-              }`}
+              className="p-2 hover:text-white transition-colors duration-500"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2" y="2" width="20" height="20" rx="5" />
@@ -112,9 +85,7 @@ export default function Navbar() {
             <button
               aria-label={menuOpen ? "Zatvori meni" : "Otvori meni"}
               onClick={() => setMenuOpen((v) => !v)}
-              className={`md:hidden p-2 transition-colors duration-500 cursor-pointer ${
-                scrolled ? "hover:text-white" : "hover:text-foreground"
-              }`}
+              className="md:hidden p-2 hover:text-white transition-colors duration-500 cursor-pointer"
             >
               {menuOpen ? (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
