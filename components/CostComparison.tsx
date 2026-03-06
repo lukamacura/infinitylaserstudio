@@ -84,7 +84,7 @@ export default function CostComparison({ onOpen }: Props) {
           {[
             { value: "500.000+ RSD", label: "ostaje u tvom džepu" },
             { value: "72 sata", label: "svake godine - na ništa" },
-            { value: "Za 2 godine", label: "laser se već isplatio" },
+            { value: "Za 1 godinu", label: "laser se već isplatio" },
           ].map((s) => (
             <div key={s.label} className="text-center bg-white rounded-2xl py-5 px-3 shadow-sm border border-gray-100">
               <p className="font-playfair text-xl text-gray-800 mb-1">{s.value}</p>

@@ -23,7 +23,7 @@ export default function CommunitySection({ onOpen }: Props) {
           Gotova si s brijanjem?
         </h2>
         <p className="font-poppins text-gray-600 text-base leading-relaxed mb-3">
-          Zakaži svoju prvu konsultaciju — besplatno.
+          Zakaži svoj prvi tretman i dobijaš konsultaciju, BESPLATNO.
         </p>
         <p className="font-poppins text-gray-500 text-sm leading-relaxed mb-10 max-w-md mx-auto">
           U 15 minuta procene sagledavamo tvoj tip kože, odgovaramo na sva pitanja i pravimo plan tretmana po tvojoj meri. Bez obaveze. Bez žurbe.

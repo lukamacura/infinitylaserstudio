@@ -1,7 +1,22 @@
 const stats = [
-  { value: "2 000+", label: "Zadovoljnih klijenata", sub: "koji su rekli zbogom britvi" },
-  { value: "60+", label: "Zona tretmana", sub: "za svaki deo tela" },
-  { value: "12M+", label: "Minuta lasera", sub: "isporučeno s preciznošću" },
+  { value: "4000+", label: "Zadovoljnih klijenata", sub: "koji su rekli zbogom britvi" },
+  { value: "20+", label: "Zona tretmana", sub: "za svaki deo tela" },
+  { value: "70-90%", label: "Dlačica", sub: "uklonjeno zauvek" },
+];
+
+const testimonials = [
+  {
+    name: "Milica S.",
+    quote: "Tri godine sam se depilirala pre mora i svaki put imala probleme. Sad ne moram da se depiliram više jer mi uopšte ne rastu dlake.",
+  },
+  {
+    name: "Ana K.",
+    quote: "Od strane dermatologa mi je rečeno da je laserska epilacija jedino efikasno rešenje za problem sa uraslim dlakama. Već nakon 1. tretmana sam se uverila da je to istina.",
+  },
+  {
+    name: "Maja D.",
+    quote: "Svaka čast divnoj doktorici Ani, koja me je pre 1. tretmana detaljno uputila u sve. ",
+  },
 ];
 
 export default function StatsSection() {
@@ -45,7 +60,7 @@ export default function StatsSection() {
                 <path d="M20 8l2 6h6l-5 3.6 1.9 6L20 20l-4.9 3.6L17 20l-5-3.6L18 14h6L20 8z" fill="white" opacity="0.9" />
               </svg>
             </div>
-            <p className="font-playfair text-2xl text-gray-800 text-center">5 godina izvrsnosti</p>
+            <p className="font-playfair text-2xl text-gray-800 text-center">5 godina studija</p>
             <p className="font-poppins text-sm text-gray-500 text-center leading-relaxed">
               Infinity Laser Studio je od 2019. prvi izbor za lasersku epilaciju u regionu.
             </p>
@@ -56,9 +71,29 @@ export default function StatsSection() {
                 </svg>
               ))}
             </div>
-            <p className="font-poppins text-xs text-gray-400">5.0 · 200+ recenzija</p>
+            <p className="font-poppins text-xs text-gray-400">4.8 · 200+ recenzija</p>
           </div>
         </div>
+      </div>
+
+      {/* Testimonials row */}
+      <div className="max-w-6xl mx-auto mt-16 grid grid-cols-1 md:grid-cols-3 gap-4">
+        {testimonials.map((t) => (
+          <div
+            key={t.name}
+            className="bg-white rounded-2xl shadow-sm border border-pink/20 px-5 py-4 flex flex-col gap-3"
+          >
+            <div className="flex gap-0.5">
+              {[...Array(5)].map((_, i) => (
+                <svg key={i} viewBox="0 0 16 16" className="w-3 h-3 text-yellow-400" fill="currentColor">
+                  <path d="M8 1l1.8 3.6L14 5.6l-3 2.9.7 4.1L8 10.5l-3.7 2.1.7-4.1L2 5.6l4.2-.9L8 1z" />
+                </svg>
+              ))}
+            </div>
+            <p className="font-poppins text-sm text-gray-700 leading-relaxed">{t.quote}</p>
+            <p className="font-poppins text-xs text-gray-400">{t.name}</p>
+          </div>
+        ))}
       </div>
     </section>
   );

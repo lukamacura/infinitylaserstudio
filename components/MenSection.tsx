@@ -18,7 +18,7 @@ export default function MenSection({ onOpen }: Props) {
               Dlake na leđima, ramenima ili vratu ne bi trebalo da budu razlog za nelagodnost.
             </p>
             <p className="font-poppins text-gray-600 text-base leading-relaxed mb-4">
-              Sportisti, aktivni muškarci i svi koji cene uredan izgled — laserska epilacija je isto što i redovan frizir. Samo ređe.
+              Sportisti, aktivni muškarci i svi koji cene uredan izgled '' laserska epilacija je isto što i redovan frizer. Samo ređe.
             </p>
             <p className="font-poppins text-gray-500 text-sm leading-relaxed mb-8">
               Tretmani su diskretni, brzi i prilagođeni muškoj koži.
@@ -27,7 +27,7 @@ export default function MenSection({ onOpen }: Props) {
               onClick={onOpen}
               className="inline-flex items-center gap-2 px-7 py-3 rounded-full bg-foreground text-background font-poppins text-sm font-medium hover:bg-teal hover:text-foreground transition-colors"
             >
-              Zakaži konsultacije
+              Zakaži svoj 1. tretman
               <svg className="w-4 h-4" fill="none" viewBox="0 0 16 16">
                 <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>

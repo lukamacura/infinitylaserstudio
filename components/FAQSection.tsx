@@ -6,15 +6,15 @@ import { motion } from "framer-motion";
 const faqs = [
   {
     q: "Da li boli?",
-    a: "Savremeni laseri dolaze sa sistemom hlađenja koji čini tretman prijatnim. Većina klijenata opisuje osećaj kao blag udarac elastičnom trakom — kratkotrajan i potpuno podnošljiv. Posle tretmana nema crvenila ni oporavka.",
+    a: "Savremeni laseri dolaze sa sistemom hlađenja koji čini tretman prijatnim. Većina klijenata opisuje osećaj kao blag udarac elastičnom trakom - kratkotrajan i potpuno podnošljiv. Posle tretmana nema crvenila ni oporavka.",
   },
   {
     q: "Koliko tretmana treba?",
-    a: "Između 6 i 8 tretmana, na svakih 4–6 nedelja. Dlake prolaze kroz različite faze rasta, a laser deluje samo u aktivnoj fazi — zbog toga je serija ključna za trajni rezultat. Posle serije, dlaka se ne vraća.",
+    a: "Između 6 i 8 tretmana, na svakih 4–6 nedelja. Dlake prolaze kroz različite faze rasta, a laser deluje samo u aktivnoj fazi - zbog toga je serija ključna za trajni rezultat. Posle serije, dlaka se ne vraća.",
   },
   {
     q: "Kako se pripremiti za tretman?",
-    a: "Partiju tela obrij 24 sata pre dolaska — ne depilacijom voskom ili kremom. Izbegavaj sunce i samoposmeđujuće preparate 2 nedelje pre tretmana. Dođi sa čistom, nenavlaženom kožom. O svemu ostalom brinu naši stručnjaci.",
+    a: "Partiju tela obrij 24 sata pre dolaska - ne depilacijom voskom ili kremom. Izbegavaj sunce i samoposmeđujuće preparate 2 nedelje pre tretmana. Dođi sa čistom, nenavlaženom kožom. O svemu ostalom brinu naši stručnjaci.",
   },
 ];
 

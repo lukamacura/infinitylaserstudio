@@ -89,6 +89,12 @@ export default function Footer({ onOpen }: Props) {
             © {new Date().getFullYear()} Infinity Laser Studio. Sva prava zadržana.
           </p>
           <p className="font-poppins text-xs text-gray-400">
+            Designed and developed by{" "}
+            <a href="https://www.instagram.com/macura.fullstack" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600 transition-colors">Luka Macura</a>
+            {" & "}
+            <a href="https://www.instagram.com/_kasapb" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600 transition-colors">Branka Kasap</a>
+          </p>
+          <p className="font-poppins text-xs text-gray-400">
             Politika privatnosti · Uslovi korišćenja
           </p>
         </div>

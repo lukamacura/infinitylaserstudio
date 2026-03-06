@@ -93,7 +93,7 @@ const steps = [
 ] as const;
 
 const stats = [
-  { value: "10K+",   label: "Klijenata" },
+  { value: "4000+",   label: "Klijenata" },
   { value: "5 god.", label: "Iskustva" },
   { value: "99%",    label: "Zadovoljnih" },
 ] as const;
@@ -190,7 +190,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
               >
                 ZAKAŽI TERMIN
               </button>
-              <span className="text-sm text-foreground/50 font-poppins lg:hidden">10K+ zadovoljnih klijenata</span>
+              <span className="text-sm text-foreground/50 font-poppins lg:hidden">4000+ zadovoljnih klijenata</span>
             </div>
             <p className="text-xs text-foreground/45 font-poppins">Ništa se ne brini. Na prvom tretmanu se sve dogovaramo.</p>
           </div>

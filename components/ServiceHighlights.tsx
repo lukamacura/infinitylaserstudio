@@ -2,8 +2,8 @@ import Image from "next/image";
 
 const highlights = [
   {
-    title: "Bezbolan tretman",
-    description: "Sistem hlađenja u kontaktnoj glavi neutrališe nelagodnost pre svakog impulsa. Prijatan od prve do poslednje sekunde.",
+    title: "Bez bola. Stvarno.",
+    description: "Uređaj hladi kožu u trenutku tretmana, tako da većina klijentkinja opisuje osećaj kao lagano peckanje - i ništa više.",
     icon: (
       <svg viewBox="0 0 40 40" fill="none" className="w-8 h-8">
         <circle cx="20" cy="20" r="18" fill="#ACE6E4" opacity="0.3" />
@@ -12,8 +12,8 @@ const highlights = [
     ),
   },
   {
-    title: "Bezbedno za sve tipove kože",
-    description: "Prilagodljivi parametri tretmana pokrivaju fototip I–VI po Fitzpatricku. Svaka koža je dobrodošla.",
+    title: "Za tvoju kožu",
+    description: "Svetla, tamna, osetljiva - svaki tip kože se tretira bezbedno. Parametri se podešavaju individualno, za tebe.",
     icon: (
       <svg viewBox="0 0 40 40" fill="none" className="w-8 h-8">
         <circle cx="20" cy="20" r="18" fill="#C6F5E9" opacity="0.4" />
@@ -23,8 +23,8 @@ const highlights = [
     ),
   },
   {
-    title: "Brz tretman",
-    description: "Pune noge za manje od 45 minuta. Pazuhe za 10. Bez čekanja, bez gubljenja vremena.",
+    title: "Uštedi sat vremena - danas",
+    description: "Noge gotove za manje od 45 minuta. Pazuhe za 10. Zakaži na pauzi - završi pre ručka.",
     icon: (
       <svg viewBox="0 0 40 40" fill="none" className="w-8 h-8">
         <circle cx="20" cy="20" r="18" fill="#FCD6ED" opacity="0.4" />
@@ -34,8 +34,8 @@ const highlights = [
     ),
   },
   {
-    title: "Trajni rezultati",
-    description: "Posle serije tretmana dlaka se ne vraća. Samo glatka koža - bez održavanja, zauvek.",
+    title: "Jednom. Zauvek.",
+    description: "Posle serije tretmana dlaka se ne vraća. Nema više brijača, nema crvenila, nema sledećeg termina.",
     icon: (
       <svg viewBox="0 0 40 40" fill="none" className="w-8 h-8">
         <circle cx="20" cy="20" r="18" fill="#FCFAE5" opacity="0.8" />
@@ -57,15 +57,11 @@ export default function ServiceHighlights() {
             <span className="w-6 h-px bg-teal inline-block" />
           </span>
           <h2 className="font-playfair text-4xl md:text-5xl text-gray-800">
-            Laser koji radi za tebe
+            Zašto klijentkinje ostaju?
           </h2>
         </div>
         <p className="text-center font-poppins text-gray-500 text-sm mb-16 max-w-xl mx-auto leading-relaxed">
-          Koristimo{" "}
-          <span className="inline-block bg-teal/20 text-gray-700 font-medium px-2 py-0.5 rounded text-xs tracking-wide">
-            Aton Magnum
-          </span>{" "}
-          - jedan od najsavremenijih uređaja za lasersku epilaciju dostupnih danas.
+          Više od 4.000 žena odabralo je Infinity Laser Studio. Evo šta ih je ubedilo  i zašto se uvek vraćaju.
         </p>
 
         {/* Three-column layout: highlights | image | highlights */}
