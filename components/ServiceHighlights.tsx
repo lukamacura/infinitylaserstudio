@@ -24,7 +24,7 @@ const highlights = [
   },
   {
     title: "Uštedi sat vremena - danas",
-    description: "Noge gotove za manje od 45 minuta. Pazuhe za 10. Zakaži na pauzi - završi pre ručka.",
+    description: "Lice gotovo za 5 minuta. Leđa za 10. Zakaži na pauzi - završi pre ručka.",
     icon: (
       <svg viewBox="0 0 40 40" fill="none" className="w-8 h-8">
         <circle cx="20" cy="20" r="18" fill="#FCD6ED" opacity="0.4" />
@@ -57,11 +57,11 @@ export default function ServiceHighlights() {
             <span className="w-6 h-px bg-teal inline-block" />
           </span>
           <h2 className="font-playfair text-4xl md:text-5xl text-gray-800">
-            Zašto klijentkinje ostaju?
+            Zašto klijenti ostaju?
           </h2>
         </div>
         <p className="text-center font-poppins text-gray-500 text-sm mb-16 max-w-xl mx-auto leading-relaxed">
-          Više od 4.000 žena odabralo je Infinity Laser Studio. Evo šta ih je ubedilo  i zašto se uvek vraćaju.
+          Više od 4.000 klijenata odabralo je Infinity Laser Studio. Evo šta ih je ubedilo  i zašto se uvek vraćaju.
         </p>
 
         {/* Three-column layout: highlights | image | highlights */}

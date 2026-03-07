@@ -8,10 +8,16 @@ export const supabase = createClient<Database>(url, key);
 
 // ── Business logic helpers ──────────────────────────────────────────────────
 
-export const BUSINESS_START        = 7 * 60;  // 07:00 in minutes
-export const BUSINESS_END          = 17 * 60; // 17:00 in minutes
 export const SLOT_SIZE             = 10;      // minutes per slot
 export const CONSULTATION_MINUTES  = 15;      // mandatory pre-treatment consultation
+
+/** Returns business hours (minutes since midnight) for a date string, or null if closed (Sunday). */
+export function getBusinessHours(dateStr: string): { start: number; end: number } | null {
+  const dow = new Date(`${dateStr}T00:00:00`).getDay(); // 0=Sun … 6=Sat
+  if (dow === 0) return null;                            // Sunday – closed
+  if (dow === 6) return { start: 10 * 60, end: 15 * 60 }; // Saturday 10:00–15:00
+  return { start: 14 * 60, end: 19 * 60 };              // Mon–Fri 14:00–19:00
+}
 
 /** Total duration (including inter-service pauses, but NOT a trailing pause after the last service), rounded up to slot boundary */
 export function calcTotalDuration(services: { service_duration: number; pause_duration: number }[]): number {
@@ -47,7 +53,9 @@ export function minutesToTime(minutes: number): string {
 export function getAvailableSlots(
   reservations: { start_time: string; end_time: string; status: string }[],
   durationMinutes: number,
-  minStartMinutes?: number
+  minStartMinutes?: number,
+  businessStart = 14 * 60,
+  businessEnd   = 19 * 60,
 ): string[] {
   const active = reservations
     .filter((r) => r.status !== "cancelled")
@@ -59,12 +67,12 @@ export function getAvailableSlots(
   // Round minStart up to the next clean slot boundary
   const earliest = minStartMinutes !== undefined
     ? Math.ceil(minStartMinutes / SLOT_SIZE) * SLOT_SIZE
-    : BUSINESS_START;
+    : businessStart;
 
-  const fromMinute = Math.max(BUSINESS_START, earliest);
+  const fromMinute = Math.max(businessStart, earliest);
   const slots: string[] = [];
 
-  for (let t = fromMinute; t + durationMinutes <= BUSINESS_END; t += SLOT_SIZE) {
+  for (let t = fromMinute; t + durationMinutes <= businessEnd; t += SLOT_SIZE) {
     const slotEnd = t + durationMinutes;
     const hasConflict = active.some((r) => t < r.end && slotEnd > r.start);
     if (!hasConflict) slots.push(minutesToTime(t));

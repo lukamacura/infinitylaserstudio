@@ -5,16 +5,29 @@ import { motion } from "framer-motion";
 
 const faqs = [
   {
+    q: "Šta je ustvari laserska epilacija?",
+    a: "Trajna epilacija funkcioniše tako što laser emituje svetlost određene talasne dužine koja prepoznaje pigment dlake i deluje na nju tako što je termički oštećuje do korena bez oštećenja okolnih tkiva i kože.",
+  },
+  {
     q: "Da li boli?",
-    a: "Savremeni laseri dolaze sa sistemom hlađenja koji čini tretman prijatnim. Većina klijenata opisuje osećaj kao blag udarac elastičnom trakom - kratkotrajan i potpuno podnošljiv. Posle tretmana nema crvenila ni oporavka.",
+    a: "Onaj ko vam kaže NE – laže! Istina je da se bol ne može uporediti sa bolom depilacije. Može se osetiti samo blago peckanje koje prestaje odmah po završetku tretmana.",
+  },
+  {
+    q: "Da li je tretman bezbedan?",
+    a: "Apsolutno! Laserski snop prodire samo nekoliko milimetara u kožu pa ne ugrožava žlezde niti okolna tkiva.",
+  },
+  {
+    q: "Kada se vide prvi rezultati?",
+    a: "Već posle jednog tretmana uništava se oko 20% dlačica.",
   },
   {
     q: "Koliko tretmana treba?",
-    a: "Između 6 i 8 tretmana, na svakih 4–6 nedelja. Dlake prolaze kroz različite faze rasta, a laser deluje samo u aktivnoj fazi - zbog toga je serija ključna za trajni rezultat. Posle serije, dlaka se ne vraća.",
+    a: "Između 6 i 10 tretmana, na svakih 4–6 nedelja. Dlake prolaze kroz različite faze rasta, a laser deluje samo u aktivnoj fazi - zbog toga je serija ključna za trajni rezultat. Posle serije, dlaka se ne vraća.",
   },
+
   {
-    q: "Kako se pripremiti za tretman?",
-    a: "Partiju tela obrij 24 sata pre dolaska - ne depilacijom voskom ili kremom. Izbegavaj sunce i samoposmeđujuće preparate 2 nedelje pre tretmana. Dođi sa čistom, nenavlaženom kožom. O svemu ostalom brinu naši stručnjaci.",
+    q: "Ko ne sme da radi tretmane laserske epilacije?",
+    a: "Osobe koje imaju epilepsiju ne smeju na tretmane laserske epilacije. Trudnicama se ne preporučuju tretmani, kao i osobama koje imaju psorijazu.",
   },
 ];
 

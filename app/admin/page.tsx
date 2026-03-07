@@ -12,8 +12,8 @@ import type { ReservationStatus } from "@/lib/database.types";
 const ADMIN_PWD   = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "laser2024";
 const SLOT_PX     = 14;           // px per 10-minute slot
 const PX_PER_MIN  = SLOT_PX / 10; // 1.4 px/min
-const GRID_H      = 60 * SLOT_PX; // 840px (07:00–17:00)
-const BIZ_START   = 7 * 60;       // 420 min
+const GRID_H      = 54 * SLOT_PX; // 756px (10:00–19:00)
+const BIZ_START   = 10 * 60;      // 600 min – earliest open hour (Sat 10:00)
 
 const SR_DAYS_LONG  = ["Ponedeljak", "Utorak", "Sreda", "Četvrtak", "Petak", "Subota", "Nedelja"];
 const SR_DAYS_SHORT = ["Pon", "Uto", "Sre", "Čet", "Pet", "Sub", "Ned"];
@@ -78,8 +78,8 @@ function toHeight(minutes: number) {
 }
 
 // ── Hour grid labels ──────────────────────────────────────────────────────────
-const HOUR_LABELS = Array.from({ length: 11 }, (_, i) => {
-  const h = 7 + i;
+const HOUR_LABELS = Array.from({ length: 10 }, (_, i) => {
+  const h = 10 + i;
   return { label: `${String(h).padStart(2, "0")}:00`, top: i * 60 * PX_PER_MIN };
 });
 

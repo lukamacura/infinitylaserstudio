@@ -8,8 +8,8 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
-  supabase, calcBookingDuration, getAvailableSlots,
-  minutesToTime, timeToMinutes, BUSINESS_END, SLOT_SIZE,
+  supabase, calcBookingDuration, getAvailableSlots, getBusinessHours,
+  minutesToTime, timeToMinutes, SLOT_SIZE,
 } from "@/lib/supabase";
 import type { Service } from "@/lib/database.types";
 
@@ -68,9 +68,9 @@ interface DayOption {
 }
 
 /**
- * Build the next 6 bookable weekdays (Mon–Sat).
- * Today is included only when there is theoretical time left:
- *   currentTime + 120 min (notice) + totalDuration <= 17:00
+ * Build the next 6 bookable days (Mon–Sat; Sun is closed).
+ * Today is included only when there is theoretical time left within the day's business hours.
+ * Mon–Fri: 14:00–19:00 | Sat: 10:00–15:00
  */
 function buildDayOptions(totalDuration: number): DayOption[] {
   const now = new Date();
@@ -83,19 +83,21 @@ function buildDayOptions(totalDuration: number): DayOption[] {
     const d = new Date(now);
     d.setDate(now.getDate() + offset);
 
-    const idx = monIdx(d); // 0=Mon … 6=Sun
-    if (idx === 6) continue; // skip Sunday
+    const dateStr = toDateStr(d);
+    const biz = getBusinessHours(dateStr);
+    if (!biz) continue; // Sunday or other closed day
 
+    const idx = monIdx(d);
     const isToday = offset === 0;
 
-    // For today: only show if at least one slot fits within business hours
+    // For today: only show if at least one slot fits within this day's business hours
     if (isToday) {
       const earliestSlot = Math.ceil(minStartToday / SLOT_SIZE) * SLOT_SIZE;
-      if (earliestSlot + totalDuration > BUSINESS_END) continue;
+      if (earliestSlot + totalDuration > biz.end) continue;
     }
 
     days.push({
-      date: toDateStr(d),
+      date: dateStr,
       label: SR_DAYS_FULL[idx],
       shortDate: `${d.getDate()}. ${SR_MONTHS_SHORT[d.getMonth()]}`,
       isToday,
@@ -107,6 +109,55 @@ function buildDayOptions(totalDuration: number): DayOption[] {
 
 function formatPrice(price: number): string {
   return price.toLocaleString("sr-RS");
+}
+
+// ── Combo detection ───────────────────────────────────────────────────────────
+interface ComboRule {
+  parts: string[];   // lowercase substrings that identify the component services
+  comboKey: string;  // lowercase substring that identifies the combo service
+}
+
+const COMBO_RULES: ComboRule[] = [
+  { parts: ["nausnice", "brada"],  comboKey: "nausnice i brada" },
+  { parts: ["noge", "intima"],     comboKey: "noge + intima" },
+  { parts: ["stomak", "grudi"],    comboKey: "stomak + grudi" },
+];
+
+/** Returns true if this service is a combo product (should be hidden from the list) */
+function isComboService(name: string): boolean {
+  const n = name.toLowerCase();
+  return COMBO_RULES.some((r) => n.includes(r.comboKey));
+}
+
+/**
+ * Given the currently selected services and all loaded services,
+ * returns the effective list for price/duration calculation:
+ * combo component pairs are replaced with the combo service.
+ * Also returns which combos were applied (for UI badge).
+ */
+function applyComboRules(
+  selected: Service[],
+  all: Service[]
+): { effective: Service[]; appliedCombos: Service[] } {
+  let effective = [...selected];
+  const appliedCombos: Service[] = [];
+
+  for (const rule of COMBO_RULES) {
+    const matchedParts = rule.parts
+      .map((part) => effective.find((s) => s.name.toLowerCase().includes(part)))
+      .filter((s): s is Service => s !== undefined);
+
+    if (matchedParts.length === rule.parts.length) {
+      const combo = all.find((s) => s.name.toLowerCase().includes(rule.comboKey));
+      if (combo) {
+        effective = effective.filter((s) => !matchedParts.includes(s));
+        effective.push(combo);
+        appliedCombos.push(combo);
+      }
+    }
+  }
+
+  return { effective, appliedCombos };
 }
 
 // ── Accent theme ──────────────────────────────────────────────────────────────
@@ -153,17 +204,21 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
   const [submitting, setSubmitting]       = useState(false);
   const [submitError, setSubmitError]     = useState<string | null>(null);
   const [bookingRef, setBookingRef]       = useState<string | null>(null);
-  const [promoCode, setPromoCode]         = useState("");
-  const [promoStatus, setPromoStatus]     = useState<"idle" | "valid" | "invalid">("idle");
-  const [promoChecking, setPromoChecking] = useState(false);
+  const [promoCode, setPromoCode]             = useState("");
+  const [promoStatus, setPromoStatus]         = useState<"idle" | "valid" | "invalid">("idle");
+  const [promoChecking, setPromoChecking]     = useState(false);
   const [discountedPrice, setDiscountedPrice] = useState<number | null>(null);
+  const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null);
   const [displayedPrice, setDisplayedPrice]   = useState(0);
   const animFrameRef = useRef<number>(0);
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const selectedServices = services.filter((s) => selectedIds.includes(s.id));
+  const { effective: effectiveServices, appliedCombos } = applyComboRules(selectedServices, services);
   const totalDuration    = selectedServices.length > 0 ? calcBookingDuration(selectedServices) : 0;
-  const totalPrice       = selectedServices.reduce((sum, s) => sum + s.price, 0);
+  const basePrice        = selectedServices.reduce((sum, s) => sum + s.price, 0);
+  const totalPrice       = effectiveServices.reduce((sum, s) => sum + s.price, 0);
+  const comboSaving      = basePrice - totalPrice;
   const accent           = ACCENTS[gender ?? "zene"];
 
   // Day options rebuild whenever totalDuration changes
@@ -178,7 +233,10 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
   const isToday = dayOptions.find((d) => d.date === selectedDate)?.isToday ?? false;
   const minStart = isToday ? nowMinutes + 120 : undefined;
 
-  const availableSlots = getAvailableSlots(daySlots, totalDuration, minStart);
+  const biz = selectedDate ? getBusinessHours(selectedDate) : null;
+  const availableSlots = biz
+    ? getAvailableSlots(daySlots, totalDuration, minStart, biz.start, biz.end)
+    : [];
 
   // ── Side-effects ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -245,34 +303,62 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
     setForm({ name: "", email: "", phone: "" });
     setFieldErrors({ name: false, email: false });
     setSubmitError(null); setBookingRef(null);
-    setPromoCode(""); setPromoStatus("idle"); setDiscountedPrice(null);
+    setPromoCode(""); setPromoStatus("idle"); setDiscountedPrice(null); setAppliedPromoCode(null);
   }
 
   async function handleApplyPromo() {
-    if (promoCode.trim().toLowerCase() !== "tb-2026") {
-      setPromoStatus("invalid");
-      setDiscountedPrice(null);
-      return;
-    }
+    const code = promoCode.trim().toLowerCase();
     const emailToCheck = form.email.trim();
-    if (!emailToCheck) {
-      setPromoStatus("invalid");
-      setDiscountedPrice(null);
-      return;
-    }
-    setPromoChecking(true);
-    const { data: lead } = await supabase
-      .from("leads")
-      .select("id, promo_used")
-      .eq("email", emailToCheck)
-      .maybeSingle();
-    setPromoChecking(false);
-    if (lead && !lead.promo_used) {
-      setPromoStatus("valid");
-      setDiscountedPrice(Math.round(totalPrice * 0.5));
+
+    if (code === "tb-2026") {
+      if (!emailToCheck) {
+        setPromoStatus("invalid");
+        setDiscountedPrice(null);
+        setAppliedPromoCode(null);
+        return;
+      }
+      setPromoChecking(true);
+      const { data: lead } = await supabase
+        .from("leads")
+        .select("id, promo_used")
+        .eq("email", emailToCheck)
+        .maybeSingle();
+      setPromoChecking(false);
+      if (lead && !lead.promo_used) {
+        setPromoStatus("valid");
+        setDiscountedPrice(Math.round(totalPrice * 0.5));
+        setAppliedPromoCode("tb-2026");
+      } else {
+        setPromoStatus("invalid");
+        setDiscountedPrice(null);
+        setAppliedPromoCode(null);
+      }
+    } else if (code === "ils-10") {
+      if (!emailToCheck) {
+        setPromoStatus("invalid");
+        setDiscountedPrice(null);
+        setAppliedPromoCode(null);
+        return;
+      }
+      setPromoChecking(true);
+      const { count } = await supabase
+        .from("reservations")
+        .select("id", { count: "exact", head: true })
+        .eq("customer_email", emailToCheck);
+      setPromoChecking(false);
+      if (count && count >= 1) {
+        setPromoStatus("valid");
+        setDiscountedPrice(Math.round(totalPrice * 0.9));
+        setAppliedPromoCode("ils-10");
+      } else {
+        setPromoStatus("invalid");
+        setDiscountedPrice(null);
+        setAppliedPromoCode(null);
+      }
     } else {
       setPromoStatus("invalid");
       setDiscountedPrice(null);
+      setAppliedPromoCode(null);
     }
   }
 
@@ -317,7 +403,7 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
         start_time:     `${selectedTime}:00`,
         end_time:       `${endTime}:00`,
         total_duration: totalDuration,
-        status:         "pending",
+        status:         "confirmed",
       })
       .select()
       .single();
@@ -428,7 +514,7 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
                 <div className="flex items-center justify-center py-12">
                   <Loader2 size={28} className="animate-spin text-foreground/30" />
                 </div>
-              ) : services.map((service) => {
+              ) : services.filter((s) => !isComboService(s.name)).map((service) => {
                 const isSelected = selectedIds.includes(service.id);
                 const Icon = getIcon(service.name);
                 return (
@@ -604,7 +690,7 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
                         type="text"
                         placeholder="npr. xx-yyyy"
                         value={promoCode}
-                        onChange={(e) => { setPromoCode(e.target.value); setPromoStatus("idle"); setDiscountedPrice(null); }}
+                        onChange={(e) => { setPromoCode(e.target.value); setPromoStatus("idle"); setDiscountedPrice(null); setAppliedPromoCode(null); }}
                         className="flex-1 px-4 py-3 rounded-xl border-2 border-foreground/10 focus:outline-none font-poppins text-sm transition-colors"
                         onFocus={(e) => (e.target.style.borderColor = accent.hex)}
                         onBlur={(e) => (e.target.style.borderColor = "")}
@@ -623,7 +709,11 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
                     </div>
                     {promoStatus === "valid" && (
                       <div className="mt-2 flex items-center justify-between px-3 py-2.5 rounded-xl bg-green-50">
-                        <p className="text-xs text-green-700 font-poppins font-semibold">Kod primenjen - 50% popusta aktivirano.</p>
+                        <p className="text-xs text-green-700 font-poppins font-semibold">
+                          {appliedPromoCode === "ils-10"
+                            ? "Kod primenjen - 10% popusta aktivirano."
+                            : "Kod primenjen - 50% popusta aktivirano."}
+                        </p>
                         <div className="text-right shrink-0 ml-3">
                           <p className="text-[10px] text-foreground/35 font-poppins line-through leading-none">{formatPrice(totalPrice)} RSD</p>
                           <p className="text-sm font-bold font-poppins text-green-700 leading-tight">{formatPrice(discountedPrice ?? totalPrice)} RSD</p>
@@ -632,7 +722,11 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
                     )}
                     {promoStatus === "invalid" && (
                       <p className="text-xs text-red-500 font-poppins mt-1.5">
-                        Kod je već iskorišćen.
+                        {promoCode.trim().toLowerCase() === "tb-2026"
+                          ? "Kod je već iskorišćen."
+                          : promoCode.trim().toLowerCase() === "ils-10"
+                          ? "Nemaš prethodne rezervacije."
+                          : "Nevažeći promo kod."}
                       </p>
                     )}
                   </div>
@@ -704,7 +798,7 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
                   {/* Promo badge */}
                   {promoStatus === "valid" && (
                     <span className="mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold font-poppins text-white bg-green-500">
-                      −50% POPUST
+                      {appliedPromoCode === "ils-10" ? "−10% POPUST" : "−50% POPUST"}
                     </span>
                   )}
                 </div>
@@ -722,12 +816,14 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
                   </div>
                 ))}
                 {promoStatus === "valid" && (
-                  <p className="text-xs text-green-600 font-poppins text-right">Promo kod tb-2026 primenjen (−50%)</p>
+                  <p className="text-xs text-green-600 font-poppins text-right">
+                    Promo kod {appliedPromoCode} primenjen ({appliedPromoCode === "ils-10" ? "−10%" : "−50%"})
+                  </p>
                 )}
                 <div className="border-t border-foreground/10 pt-3">
                   <p className="text-xs text-foreground/40 font-poppins mb-1.5">USLUGE</p>
-                  <p className="text-sm font-poppins font-semibold text-foreground/50">Konsultacija pre tretmana (15 min)</p>
-                  {selectedServices.map((s) => (
+                  <p className="text-sm font-poppins font-semibold text-foreground/50">Konsultacija (15 min)</p>
+                  {effectiveServices.map((s) => (
                     <p key={s.id} className="text-sm font-poppins font-semibold">{s.name}</p>
                   ))}
                 </div>
@@ -762,8 +858,28 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
                 <p className="text-[11px] text-foreground/40 font-poppins">uklj. konsultacija i pauze</p>
               </div>
               <div>
+                {appliedCombos.length > 0 && (
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span
+                      className="px-2 py-0.5 rounded-full text-[10px] font-bold font-poppins text-white"
+                      style={{ backgroundColor: accent.hex }}
+                    >
+                      COMBO
+                    </span>
+                    <span className="text-[11px] font-poppins text-green-600 font-semibold">
+                      -{formatPrice(comboSaving)} RSD popusta
+                    </span>
+                  </div>
+                )}
                 <p className="text-xs text-foreground/50 font-poppins">Cena tretmana</p>
-                <p className="text-sm font-bold font-poppins" style={{ color: accent.hex }}>{formatPrice(totalPrice)} RSD</p>
+                {comboSaving > 0 && (
+                  <p className="text-[11px] text-foreground/35 font-poppins line-through leading-none">
+                    {formatPrice(basePrice)} RSD
+                  </p>
+                )}
+                <p className="text-sm font-bold font-poppins" style={{ color: accent.hex }}>
+                  {formatPrice(totalPrice)} RSD
+                </p>
               </div>
             </div>
             <button

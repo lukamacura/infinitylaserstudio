@@ -1,13 +1,14 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useState, useEffect } from "react";
 
 const navLinks = [
-  { label: "O nama",   href: "#o-nama"   },
-  { label: "Usluge",   href: "#usluge"   },
-  { label: "Cenovnik", href: "#cenovnik" },
-  { label: "Kontakt",  href: "#kontakt"  },
+  { label: "O nama",   href: "/#o-nama"   },
+  { label: "Usluge",   href: "/#usluge"   },
+  { label: "Cenovnik", href: "/cenovnik" },
+  { label: "Kontakt",  href: "/#kontakt"  },
 ] as const;
 
 export default function Navbar() {
@@ -38,12 +39,21 @@ export default function Navbar() {
           <ul className="hidden md:flex items-center gap-8">
             {navLinks.map((link) => (
               <li key={link.label}>
-                <a
-                  href={link.href}
-                  className="text-sm font-poppins text-white/70 hover:text-white transition-colors duration-500"
-                >
-                  {link.label}
-                </a>
+                {link.label === "Cenovnik" ? (
+                  <Link
+                    href={link.href}
+                    className="text-sm font-poppins text-white/70 hover:text-white transition-colors duration-500"
+                  >
+                    {link.label}
+                  </Link>
+                ) : (
+                  <a
+                    href={link.href}
+                    className="text-sm font-poppins text-white/70 hover:text-white transition-colors duration-500"
+                  >
+                    {link.label}
+                  </a>
+                )}
               </li>
             ))}
           </ul>
@@ -109,13 +119,23 @@ export default function Navbar() {
           <ul className="max-w-7xl mx-auto flex flex-col px-6 py-4 gap-1">
             {navLinks.map((link) => (
               <li key={link.label}>
-                <a
-                  href={link.href}
-                  onClick={() => setMenuOpen(false)}
-                  className="block py-3 text-sm font-poppins text-white/70 hover:text-white transition-colors border-b border-white/10 last:border-0"
-                >
-                  {link.label}
-                </a>
+                {link.label === "Cenovnik" ? (
+                  <Link
+                    href={link.href}
+                    onClick={() => setMenuOpen(false)}
+                    className="block py-3 text-sm font-poppins text-white/70 hover:text-white transition-colors border-b border-white/10 last:border-0"
+                  >
+                    {link.label}
+                  </Link>
+                ) : (
+                  <a
+                    href={link.href}
+                    onClick={() => setMenuOpen(false)}
+                    className="block py-3 text-sm font-poppins text-white/70 hover:text-white transition-colors border-b border-white/10 last:border-0"
+                  >
+                    {link.label}
+                  </a>
+                )}
               </li>
             ))}
           </ul>
