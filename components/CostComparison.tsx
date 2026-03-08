@@ -64,8 +64,8 @@ export default function CostComparison({ onOpen }: Props) {
           {/* Laser */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="font-poppins text-sm text-gray-500">Infinity Laser — po tretmanu</span>
-              <span className="font-poppins text-sm font-semibold text-teal">~7.790 RSD / tretman</span>
+              <span className="font-poppins text-sm text-gray-500">Infinity Laser - po tretmanu</span>
+              <span className="font-poppins text-sm font-semibold text-teal">~8.500 RSD / tretman</span>
             </div>
             <div className="h-4 bg-gray-100 rounded-full overflow-hidden">
               <motion.div

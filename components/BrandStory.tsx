@@ -96,7 +96,6 @@ export default function BrandStory() {
             </div>
             <div>
               <p className="font-poppins text-xs font-semibold text-gray-800">Sertifikovani studio</p>
-              <p className="font-poppins text-xs text-gray-500">EU standardi bezbednosti</p>
             </div>
           </div>
         </div>

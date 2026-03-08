@@ -428,7 +428,28 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
         .eq("email", form.email.trim());
     }
 
-    setBookingRef(res.id.slice(-8).toUpperCase());
+    const bookingRefValue = res.id.slice(-8).toUpperCase();
+    setBookingRef(bookingRefValue);
+
+    fetch("/api/booking-confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customer_name:    form.name.trim(),
+        customer_email:   form.email.trim(),
+        customer_phone:   form.phone.trim() || null,
+        date:             selectedDate,
+        start_time:       selectedTime,
+        end_time:         endTime,
+        services:         effectiveServices.map((s) => ({ name: s.name, price: s.price })),
+        total_duration:   totalDuration,
+        total_price:      totalPrice,
+        discounted_price: discountedPrice,
+        promo_code:       appliedPromoCode,
+        booking_ref:      bookingRefValue,
+      }),
+    }).catch(() => {});
+
     setStep("success");
     setSubmitting(false);
   }

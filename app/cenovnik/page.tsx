@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import type { Service } from "@/lib/database.types";
 import PricingGrid from "./PricingGrid";
+import BookingCTA from "./BookingCTA";
 
 export const revalidate = 3600;
 
@@ -70,12 +71,7 @@ export default async function CenovnikPage() {
           <p className="font-poppins text-sm text-gray-500 mb-8">
             Odaberi uslugu i zakaži termin u nekoliko klikova.
           </p>
-          <a
-            href="/"
-            className="inline-flex items-center gap-2 px-8 py-3 rounded-full font-poppins text-sm font-medium tracking-widest text-gray-800 bg-teal hover:bg-foreground hover:text-white transition-colors"
-          >
-            ZAKAŽI TERMIN
-          </a>
+          <BookingCTA />
         </div>
       </section>
 

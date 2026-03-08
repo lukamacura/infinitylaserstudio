@@ -31,36 +31,6 @@ function getIcon(name: string): LucideIcon {
   return CircleDot;
 }
 
-// ── Description map ───────────────────────────────────────────────────────────
-const DESCRIPTIONS: Record<string, string> = {
-  // Žene
-  "nausnice":           "Precizno uklanjanje dlačica u predelu ušnih resica.",
-  "brada":              "Glatka koža bez neželjenih dlačica na bradi.",
-  "nausnice i brada":   "Kombinovani tretman za usnice i bradu po povoljnijoj ceni.",
-  "celo lice":          "Kompletan tretman lica za savršeno glatku kožu.",
-  "pazuh":              "Trajno rešenje za predeo pazuha bez iritacije.",
-  "ruke":               "Uklanjanje dlačica na celim rukama od zapešća do ramena.",
-  "1/2 ruku":           "Tretman od zapešća do lakta ili od lakta do ramena.",
-  "noge":               "Potpuno uklanjanje dlačica na celim nogama.",
-  "1/2 nogu":           "Tretman potkolenica ili natkoljenica.",
-  "intima":             "Diskretni i pažljivi tretman intimne zone.",
-  "noge + intima":      "Kombinovani tretman nogu i intimne zone.",
-  "celo telo":          "Sveobuhvatan tretman celog tela jednom posetom.",
-  // Muškarci
-  "1/2 lica":           "Tretman dela lica — brada, obrazi ili gornja usna.",
-  "lice":               "Kompletan tretman lica za urednu i glatku kožu.",
-  "grudi":              "Glatke grudi bez potrebe za brijanjem.",
-  "stomak":             "Čist i uredan stomak bez dlačica.",
-  "stomak + grudi":     "Kombinovani tretman stomaka i grudi.",
-  "1/2 leđa":           "Tretman gornje ili donje polovine leđa.",
-  "leđa":               "Kompletno uklanjanje dlačica na leđima.",
-};
-
-function getDescription(name: string): string {
-  const key = name.toLowerCase().trim();
-  return DESCRIPTIONS[key] ?? "Profesionalni laserski tretman uklanjanja dlačica.";
-}
-
 // ── Combo badge detection ─────────────────────────────────────────────────────
 function isCombo(name: string): boolean {
   const n = name.toLowerCase();
@@ -88,7 +58,6 @@ interface CardProps {
 function ServiceCard({ service, accent }: CardProps) {
   const Icon = getIcon(service.name);
   const combo = isCombo(service.name);
-  const description = getDescription(service.name);
 
   return (
     <div className="group relative flex flex-col gap-4 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm hover:shadow-lg transition-all duration-300">
@@ -109,13 +78,10 @@ function ServiceCard({ service, accent }: CardProps) {
         <Icon size={20} strokeWidth={1.6} className="text-gray-700" />
       </div>
 
-      {/* Name + description */}
+      {/* Name */}
       <div className="flex-1">
-        <p className="font-poppins text-sm font-semibold text-gray-800 mb-1 leading-snug">
+        <p className="font-poppins text-sm font-semibold text-gray-800 leading-snug">
           {service.name}
-        </p>
-        <p className="font-poppins text-xs text-gray-400 leading-relaxed">
-          {description}
         </p>
       </div>
 

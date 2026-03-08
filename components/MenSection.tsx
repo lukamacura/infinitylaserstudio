@@ -21,7 +21,7 @@ export default function MenSection({ onOpen }: Props) {
               Sportisti, aktivni muškarci i svi koji cene uredan izgled '' laserska epilacija je isto što i redovan frizer. Samo ređe.
             </p>
             <p className="font-poppins text-gray-500 text-sm leading-relaxed mb-8">
-              Tretmani su diskretni, brzi i prilagođeni muškoj koži.
+              Tretmani su brzi i prilagođeni muškoj koži.
             </p>
             <button
               onClick={onOpen}

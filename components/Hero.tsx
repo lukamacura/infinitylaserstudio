@@ -22,12 +22,12 @@ const heroHeadings = [
     after: " na bilo šta drugo.",
   },
   {
-    line1: "Brijanje, depilacija, crvenilo, dlake pod kožom.",
-    gradient: "Postoji bolji",
-    after: " put.",
+    line1: "Brijanje, depilacija, crvenilo, urasle dlake.",
+    gradient: "Postoji bolje",
+    after: " rešenje.",
   },
   {
-    line1: "Jednom uredi. Zauvek zaboravi.",
+    line1: "Jednom epilacija. Zauvek bez dlaka.",
     gradient: "Tvoja koža,",
     after: " tvoja sloboda.",
   },
@@ -115,22 +115,21 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
 
   return (
     <section
-      className="relative overflow-hidden"
+      className="relative overflow-hidden h-dvh"
       style={{
         background: "linear-gradient(115deg, #7DD8D5 0%, #ACE6E4 25%, #FCD6ED 65%, #FCCAE2 100%)",
         width: "100dvw",
-        height: "100dvh",
       }}
     >
 
-      {/* Layer 4 - Ambient color blobs */}
+      {/* Ambient blobs */}
       <div className="absolute inset-0 z-20 pointer-events-none">
         <div className="absolute top-[-10%] left-[-5%] w-[55%] h-[65%] rounded-full bg-pink/15 blur-[110px] mix-blend-soft-light" />
         <div className="absolute bottom-[-15%] right-[-5%] w-[50%] h-[60%] rounded-full bg-teal/10 blur-[110px] mix-blend-soft-light" />
       </div>
 
-      {/* Layer 5 - Top-right model image (desktop only) */}
-      <div className="absolute top-0 right-0 z-[25] h-full w-auto pointer-events-none hidden lg:block">
+      {/* Model image */}
+      <div className="absolute top-0 right-0 z-[25] h-full w-[52%] lg:w-auto pointer-events-none">
         <motion.div
           className="h-full"
           initial={prefersReduced ? false : { x: 80, opacity: 0 }}
@@ -143,27 +142,27 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
             fill={false}
             height={1080}
             width={700}
-            className="h-full w-auto object-contain object-top"
+            className="h-full w-full object-cover object-top lg:w-auto lg:object-contain"
             style={{
-              maskImage: "linear-gradient(to right, transparent 0%, black 25%)",
-              WebkitMaskImage: "linear-gradient(to right, transparent 0%, black 25%)",
+              maskImage: "linear-gradient(to right, transparent 0%, black 35%)",
+              WebkitMaskImage: "linear-gradient(to right, transparent 0%, black 35%)",
             }}
             priority
           />
         </motion.div>
       </div>
 
-      {/* Layer 6 - Content grid */}
-      <div className="relative z-30 max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 h-full px-6 lg:px-12">
+      {/* Content grid */}
+      <div className="relative z-30 max-w-7xl mx-auto flex flex-col lg:grid lg:grid-cols-12 h-full px-6 lg:px-12">
 
-        {/* Left - Headline + CTA */}
-        <div className="lg:col-span-5 flex flex-col justify-end pb-16 lg:justify-center lg:pb-0 gap-5">
-          <SparkleIcon className="mb-1 text-foreground/70" />
+        {/* Left - Headline */}
+        <div className="lg:col-span-5 flex flex-col justify-start pt-24 lg:justify-center lg:pt-0 gap-4 lg:gap-5">
+          {/* <SparkleIcon className="mb-1 text-foreground/70" /> */}
           <AnimatePresence mode="wait">
             <motion.h1
               key={hIdx}
               exit={{ opacity: 0, transition: { duration: 0.22, ease: "easeIn" } }}
-              className="text-4xl md:text-5xl lg:text-[3.5rem] font-bold leading-[1.1] font-playfair text-foreground"
+              className="text-[2.6rem] leading-[1.08] md:text-5xl lg:text-[3.5rem] font-bold font-playfair text-foreground"
             >
               <AnimatedChars text={h.line1} startDelay={0} reduced={prefersReduced} />
               <br />
@@ -182,15 +181,16 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
           <p className="text-base md:text-lg text-foreground/60 font-poppins max-w-sm leading-relaxed">
             Za 8 do 10 tretmana, zauvek se opraštaš od brijača, iritacija i uraslih dlaka. Jednom i zauvek.
           </p>
-          <div className="flex flex-col gap-2 mt-2">
-            <div className="flex items-center gap-4 flex-wrap">
+
+          {/* CTA — desktop only inline */}
+          <div className="hidden lg:flex flex-col gap-2 mt-2">
+            <div className="flex items-center gap-4">
               <button
                 onClick={onOpen}
                 className="inline-flex items-center justify-center px-8 py-3 rounded-full bg-foreground text-white text-xs font-semibold tracking-widest font-poppins border border-foreground hover:bg-foreground/90 hover:text-white transition-colors cursor-pointer"
               >
                 ZAKAŽI TERMIN
               </button>
-              <span className="text-sm text-foreground/50 font-poppins lg:hidden">4000+ zadovoljnih klijenata</span>
             </div>
             <p className="text-xs text-foreground/45 font-poppins">Ništa se ne brini. Na prvom tretmanu se sve dogovaramo.</p>
           </div>
@@ -225,11 +225,55 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
           </div>
         </div>
 
+        {/* Stats — mobile only, centered in remaining space */}
+        <div className="flex-1 lg:hidden flex items-center justify-center">
+          <div className="flex items-center w-full py-4">
+            {stats.map((s, i) => (
+              <div key={s.value} className="flex items-center flex-1">
+                <div className="flex flex-col items-center text-center flex-1">
+                  <span className="text-2xl font-bold font-playfair text-foreground">{s.value}</span>
+                  <span className="text-[10px] font-poppins text-foreground/50 tracking-widest uppercase mt-0.5">{s.label}</span>
+                </div>
+                {i < stats.length - 1 && <div className="w-px h-8 bg-foreground/15 shrink-0" />}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Mobile steps bar */}
+        <div className="lg:hidden pb-3 pt-0">
+          <div className="w-full flex flex-col supports-[backdrop-filter]:bg-white/50 bg-white/40 backdrop-blur-sm border border-foreground/10 rounded-2xl px-5 py-4 gap-3">
+            {steps.map((step, i) => (
+              <div key={step.phase} className="flex flex-col">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full shrink-0 ${step.dot}`} />
+                  <p className="text-[10px] text-foreground/45 font-poppins tracking-[1.5px] uppercase leading-none">{step.phase}</p>
+                </div>
+                <p className="text-sm font-semibold font-poppins text-foreground leading-tight mt-0.5 pl-4">{step.label}</p>
+                {i < steps.length - 1 && (
+                  <div className="h-px w-full bg-foreground/10 mt-3" />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* CTA — mobile only, pinned to bottom */}
+        <div className="lg:hidden pb-6 pt-4 flex flex-col gap-2">
+          <button
+            onClick={onOpen}
+            className="inline-flex items-center justify-center w-full px-8 py-4 rounded-full bg-foreground text-white text-sm font-semibold tracking-widest font-poppins border border-foreground hover:bg-foreground/90 hover:text-white transition-colors cursor-pointer"
+          >
+            ZAKAŽI TERMIN
+          </button>
+          <p className="text-xs text-foreground/45 font-poppins text-center">Ništa se ne brini. Na prvom tretmanu se sve dogovaramo.</p>
+        </div>
+
       </div>
 
-      {/* Scroll indicator */}
+      {/* Scroll indicator (desktop only) */}
       <motion.div
-        className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-1 pointer-events-none"
+        className="hidden lg:flex absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex-col items-center gap-1 pointer-events-none"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 1.2, duration: 0.6 }}
