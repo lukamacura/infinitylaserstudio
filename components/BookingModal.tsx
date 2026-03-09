@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import {
   X, ChevronRight, ScanFace, Ear, Hand, Footprints,
   Flower2, Wind, Minus, Target, Layers, Shirt, ArrowLeft,
-  PersonStanding, Loader2, CheckCircle2, AlertCircle,
+  PersonStanding, Loader2, CheckCircle2, AlertCircle, Sparkles,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
