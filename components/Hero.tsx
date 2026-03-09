@@ -129,7 +129,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
       </div>
 
       {/* Model image */}
-      <div className="absolute top-0 right-0 z-[25] h-full w-[52%] lg:w-auto pointer-events-none">
+      <div className="absolute top-0 right-0 z-[25] h-full w-auto pointer-events-none">
         <motion.div
           className="h-full"
           initial={prefersReduced ? false : { x: 80, opacity: 0 }}
@@ -142,11 +142,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
             fill={false}
             height={1080}
             width={700}
-            className="h-full w-full object-cover object-top lg:w-auto lg:object-contain"
-            style={{
-              maskImage: "linear-gradient(to right, transparent 0%, black 35%)",
-              WebkitMaskImage: "linear-gradient(to right, transparent 0%, black 35%)",
-            }}
+            className="h-full w-auto object-contain object-top"
             priority
           />
         </motion.div>
