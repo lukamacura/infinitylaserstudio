@@ -75,24 +75,16 @@ export default function Footer({ onOpen }: Props) {
               <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none" />
             </svg>
           </a>
-          {/* Facebook */}
+          {/* Phone */}
           <a
-            href="#"
-            aria-label="Facebook"
+            href="tel:+38163527325"
+            aria-label="Pozovi"
             className="w-9 h-9 rounded-full bg-gray-100 hover:bg-pink transition-colors flex items-center justify-center"
           >
-            <svg viewBox="0 0 24 24" className="w-4 h-4 text-gray-600" fill="currentColor">
-              <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
-            </svg>
-          </a>
-          {/* TikTok */}
-          <a
-            href="#"
-            aria-label="TikTok"
-            className="w-9 h-9 rounded-full bg-gray-100 hover:bg-pink transition-colors flex items-center justify-center"
-          >
-            <svg viewBox="0 0 24 24" className="w-4 h-4 text-gray-600" fill="currentColor">
-              <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.3 6.3 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34v-7a8.16 8.16 0 0 0 4.78 1.52V6.41a4.85 4.85 0 0 1-1.01-.28z" />
+            <svg viewBox="0 0 24 24" className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <rect x="7" y="2" width="10" height="20" rx="3" />
+              <circle cx="12" cy="18.5" r="1" fill="currentColor" stroke="none" />
+              <line x1="9.5" y1="5.5" x2="14.5" y2="5.5" strokeLinecap="round" />
             </svg>
           </a>
         </div>
