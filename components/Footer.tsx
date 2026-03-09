@@ -3,9 +3,10 @@
 import { motion } from "framer-motion";
 
 const navLinks = [
-  { label: "Usluge", href: "#services" },
-  { label: "O nama", href: "#about" },
-  { label: "FAQ", href: "#faq" },
+  { label: "Naša priča", href: "/#o-nama" },
+  { label: "Usluge",     href: "/#usluge" },
+  { label: "Cenovnik",   href: "/cenovnik" },
+  { label: "Tehnologija", href: "/#tech" },
 ];
 
 interface Props { onOpen: () => void; }
