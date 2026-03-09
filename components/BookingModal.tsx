@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import {
-  X, ChevronRight, Smile, SmilePlus, Hand, Footprints,
-  CircleDot, Sparkles, User, Shirt, ArrowLeft,
+  X, ChevronRight, ScanFace, Ear, Hand, Footprints,
+  Flower2, Wind, Minus, Target, Layers, Shirt, ArrowLeft,
   PersonStanding, Loader2, CheckCircle2, AlertCircle,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -24,17 +24,18 @@ type Gender = "zene" | "muskarci";
 // ── Icon mapping ──────────────────────────────────────────────────────────────
 function getIcon(name: string): LucideIcon {
   const n = name.toLowerCase();
-  if (n.includes("nausnice") && n.includes("brada")) return SmilePlus;
-  if (n.includes("nausnice")) return Smile;
-  if (n.includes("lice") || n.includes("lica") || n.includes("brada")) return Smile;
-  if (n.includes("intimna")) return Sparkles;
-  if (n.includes("pazuh") || n.includes("ruke")) return Hand;
-  if (n.includes("linija") || n.includes("stomak")) return CircleDot;
+  if (n.includes("nausnice")) return Ear;
+  if (n.includes("lice") || n.includes("lica") || n.includes("brada")) return ScanFace;
+  if (n.includes("intimna") || n.includes("intima")) return Flower2;
+  if (n.includes("pazuh")) return Wind;
+  if (n.includes("ruke")) return Hand;
+  if (n.includes("linija")) return Minus;
+  if (n.includes("stomak")) return Target;
   if (n.includes("noge")) return Footprints;
   if (n.includes("telo")) return PersonStanding;
   if (n.includes("grudi")) return Shirt;
-  if (n.includes("leđ") || n.includes("ledj")) return User;
-  return CircleDot;
+  if (n.includes("leđ") || n.includes("ledj")) return Layers;
+  return Target;
 }
 
 // ── Date & day helpers ────────────────────────────────────────────────────────

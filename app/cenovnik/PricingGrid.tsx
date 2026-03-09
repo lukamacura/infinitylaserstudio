@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import {
-  Smile,
-  SmilePlus,
+  ScanFace,
+  Ear,
   Hand,
   Footprints,
-  CircleDot,
-  Sparkles,
-  User,
+  Flower2,
+  Wind,
+  Minus,
+  Target,
+  Layers,
   Shirt,
   PersonStanding,
 } from "lucide-react";
@@ -18,17 +20,18 @@ import type { Service } from "@/lib/database.types";
 // ── Icon mapping (matches BookingModal) ───────────────────────────────────────
 function getIcon(name: string): LucideIcon {
   const n = name.toLowerCase();
-  if (n.includes("nausnice") && n.includes("brada")) return SmilePlus;
-  if (n.includes("nausnice")) return Smile;
-  if (n.includes("lice") || n.includes("lica") || n.includes("brada")) return Smile;
-  if (n.includes("intimna") || n.includes("intima")) return Sparkles;
-  if (n.includes("pazuh") || n.includes("ruke")) return Hand;
-  if (n.includes("linija") || n.includes("stomak")) return CircleDot;
+  if (n.includes("nausnice")) return Ear;
+  if (n.includes("lice") || n.includes("lica") || n.includes("brada")) return ScanFace;
+  if (n.includes("intimna") || n.includes("intima")) return Flower2;
+  if (n.includes("pazuh")) return Wind;
+  if (n.includes("ruke")) return Hand;
+  if (n.includes("linija")) return Minus;
+  if (n.includes("stomak")) return Target;
   if (n.includes("noge")) return Footprints;
   if (n.includes("telo")) return PersonStanding;
   if (n.includes("grudi")) return Shirt;
-  if (n.includes("leđ") || n.includes("ledj")) return User;
-  return CircleDot;
+  if (n.includes("leđ") || n.includes("ledj")) return Layers;
+  return Target;
 }
 
 // ── Combo badge detection ─────────────────────────────────────────────────────
@@ -85,16 +88,13 @@ function ServiceCard({ service, accent }: CardProps) {
         </p>
       </div>
 
-      {/* Price + duration */}
-      <div className="flex items-center justify-between pt-3 border-t border-gray-50">
+      {/* Price */}
+      <div className="pt-3 border-t border-gray-50">
         <span
           className="font-poppins text-base font-bold"
           style={{ color: accent.text }}
         >
           {formatPrice(service.price)}
-        </span>
-        <span className="inline-flex items-center rounded-full bg-gray-50 px-3 py-1 font-poppins text-xs text-gray-400">
-          ≈ {service.service_duration} min
         </span>
       </div>
     </div>

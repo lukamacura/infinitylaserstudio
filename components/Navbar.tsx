@@ -20,7 +20,7 @@ export default function Navbar() {
         className="border-b border-white/10 backdrop-blur-xl bg-black/65"
       >
         <div className="max-w-7xl mx-auto flex items-center justify-between px-6 lg:px-12 py-3">
-          <a href="#" aria-label="Infinity Laser Studio" className="flex items-center gap-3">
+          <a href="/" aria-label="Infinity Laser Studio" className="flex items-center gap-3">
             <Image
               src="/logo.png"
               alt="Infinity Laser Studio"
@@ -59,16 +59,17 @@ export default function Navbar() {
           </ul>
 
           <div className="flex items-center gap-3 text-white/60">
-            <button
+            <a
+              href="tel:+38163527325"
               aria-label="Pozovi"
-              className="p-2 hover:text-white transition-colors duration-500 cursor-pointer"
+              className="p-2 hover:text-white transition-colors duration-500"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                 <rect x="7" y="2" width="10" height="20" rx="3" stroke="currentColor" strokeWidth="1.8" />
                 <circle cx="12" cy="18.5" r="1" fill="currentColor" />
                 <line x1="9.5" y1="5.5" x2="14.5" y2="5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
               </svg>
-            </button>
+            </a>
             <button
               aria-label="Email"
               className="p-2 hover:text-white transition-colors duration-500 cursor-pointer"
