@@ -37,7 +37,7 @@ export default function MenSection({ onOpen }: Props) {
           {/* Visual – zones list */}
           <div className="flex flex-col gap-4">
             {[
-              { zone: "Leđa i ramena", desc: "Najtraženija partija kod muškaraca" },
+              { zone: "Leđa i ramena", desc: "Najtraženija regija kod muškaraca" },
               { zone: "Vrat i brada", desc: "Preciznost bez svakodnevnog brijanja" },
               { zone: "Grudi i stomak", desc: "Glatkoća koja traje mesecima" },
               { zone: "Noge i ruke", desc: "Za sportiste i aktivne stilove života" },

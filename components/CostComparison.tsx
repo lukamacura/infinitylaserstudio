@@ -45,7 +45,7 @@ export default function CostComparison({ onOpen }: Props) {
         <div className="flex flex-col gap-5 mb-10">
           {/* Traditional */}
           <div>
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2 gap-0.5">
               <span className="font-poppins text-sm text-gray-500">Brijanje, vosak i kreme - 20 godina</span>
               <span className="font-poppins text-sm font-semibold" style={{ color: "#C0627A" }}>500.000+ RSD</span>
             </div>
@@ -63,7 +63,7 @@ export default function CostComparison({ onOpen }: Props) {
 
           {/* Laser */}
           <div>
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2 gap-0.5">
               <span className="font-poppins text-sm text-gray-500">Infinity Laser - po tretmanu</span>
               <span className="font-poppins text-sm font-semibold text-teal">~8.500 RSD / tretman</span>
             </div>
@@ -80,15 +80,15 @@ export default function CostComparison({ onOpen }: Props) {
         </div>
 
         {/* Stats row */}
-        <div className="grid grid-cols-3 gap-4 mb-12">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
           {[
             { value: "500.000+ RSD", label: "ostaje u tvom džepu" },
             { value: "72 sata", label: "svake godine - na ništa" },
             { value: "Za 1 godinu", label: "laser se već isplatio" },
           ].map((s) => (
-            <div key={s.label} className="text-center bg-white rounded-2xl py-5 px-3 shadow-sm border border-gray-100">
-              <p className="font-playfair text-xl text-gray-800 mb-1">{s.value}</p>
-              <p className="font-poppins text-xs text-gray-400">{s.label}</p>
+            <div key={s.label} className="flex sm:flex-col items-center sm:items-center gap-3 sm:gap-0 bg-white rounded-2xl py-4 px-5 sm:py-5 sm:px-3 shadow-sm border border-gray-100">
+              <p className="font-playfair text-xl text-gray-800 sm:mb-1 shrink-0">{s.value}</p>
+              <p className="font-poppins text-xs text-gray-400 sm:text-center">{s.label}</p>
             </div>
           ))}
         </div>
