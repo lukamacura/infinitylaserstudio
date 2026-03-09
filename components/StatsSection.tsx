@@ -1,5 +1,5 @@
 const stats = [
-  { value: "4000+", label: "Zadovoljnih klijenata", sub: "koji su rekli zbogom britvi" },
+  { value: "4000+", label: "Zadovoljnih klijenata", sub: "koji su rekli zbogom brijaču" },
   { value: "20+", label: "Zona tretmana", sub: "za svaki deo tela" },
   { value: "70-90%", label: "Dlačica", sub: "uklonjeno zauvek" },
 ];
@@ -60,9 +60,9 @@ export default function StatsSection() {
                 <path d="M20 8l2 6h6l-5 3.6 1.9 6L20 20l-4.9 3.6L17 20l-5-3.6L18 14h6L20 8z" fill="white" opacity="0.9" />
               </svg>
             </div>
-            <p className="font-playfair text-2xl text-gray-800 text-center">5 godina studija</p>
+            <p className="font-playfair text-2xl text-gray-800 text-center">5 godina postojanja</p>
             <p className="font-poppins text-sm text-gray-500 text-center leading-relaxed">
-              Infinity Laser Studio je od 2019. prvi izbor za lasersku epilaciju u regionu.
+              Infinity Laser Studio je od 2021. prvi izbor za lasersku epilaciju u regionu.
             </p>
             <div className="flex gap-1 mt-2">
               {[...Array(5)].map((_, i) => (

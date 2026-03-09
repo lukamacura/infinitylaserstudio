@@ -115,7 +115,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
 
   return (
     <section
-      className="relative overflow-hidden h-dvh"
+      className="relative overflow-hidden min-h-dvh"
       style={{
         background: "linear-gradient(115deg, #7DD8D5 0%, #ACE6E4 25%, #FCD6ED 65%, #FCCAE2 100%)",
         width: "100dvw",
@@ -153,7 +153,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
       </div>
 
       {/* Content grid */}
-      <div className="relative z-30 max-w-7xl mx-auto flex flex-col lg:grid lg:grid-cols-12 h-full px-6 lg:px-12">
+      <div className="relative z-30 max-w-7xl mx-auto flex flex-col lg:grid lg:grid-cols-12 lg:h-dvh px-6 lg:px-12">
 
         {/* Left - Headline */}
         <div className="lg:col-span-5 flex flex-col justify-start pt-24 lg:justify-center lg:pt-0 gap-4 lg:gap-5">
@@ -233,7 +233,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
         </div>
 
         {/* Stats — mobile only, centered in remaining space */}
-        <div className="flex-1 lg:hidden flex items-center justify-center">
+        <div className="lg:hidden flex items-center justify-center py-4">
           <div className="flex items-center w-full py-4">
             {stats.map((s, i) => (
               <div key={s.value} className="flex items-center flex-1">
