@@ -55,7 +55,7 @@ export default function CostComparison({ onOpen }: Props) {
                 style={{ backgroundColor: "#C0627A" }}
                 initial={{ width: "0%" }}
                 whileInView={{ width: "91%" }}
-                viewport={{ once: true, margin: "-80px" }}
+                viewport={{ once: true }}
                 transition={{ duration: 0.9, delay: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
               />
             </div>
@@ -72,7 +72,7 @@ export default function CostComparison({ onOpen }: Props) {
                 className="h-full rounded-full bg-teal"
                 initial={{ width: "0%" }}
                 whileInView={{ width: "2%" }}
-                viewport={{ once: true, margin: "-80px" }}
+                viewport={{ once: true }}
                 transition={{ duration: 0.9, delay: 0.5, ease: [0.25, 0.46, 0.45, 0.94] }}
               />
             </div>

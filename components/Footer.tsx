@@ -50,9 +50,22 @@ export default function Footer({ onOpen }: Props) {
 
         {/* Social icons */}
         <div className="flex gap-5">
+          {/* Email */}
+          <a
+            href="mailto:ana.infinitystudio@gmail.com"
+            aria-label="Email"
+            className="w-9 h-9 rounded-full bg-gray-100 hover:bg-pink transition-colors flex items-center justify-center"
+          >
+            <svg viewBox="0 0 24 24" className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="4" width="20" height="16" rx="2" />
+              <path d="M2 7l10 7 10-7" />
+            </svg>
+          </a>
           {/* Instagram */}
           <a
-            href="#"
+            href="https://www.instagram.com/infinitystudio021/"
+            target="_blank"
+            rel="noopener noreferrer"
             aria-label="Instagram"
             className="w-9 h-9 rounded-full bg-gray-100 hover:bg-pink transition-colors flex items-center justify-center"
           >

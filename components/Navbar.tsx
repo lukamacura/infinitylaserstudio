@@ -70,15 +70,16 @@ export default function Navbar() {
                 <line x1="9.5" y1="5.5" x2="14.5" y2="5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
               </svg>
             </a>
-            <button
+            <a
+              href="mailto:ana.infinitystudio@gmail.com"
               aria-label="Email"
-              className="p-2 hover:text-white transition-colors duration-500 cursor-pointer"
+              className="p-2 hover:text-white transition-colors duration-500"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2" y="4" width="20" height="16" rx="2" />
                 <path d="M2 7l10 7 10-7" />
               </svg>
-            </button>
+            </a>
             <a
               href="https://www.instagram.com/infinitystudio021/"
               target="_blank"
