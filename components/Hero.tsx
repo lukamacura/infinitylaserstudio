@@ -128,10 +128,12 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
         <div className="absolute bottom-[-15%] right-[-5%] w-[50%] h-[60%] rounded-full bg-teal/10 blur-[110px] mix-blend-soft-light" />
       </div>
 
-      {/* Model image */}
-      <div className="absolute top-0 right-0 z-[25] h-full w-auto pointer-events-none">
+      {/* Model image — top-right on desktop, bottom-right on mobile */}
+      <div
+        className="absolute right-0 z-[25] pointer-events-none hidden lg:block lg:top-0 lg:h-[100dvh]"
+      >
         <motion.div
-          className="h-full"
+          className="h-full w-auto"
           initial={prefersReduced ? false : { x: 80, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
           transition={{ duration: 0.9, ease: [0.25, 0.46, 0.45, 0.94], delay: 0.3 }}
@@ -140,9 +142,10 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
             src="/hero_right.png"
             alt=""
             fill={false}
-            height={1080}
+            height={900}
             width={700}
-            className="h-full w-auto object-contain object-top"
+            className="h-full w-auto object-contain object-bottom lg:object-top"
+            style={{ height: "100%", width: "auto" }}
             priority
           />
         </motion.div>

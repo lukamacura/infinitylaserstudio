@@ -136,7 +136,7 @@ export default function PromoPopup({ onOpenBooking, isBookingOpen }: PromoPopupP
                 {/* Body */}
                 <p className="font-poppins text-sm text-foreground/60 mb-2">
                   Ostavi email i odmah dobijaš promo kod.
-                  Važi za sve apsolutno sve.
+                  Važi za apsolutno sve.
                 </p>
 
 

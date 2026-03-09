@@ -2,8 +2,8 @@ import Image from "next/image";
 
 const highlights = [
   {
-    title: "Bez bola. Stvarno.",
-    description: "Uređaj hladi kožu u trenutku tretmana, tako da većina klijentkinja opisuje osećaj kao lagano peckanje - i ništa više.",
+    title: "Ugodnije nego što misliš.",
+    description: "ATON Magnum hladi kožu - većina klijentkinja kaže da je najgore što su osećale bio strah pre prvog tretmana.",
     icon: (
       <svg viewBox="0 0 40 40" fill="none" className="w-8 h-8">
         <circle cx="20" cy="20" r="18" fill="#ACE6E4" opacity="0.3" />
@@ -12,8 +12,8 @@ const highlights = [
     ),
   },
   {
-    title: "Za tvoju kožu",
-    description: "Svetla, tamna, osetljiva - svaki tip kože se tretira bezbedno. Parametri se podešavaju individualno, za tebe.",
+    title: "Tvoja koža. Naši parametri.",
+    description: "Svetla, tamna, osetljiva - laser se podešava za svaki tip kože posebno. Nema šablona. Nema kompromisa.",
     icon: (
       <svg viewBox="0 0 40 40" fill="none" className="w-8 h-8">
         <circle cx="20" cy="20" r="18" fill="#C6F5E9" opacity="0.4" />
@@ -23,8 +23,8 @@ const highlights = [
     ),
   },
   {
-    title: "Uštedi sat vremena - danas",
-    description: "Lice gotovo za 5 minuta. Leđa za 10. Zakaži na pauzi - završi pre ručka.",
+    title: "72 sata godišnje. Vraćena tebi.",
+    description: "Noge gotove za 15 minuta. Nausnice za 5. Jedan tretman u 6 nedelja - i to je to. Vreme koje si trošila na brijanje, sada troši gde hoćeš.",
     icon: (
       <svg viewBox="0 0 40 40" fill="none" className="w-8 h-8">
         <circle cx="20" cy="20" r="18" fill="#FCD6ED" opacity="0.4" />
@@ -34,8 +34,8 @@ const highlights = [
     ),
   },
   {
-    title: "Jednom. Zauvek.",
-    description: "Posle serije tretmana dlaka se ne vraća. Nema više brijača, nema crvenila, nema sledećeg termina.",
+    title: "Jednom godišnje. To je sve.",
+    description: "Posle serije tretmana, 70–90% dlaka nestaje trajno - a jedino što te čeka je kratka kontrola jednom godišnje. Umesto 52 brijanja, jedan termin.",
     icon: (
       <svg viewBox="0 0 40 40" fill="none" className="w-8 h-8">
         <circle cx="20" cy="20" r="18" fill="#FCFAE5" opacity="0.8" />
@@ -57,11 +57,11 @@ export default function ServiceHighlights() {
             <span className="w-6 h-px bg-teal inline-block" />
           </span>
           <h2 className="font-playfair text-4xl md:text-5xl text-gray-800">
-            Zašto klijenti ostaju?
+            Koža kakvu si uvek htela.
           </h2>
         </div>
         <p className="text-center font-poppins text-gray-500 text-sm mb-16 max-w-xl mx-auto leading-relaxed">
-          Više od 4.000 klijenata odabralo je Infinity Laser Studio. Evo šta ih je ubedilo  i zašto se uvek vraćaju.
+          Bez brijača, bez crvenila, bez jutarnjeg rituala koji niko nije tražio. Više od 4.000 klijentkinja već zna kako izgleda sloboda.
         </p>
 
         {/* Three-column layout: highlights | image | highlights */}
