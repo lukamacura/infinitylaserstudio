@@ -136,13 +136,9 @@ export default function PromoPopup({ onOpenBooking, isBookingOpen }: PromoPopupP
                 {/* Body */}
                 <p className="font-poppins text-sm text-foreground/60 mb-2">
                   Ostavi email i odmah dobijaš promo kod.
-                  Važi za sve zone - noge, pazuhe, lice, intimna zona.
+                  Važi za sve apsolutno sve.
                 </p>
 
-                {/* Reassurance */}
-                <p className="font-poppins text-xs text-foreground/35 mb-5">
-                  Bez neželjene pošte. Koristimo email samo za slanje koda.
-                </p>
 
                 {/* Error: duplicate */}
                 {popupState === "error_duplicate" && (

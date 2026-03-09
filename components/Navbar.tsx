@@ -5,10 +5,10 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 
 const navLinks = [
-  { label: "O nama",   href: "/#o-nama"   },
+  { label: "Naša priča",   href: "/#o-nama"   },
   { label: "Usluge",   href: "/#usluge"   },
   { label: "Cenovnik", href: "/cenovnik" },
-  { label: "Kontakt",  href: "/#kontakt"  },
+  { label: "Tehnologija",  href: "/#tech"  },
 ] as const;
 
 export default function Navbar() {

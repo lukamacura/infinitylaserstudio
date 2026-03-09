@@ -158,28 +158,35 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
         {/* Left - Headline */}
         <div className="lg:col-span-5 flex flex-col justify-start pt-24 lg:justify-center lg:pt-0 gap-4 lg:gap-5">
           {/* <SparkleIcon className="mb-1 text-foreground/70" /> */}
-          <AnimatePresence mode="wait">
-            <motion.h1
-              key={hIdx}
-              exit={{ opacity: 0, transition: { duration: 0.22, ease: "easeIn" } }}
-              className="text-[2.6rem] leading-[1.08] md:text-5xl lg:text-[3.5rem] font-bold font-playfair text-foreground"
-            >
-              <AnimatedChars text={h.line1} startDelay={0} reduced={prefersReduced} />
-              <br />
-              <motion.span
-                initial={prefersReduced ? false : { opacity: 0, scaleX: 0.85 }}
-                animate={{ opacity: 1, scaleX: 1 }}
-                transition={{ duration: 0.35, delay: gradientDelay, ease: "easeOut" }}
-                className="bg-gradient-to-r from-black to-rose bg-clip-text text-transparent inline-block origin-left"
+          <div className="min-h-[11rem] md:min-h-[13rem] lg:min-h-[15rem]">
+            <AnimatePresence mode="wait">
+              <motion.h1
+                key={hIdx}
+                exit={{ opacity: 0, transition: { duration: 0.22, ease: "easeIn" } }}
+                className="text-[2.6rem] leading-[1.08] md:text-5xl lg:text-[3.5rem] font-bold font-playfair text-foreground"
               >
-                {h.gradient}
-              </motion.span>
-              {" "}
-              <AnimatedChars text={h.after.trimStart()} startDelay={afterDelay} reduced={prefersReduced} />
-            </motion.h1>
-          </AnimatePresence>
+                <AnimatedChars text={h.line1} startDelay={0} reduced={prefersReduced} />
+                <br />
+                <motion.span
+                  initial={prefersReduced ? false : { opacity: 0, scaleX: 0.85 }}
+                  animate={{ opacity: 1, scaleX: 1 }}
+                  transition={{ duration: 0.35, delay: gradientDelay, ease: "easeOut" }}
+                  className="bg-gradient-to-r from-black to-rose bg-clip-text text-transparent inline-block origin-left"
+                >
+                  {h.gradient}
+                </motion.span>
+                <motion.span
+                  initial={prefersReduced ? false : { opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.1, delay: afterDelay }}
+                  style={{ display: "inline-block" }}
+                >{"\u00A0"}</motion.span>
+                <AnimatedChars text={h.after.trimStart()} startDelay={afterDelay} reduced={prefersReduced} />
+              </motion.h1>
+            </AnimatePresence>
+          </div>
           <p className="text-base md:text-lg text-foreground/60 font-poppins max-w-sm leading-relaxed">
-            Za 8 do 10 tretmana, zauvek se opraštaš od brijača, iritacija i uraslih dlaka. Jednom i zauvek.
+            Za 8 do 10 tretmana, zauvek se opraštaš od brijača, iritacija i uraslih dlaka.
           </p>
 
           {/* CTA — desktop only inline */}

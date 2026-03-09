@@ -18,6 +18,9 @@ const poppins = Poppins({
 export const metadata: Metadata = {
   title: "Infinity Laser Studio",
   description: "Infinity Laser Studio",
+  icons: {
+    icon: "/logo.png",
+  },
 };
 
 export default function RootLayout({

@@ -24,25 +24,25 @@ type ServiceCard =
 
 const services: ServiceCard[] = [
   {
-    name: "Epilacija – lice",
-    description: "Zauvek rešene dlačice na licu - bez iritacija, bez ponovnog rasta. Glatka koža svakog jutra.",
-    price: "od 2490rsd",
+    name: "Noge + Intima",
+    description: "Sloboda na plaži i u svakom trenutku. Glatka koža bez posledica brijanja i voska.",
+    price: "6000 rsd",
+    type: "photo",
+    photo: "/intime.png",
+  },
+  {
+    name: "Nausnice + brada",
+    description: "Savršeno definisane linije. Jednom epilacija i zauvek uredno.",
+    price: "1800 rsd",
     type: "photo",
     photo: "/face.png",
   },
   {
-    name: "Epilacija – celo telo",
-    description: "Svi delovi tela u jednom programu. Jednom investiraš - zauvek bez brijanja.",
-    price: "od 7790rsd",
+    name: "Stomak + Grudi",
+    description: "Čisto i uredno. Zauvek rešeno - bez brijanja, bez iritacija.",
+    price: "5700 rsd",
     type: "photo",
     photo: "/full_body.png",
-  },
-  {
-    name: "Epilacija - Intimna regija",
-    description: "Trajna udobnost i higijena bez kompromisa. Bez iritacija, uraslih dlaka i svakodnevne nege.",
-    price: "od 3190rsd",
-    type: "photo",
-    photo: "/intime.png",
   },
 ];
 
@@ -68,7 +68,7 @@ export default function FeaturedServices({ onOpen }: Props) {
           </div>
         </div>
         <p className="text-center font-poppins text-gray-500 text-base mb-14">
-          Svaki deo tela. Jedno trajno rešenje.
+          Popularni paketi. Jedno trajno rešenje.
         </p>
 
         {/* Cards */}
