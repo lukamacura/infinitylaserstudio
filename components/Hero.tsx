@@ -122,6 +122,20 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
       }}
     >
 
+      {/* Background image — mobile only */}
+      <div className="absolute inset-0 z-10 lg:hidden">
+        <Image
+          src="/hero.jpeg"
+          alt=""
+          fill
+          className="object-cover object-center"
+          priority
+        />
+      </div>
+
+      {/* Dark overlay over background image — mobile only */}
+      <div className="absolute inset-0 z-[15] bg-black/45 lg:hidden" />
+
       {/* Ambient blobs */}
       <div className="absolute inset-0 z-20 pointer-events-none">
         <div className="absolute top-[-10%] left-[-5%] w-[55%] h-[65%] rounded-full bg-pink/15 blur-[110px] mix-blend-soft-light" />
@@ -162,7 +176,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
               <motion.h1
                 key={hIdx}
                 exit={{ opacity: 0, transition: { duration: 0.22, ease: "easeIn" } }}
-                className="text-[2.6rem] leading-[1.08] md:text-5xl lg:text-[3.5rem] font-bold font-playfair text-foreground"
+                className="text-[2.6rem] leading-[1.08] md:text-5xl lg:text-[3.5rem] font-bold font-playfair text-white lg:text-foreground"
               >
                 <AnimatedChars text={h.line1} startDelay={0} reduced={prefersReduced} />
                 <br />
@@ -170,7 +184,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
                   initial={prefersReduced ? false : { opacity: 0, scaleX: 0.85 }}
                   animate={{ opacity: 1, scaleX: 1 }}
                   transition={{ duration: 0.35, delay: gradientDelay, ease: "easeOut" }}
-                  className="bg-gradient-to-r from-black to-rose bg-clip-text text-transparent inline-block origin-left"
+                  className="bg-gradient-to-r from-pink to-rose bg-clip-text text-transparent inline-block origin-left"
                 >
                   {h.gradient}
                 </motion.span>
@@ -184,7 +198,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
               </motion.h1>
             </AnimatePresence>
           </div>
-          <p className="text-base md:text-lg text-foreground/60 font-poppins max-w-sm leading-relaxed">
+          <p className="text-base md:text-lg text-white/80 lg:text-foreground/60 font-poppins max-w-sm leading-relaxed">
             Za 8 do 10 tretmana, zauvek se opraštaš od brijača, iritacija i uraslih dlaka.
           </p>
 
@@ -217,7 +231,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
 
         {/* Right - Frosted glass 3-step card (desktop only) */}
         <div className="hidden lg:flex lg:col-span-4 items-center justify-end">
-          <div className="supports-[backdrop-filter]:bg-white/60 bg-white/50 backdrop-blur-md border border-foreground/10 rounded-2xl px-8 py-7 flex flex-col gap-6 w-72">
+          <div className="supports-[backdrop-filter]:bg-white bg-black/50 md:bg-white/50 backdrop-blur-md border border-foreground/10 rounded-2xl px-8 py-7 flex flex-col gap-6 w-72">
             <p className="text-[10px] font-poppins text-foreground/40 tracking-[3px] uppercase">Vaš put</p>
             {steps.map((step) => (
               <div key={step.phase} className="flex items-start gap-4">
@@ -237,10 +251,10 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
             {stats.map((s, i) => (
               <div key={s.value} className="flex items-center flex-1">
                 <div className="flex flex-col items-center text-center flex-1">
-                  <span className="text-2xl font-bold font-playfair text-foreground">{s.value}</span>
-                  <span className="text-[10px] font-poppins text-foreground/50 tracking-widest uppercase mt-0.5">{s.label}</span>
+                  <span className="text-2xl font-bold font-playfair text-white lg:text-foreground">{s.value}</span>
+                  <span className="text-[10px] font-poppins text-white/60 lg:text-foreground/50 tracking-widest uppercase mt-0.5">{s.label}</span>
                 </div>
-                {i < stats.length - 1 && <div className="w-px h-8 bg-foreground/15 shrink-0" />}
+                {i < stats.length - 1 && <div className="w-px h-8 bg-white/30 lg:bg-foreground/15 shrink-0" />}
               </div>
             ))}
           </div>
@@ -248,14 +262,14 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
 
         {/* Mobile steps bar */}
         <div className="lg:hidden pb-3 pt-0">
-          <div className="w-full flex flex-col supports-[backdrop-filter]:bg-white/50 bg-white/40 backdrop-blur-sm border border-foreground/10 rounded-2xl px-5 py-4 gap-3">
+          <div className="w-full flex flex-col bg-black/50 backdrop-blur-md border border-white/10 rounded-2xl px-5 py-4 gap-3">
             {steps.map((step, i) => (
               <div key={step.phase} className="flex flex-col">
                 <div className="flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full shrink-0 ${step.dot}`} />
-                  <p className="text-[10px] text-foreground/45 font-poppins tracking-[1.5px] uppercase leading-none">{step.phase}</p>
+                  <p className="text-[10px] text-white/60 lg:text-foreground/45 font-poppins tracking-[1.5px] uppercase leading-none">{step.phase}</p>
                 </div>
-                <p className="text-sm font-semibold font-poppins text-foreground leading-tight mt-0.5 pl-4">{step.label}</p>
+                <p className="text-sm font-semibold font-poppins text-white lg:text-foreground leading-tight mt-0.5 pl-4">{step.label}</p>
                 {i < steps.length - 1 && (
                   <div className="h-px w-full bg-foreground/10 mt-3" />
                 )}
@@ -268,11 +282,12 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
         <div className="lg:hidden pb-6 pt-4 flex flex-col gap-2">
           <button
             onClick={onOpen}
-            className="inline-flex items-center justify-center w-full px-8 py-4 rounded-full bg-foreground text-white text-sm font-semibold tracking-widest font-poppins border border-foreground hover:bg-foreground/90 hover:text-white transition-colors cursor-pointer"
+            className="inline-flex items-center justify-center w-full px-8 py-4 rounded-full text-white text-sm font-semibold tracking-widest font-poppins transition-opacity hover:opacity-90 cursor-pointer"
+            style={{ background: "linear-gradient(to right, #E85D8A, #FCCAE2)" }}
           >
             ZAKAŽI TERMIN
           </button>
-          <p className="text-xs text-foreground/45 font-poppins text-center">Ništa se ne brini. Na prvom tretmanu se sve dogovaramo.</p>
+          <p className="text-xs text-white/60 lg:text-foreground/45 font-poppins text-center">Ništa se ne brini. Na prvom tretmanu se sve dogovaramo.</p>
         </div>
 
       </div>
