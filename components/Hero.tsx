@@ -105,7 +105,6 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
       className="relative h-dvh overflow-hidden"
       style={{
         background: "linear-gradient(115deg, #7DD8D5 0%, #ACE6E4 25%, #FCD6ED 65%, #FCCAE2 100%)",
-        width: "100dvw",
       }}
     >
       {/* Background image — mobile only */}
@@ -143,112 +142,123 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
         </motion.div>
       </div>
 
-      {/* ── MOBILE layout ─────────────────────────────────────────────────────── */}
+      {/* ── MOBILE layout ──────────────────────────────────────────────────────
+          Single flex column fills the full viewport height.
+          Top region (heading + subtitle) grows to fill available space.
+          Bottom region (stats + steps card + CTA) never shrinks below its content.
+      ──────────────────────────────────────────────────────────────────────── */}
+      <div className="lg:hidden relative z-30 h-full flex flex-col px-6">
 
-      {/* Mobile: heading pinned to top */}
-      <div className="lg:hidden absolute top-0 left-0 right-0 z-30 px-6 pt-24">
-        <AnimatePresence mode="wait">
-          <motion.h1
-            key={hIdx}
-            exit={{ opacity: 0, transition: { duration: 0.22, ease: "easeIn" } }}
-            className="text-[2.6rem] leading-[1.1] font-bold font-playfair text-white"
+        {/* Top: heading + subtitle — fills remaining space, clips if needed */}
+        <div className="flex-1 min-h-0 pt-24 pb-4 flex flex-col justify-start overflow-hidden">
+          {/* Fixed-height heading container prevents layout reflow between rotations */}
+          <div className="min-h-[11rem]">
+            <AnimatePresence mode="wait">
+              <motion.h1
+                key={hIdx}
+                exit={{ opacity: 0, transition: { duration: 0.22, ease: "easeIn" } }}
+                className="text-[2.35rem] leading-[1.15] font-bold font-playfair text-white"
+              >
+                <AnimatedChars text={h.line1} startDelay={0} reduced={prefersReduced} />
+                <br />
+                <motion.span
+                  initial={prefersReduced ? false : { opacity: 0, scaleX: 0.85 }}
+                  animate={{ opacity: 1, scaleX: 1 }}
+                  transition={{ duration: 0.35, delay: gradientDelay, ease: "easeOut" }}
+                  className="bg-gradient-to-r from-pink to-rose bg-clip-text text-transparent inline-block origin-left"
+                >
+                  {h.gradient}
+                </motion.span>
+                <motion.span
+                  initial={prefersReduced ? false : { opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.1, delay: afterDelay }}
+                  style={{ display: "inline-block" }}
+                >{"\u00A0"}</motion.span>
+                <AnimatedChars text={h.after.trimStart()} startDelay={afterDelay} reduced={prefersReduced} />
+              </motion.h1>
+            </AnimatePresence>
+          </div>
+
+          <p className="text-sm text-white/80 font-poppins max-w-xs leading-relaxed mt-2">
+            Za 8 do 10 tretmana, zauvek se opraštaš od brijača, iritacija i uraslih dlaka.
+          </p>
+        </div>
+
+        {/* Bottom: stats + steps + CTA — never overlaps the heading */}
+        <div className="shrink-0 flex flex-col gap-3 pb-6" style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}>
+          {/* Stats */}
+          <div className="flex items-center w-full py-1">
+            {stats.map((s, i) => (
+              <div key={s.value} className="flex items-center flex-1">
+                <div className="flex flex-col items-center text-center flex-1">
+                  <span className="text-2xl font-bold font-playfair text-white">{s.value}</span>
+                  <span className="text-[10px] font-poppins text-white/60 tracking-widest uppercase mt-0.5">{s.label}</span>
+                </div>
+                {i < stats.length - 1 && <div className="w-px h-8 bg-white/30 shrink-0" />}
+              </div>
+            ))}
+          </div>
+
+          {/* Steps card */}
+          <div className="w-full flex flex-col bg-black/50 backdrop-blur-md border border-white/10 rounded-2xl px-5 py-4 gap-3">
+            {steps.map((step, i) => (
+              <div key={step.phase} className="flex flex-col">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full shrink-0 ${step.dot}`} />
+                  <p className="text-[10px] text-white/60 font-poppins tracking-[1.5px] uppercase leading-none">{step.phase}</p>
+                </div>
+                <p className="text-sm font-semibold font-poppins text-white leading-tight mt-0.5 pl-4">{step.label}</p>
+                {i < steps.length - 1 && <div className="h-px w-full bg-white/10 mt-3" />}
+              </div>
+            ))}
+          </div>
+
+          {/* CTA */}
+          <button
+            onClick={onOpen}
+            className="inline-flex items-center justify-center w-full px-8 py-4 rounded-full text-white text-sm font-semibold tracking-widest font-poppins transition-opacity hover:opacity-90 cursor-pointer"
+            style={{ background: "linear-gradient(to right, #E85D8A, #FCCAE2)" }}
           >
-            <AnimatedChars text={h.line1} startDelay={0} reduced={prefersReduced} />
-            <br />
-            <motion.span
-              initial={prefersReduced ? false : { opacity: 0, scaleX: 0.85 }}
-              animate={{ opacity: 1, scaleX: 1 }}
-              transition={{ duration: 0.35, delay: gradientDelay, ease: "easeOut" }}
-              className="bg-gradient-to-r from-pink to-rose bg-clip-text text-transparent inline-block origin-left"
-            >
-              {h.gradient}
-            </motion.span>
-            <motion.span
-              initial={prefersReduced ? false : { opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.1, delay: afterDelay }}
-              style={{ display: "inline-block" }}
-            >{"\u00A0"}</motion.span>
-            <AnimatedChars text={h.after.trimStart()} startDelay={afterDelay} reduced={prefersReduced} />
-          </motion.h1>
-        </AnimatePresence>
-
-        <p className="text-base text-white/80 font-poppins max-w-sm leading-relaxed mt-3">
-          Za 8 do 10 tretmana, zauvek se opraštaš od brijača, iritacija i uraslih dlaka.
-        </p>
-      </div>
-
-      {/* Mobile: bottom content pinned to bottom */}
-      <div className="lg:hidden absolute bottom-0 left-0 right-0 z-30 px-6 pb-6 flex flex-col gap-3">
-        {/* Stats */}
-        <div className="flex items-center w-full py-2">
-          {stats.map((s, i) => (
-            <div key={s.value} className="flex items-center flex-1">
-              <div className="flex flex-col items-center text-center flex-1">
-                <span className="text-2xl font-bold font-playfair text-white">{s.value}</span>
-                <span className="text-[10px] font-poppins text-white/60 tracking-widest uppercase mt-0.5">{s.label}</span>
-              </div>
-              {i < stats.length - 1 && <div className="w-px h-8 bg-white/30 shrink-0" />}
-            </div>
-          ))}
+            ZAKAŽI TERMIN
+          </button>
+          <p className="text-xs text-white/60 font-poppins text-center -mt-1">Ništa se ne brini. Na prvom tretmanu se sve dogovaramo.</p>
         </div>
-
-        {/* Steps */}
-        <div className="w-full flex flex-col bg-black/50 backdrop-blur-md border border-white/10 rounded-2xl px-5 py-4 gap-3">
-          {steps.map((step, i) => (
-            <div key={step.phase} className="flex flex-col">
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full shrink-0 ${step.dot}`} />
-                <p className="text-[10px] text-white/60 font-poppins tracking-[1.5px] uppercase leading-none">{step.phase}</p>
-              </div>
-              <p className="text-sm font-semibold font-poppins text-white leading-tight mt-0.5 pl-4">{step.label}</p>
-              {i < steps.length - 1 && <div className="h-px w-full bg-white/10 mt-3" />}
-            </div>
-          ))}
-        </div>
-
-        {/* CTA */}
-        <button
-          onClick={onOpen}
-          className="inline-flex items-center justify-center w-full px-8 py-4 rounded-full text-white text-sm font-semibold tracking-widest font-poppins transition-opacity hover:opacity-90 cursor-pointer"
-          style={{ background: "linear-gradient(to right, #E85D8A, #FCCAE2)" }}
-        >
-          ZAKAŽI TERMIN
-        </button>
-        <p className="text-xs text-white/60 font-poppins text-center -mt-1">Ništa se ne brini. Na prvom tretmanu se sve dogovaramo.</p>
       </div>
 
       {/* ── DESKTOP layout ────────────────────────────────────────────────────── */}
-
       <div className="hidden lg:grid lg:grid-cols-12 relative z-30 h-full max-w-7xl mx-auto px-12">
 
         {/* Left — Headline */}
         <div className="col-span-5 flex flex-col justify-center gap-5">
-          <AnimatePresence mode="wait">
-            <motion.h1
-              key={hIdx}
-              exit={{ opacity: 0, transition: { duration: 0.22, ease: "easeIn" } }}
-              className="text-[3.5rem] leading-[1.1] font-bold font-playfair text-foreground"
-            >
-              <AnimatedChars text={h.line1} startDelay={0} reduced={prefersReduced} />
-              <br />
-              <motion.span
-                initial={prefersReduced ? false : { opacity: 0, scaleX: 0.85 }}
-                animate={{ opacity: 1, scaleX: 1 }}
-                transition={{ duration: 0.35, delay: gradientDelay, ease: "easeOut" }}
-                className="bg-gradient-to-r from-pink to-rose bg-clip-text text-transparent inline-block origin-left"
+          {/* Fixed min-height prevents column reflow between heading rotations */}
+          <div className="min-h-[14rem]">
+            <AnimatePresence mode="wait">
+              <motion.h1
+                key={hIdx}
+                exit={{ opacity: 0, transition: { duration: 0.22, ease: "easeIn" } }}
+                className="text-[3.5rem] leading-[1.1] font-bold font-playfair text-foreground"
               >
-                {h.gradient}
-              </motion.span>
-              <motion.span
-                initial={prefersReduced ? false : { opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.1, delay: afterDelay }}
-                style={{ display: "inline-block" }}
-              >{"\u00A0"}</motion.span>
-              <AnimatedChars text={h.after.trimStart()} startDelay={afterDelay} reduced={prefersReduced} />
-            </motion.h1>
-          </AnimatePresence>
+                <AnimatedChars text={h.line1} startDelay={0} reduced={prefersReduced} />
+                <br />
+                <motion.span
+                  initial={prefersReduced ? false : { opacity: 0, scaleX: 0.85 }}
+                  animate={{ opacity: 1, scaleX: 1 }}
+                  transition={{ duration: 0.35, delay: gradientDelay, ease: "easeOut" }}
+                  className="bg-gradient-to-r from-pink to-rose bg-clip-text text-transparent inline-block origin-left"
+                >
+                  {h.gradient}
+                </motion.span>
+                <motion.span
+                  initial={prefersReduced ? false : { opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.1, delay: afterDelay }}
+                  style={{ display: "inline-block" }}
+                >{"\u00A0"}</motion.span>
+                <AnimatedChars text={h.after.trimStart()} startDelay={afterDelay} reduced={prefersReduced} />
+              </motion.h1>
+            </AnimatePresence>
+          </div>
 
           <p className="text-lg text-foreground/60 font-poppins max-w-sm leading-relaxed">
             Za 8 do 10 tretmana, zauvek se opraštaš od brijača, iritacija i uraslih dlaka.
