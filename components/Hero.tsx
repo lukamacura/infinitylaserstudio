@@ -96,6 +96,16 @@ const stats = [
 export default function Hero({ onOpen }: { onOpen: () => void }) {
   const prefersReduced = useReducedMotion();
   const [hIdx, setHIdx] = useState(0);
+  const [heroHeight, setHeroHeight] = useState("100vh");
+
+  useEffect(() => {
+    // iOS Safari fix: window.innerHeight gives the true visual viewport height,
+    // avoiding svh/dvh unit inconsistencies across iOS versions.
+    const update = () => setHeroHeight(`${window.innerHeight}px`);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
 
   useEffect(() => {
     if (prefersReduced) return;
@@ -114,10 +124,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
     <section
       className="relative overflow-hidden"
       style={{
-        height: "100svh",
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore -- fallback for older browsers that don't support svh
-        ["--fallback-height" as string]: "100vh",
+        height: heroHeight,
         background:
           "linear-gradient(115deg, #7DD8D5 0%, #ACE6E4 25%, #FCD6ED 65%, #FCCAE2 100%)",
       }}
