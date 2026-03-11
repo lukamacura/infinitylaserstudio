@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef } from "react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import { motion, useReducedMotion, AnimatePresence } from "framer-motion";
 
@@ -83,36 +82,20 @@ function AnimatedChars({
 }
 
 const steps = [
-  { dot: "bg-rose-300", phase: "Danas", label: "Svaki dan se briješ" },
+  { dot: "bg-rose-300", phase: "Danas",         label: "Svaki dan se briješ" },
   { dot: "bg-pink-400", phase: "8-10 tretmana", label: "Epilacija" },
-  { dot: "bg-teal", phase: "Zauvek", label: "Glatka koža" },
+  { dot: "bg-teal",     phase: "Zauvek",         label: "Glatka koža" },
 ] as const;
 
 const stats = [
-  { value: "4000+", label: "Klijenata" },
+  { value: "4000+",  label: "Klijenata" },
   { value: "5 god.", label: "Iskustva" },
-  { value: "99%", label: "Zadovoljnih" },
+  { value: "99%",    label: "Zadovoljnih" },
 ] as const;
 
 export default function Hero({ onOpen }: { onOpen: () => void }) {
   const prefersReduced = useReducedMotion();
   const [hIdx, setHIdx] = useState(0);
-
-  // Use a ref on the section element and write the height directly to the DOM.
-  // This avoids React state entirely, so:
-  //   - No hydration mismatch: server renders with 100svh, client patches the DOM
-  //     synchronously before first paint via useLayoutEffect.
-  //   - No component re-render (and therefore no animation restart) caused by
-  //     a height state change.
-  //   - No resize listener: Chrome on iOS fires resize on toolbar show/hide which
-  //     would cause layout jumps; locking height at mount time is intentional.
-  const sectionRef = useRef<HTMLElement>(null);
-
-  useLayoutEffect(() => {
-    if (sectionRef.current) {
-      sectionRef.current.style.height = `${window.innerHeight}px`;
-    }
-  }, []);
 
   useEffect(() => {
     if (prefersReduced) return;
@@ -129,15 +112,9 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
 
   return (
     <section
-      ref={sectionRef}
-      className="relative overflow-hidden"
+      className="relative overflow-hidden min-h-screen lg:h-screen"
       style={{
-        // 100svh is the safe default for SSR and the pre-useLayoutEffect frame.
-        // It accounts for the browser chrome on mobile better than 100vh does.
-        // useLayoutEffect replaces this with window.innerHeight before paint.
-        height: "100svh",
-        background:
-          "linear-gradient(115deg, #7DD8D5 0%, #ACE6E4 25%, #FCD6ED 65%, #FCCAE2 100%)",
+        background: "linear-gradient(115deg, #7DD8D5 0%, #ACE6E4 25%, #FCD6ED 65%, #FCCAE2 100%)",
       }}
     >
       {/* Background image — mobile only */}
@@ -181,116 +158,92 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
         </motion.div>
       </div>
 
-      {/* ── MOBILE layout ──────────────────────────────────────────────────────
-          Two absolutely-positioned zones anchored independently to top/bottom.
-          They cannot overlap each other regardless of content height.
-          The heading sits in a min-height container that clips via overflow:hidden
-          so layout is stable across heading rotations.
+      {/* ── MOBILE layout ─────────────────────────────────────────────────────
+          Normal document flow — section is min-h-screen so it fills the
+          viewport but grows to fit content on small devices. No fixed height,
+          no absolute positioning, no JS measurement needed.
       ──────────────────────────────────────────────────────────────────────── */}
-      <div className="lg:hidden">
-        {/* Top zone — heading + subtitle, anchored to top.
-            No pb-4 here: the zone is absolute so bottom padding has no effect
-            on sibling layout. Vertical rhythm is handled by mt-3 on the subtitle. */}
-        <div className="absolute top-0 left-0 right-0 z-30 px-6 pt-24">
-          {/* Heading container: min-height large enough for all three headings
-              at 375px viewport width with up to ~120% system font scaling.
-              180px = 3 lines × 2.2rem × 1.15 line-height × 1.2 scale + gradient line.
-              overflow:hidden prevents any excess from pushing the subtitle down. */}
-          <div style={{ minHeight: "180px", overflow: "hidden" }}>
-            <AnimatePresence mode="wait">
-              <motion.h1
-                key={hIdx}
-                exit={{ opacity: 0, transition: { duration: 0.22, ease: "easeIn" } }}
-                className="text-[2.2rem] leading-[1.15] font-bold font-playfair text-white"
+      <div className="lg:hidden relative z-30 flex flex-col px-6 pt-24 pb-6 gap-4"
+        style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
+      >
+        {/* Heading — minHeight prevents layout shift during heading rotations */}
+        <div style={{ minHeight: "180px", overflow: "hidden" }}>
+          <AnimatePresence mode="wait">
+            <motion.h1
+              key={hIdx}
+              exit={{ opacity: 0, transition: { duration: 0.22, ease: "easeIn" } }}
+              className="text-[2.2rem] leading-[1.15] font-bold font-playfair text-white"
+            >
+              <AnimatedChars text={h.line1} startDelay={0} reduced={prefersReduced} />
+              <br />
+              <motion.span
+                initial={prefersReduced ? false : { opacity: 0, scaleX: 0.85 }}
+                animate={{ opacity: 1, scaleX: 1 }}
+                transition={{ duration: 0.35, delay: gradientDelay, ease: "easeOut" }}
+                className="bg-gradient-to-r from-pink to-rose bg-clip-text text-transparent inline-block origin-left"
               >
-                <AnimatedChars text={h.line1} startDelay={0} reduced={prefersReduced} />
-                <br />
-                <motion.span
-                  initial={prefersReduced ? false : { opacity: 0, scaleX: 0.85 }}
-                  animate={{ opacity: 1, scaleX: 1 }}
-                  transition={{ duration: 0.35, delay: gradientDelay, ease: "easeOut" }}
-                  className="bg-gradient-to-r from-pink to-rose bg-clip-text text-transparent inline-block origin-left"
-                >
-                  {h.gradient}
-                </motion.span>
-                <motion.span
-                  initial={prefersReduced ? false : { opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.1, delay: afterDelay }}
-                  style={{ display: "inline-block" }}
-                >
-                  {"\u00A0"}
-                </motion.span>
-                <AnimatedChars
-                  text={h.after.trimStart()}
-                  startDelay={afterDelay}
-                  reduced={prefersReduced}
-                />
-              </motion.h1>
-            </AnimatePresence>
-          </div>
-
-          <p className="text-sm text-white/80 font-poppins max-w-xs leading-relaxed mt-3">
-            Za 8 do 10 tretmana, zauvek se opraštaš od brijača, iritacija i uraslih dlaka.
-          </p>
+                {h.gradient}
+              </motion.span>
+              <motion.span
+                initial={prefersReduced ? false : { opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.1, delay: afterDelay }}
+                style={{ display: "inline-block" }}
+              >
+                {"\u00A0"}
+              </motion.span>
+              <AnimatedChars
+                text={h.after.trimStart()}
+                startDelay={afterDelay}
+                reduced={prefersReduced}
+              />
+            </motion.h1>
+          </AnimatePresence>
         </div>
 
-        {/* Bottom zone — stats + steps card + CTA, anchored to bottom */}
-        <div
-          className="absolute bottom-0 left-0 right-0 z-30 px-6 flex flex-col gap-3"
-          style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
+        {/* Subtitle */}
+        <p className="text-sm text-white/80 font-poppins max-w-xs leading-relaxed">
+          Za 8 do 10 tretmana, zauvek se opraštaš od brijača, iritacija i uraslih dlaka.
+        </p>
+
+        {/* Stats */}
+        <div className="flex items-center w-full py-1 mt-2">
+          {stats.map((s, i) => (
+            <div key={s.value} className="flex items-center flex-1">
+              <div className="flex flex-col items-center text-center flex-1">
+                <span className="text-2xl font-bold font-playfair text-white">{s.value}</span>
+                <span className="text-[10px] font-poppins text-white/60 tracking-widest uppercase mt-0.5">{s.label}</span>
+              </div>
+              {i < stats.length - 1 && <div className="w-px h-8 bg-white/30 shrink-0" />}
+            </div>
+          ))}
+        </div>
+
+        {/* Steps card */}
+        <div className="w-full flex flex-col bg-black/50 backdrop-blur-md border border-white/10 rounded-2xl px-5 py-4 gap-3">
+          {steps.map((step, i) => (
+            <div key={step.phase} className="flex flex-col">
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full shrink-0 ${step.dot}`} />
+                <p className="text-[10px] text-white/60 font-poppins tracking-[1.5px] uppercase leading-none">{step.phase}</p>
+              </div>
+              <p className="text-sm font-semibold font-poppins text-white leading-tight mt-0.5 pl-4">{step.label}</p>
+              {i < steps.length - 1 && <div className="h-px w-full bg-white/10 mt-3" />}
+            </div>
+          ))}
+        </div>
+
+        {/* CTA */}
+        <button
+          onClick={onOpen}
+          className="inline-flex items-center justify-center w-full px-8 py-4 rounded-full text-white text-sm font-semibold tracking-widest font-poppins transition-opacity hover:opacity-90 cursor-pointer"
+          style={{ background: "linear-gradient(to right, #E85D8A, #FCCAE2)" }}
         >
-          {/* Stats */}
-          <div className="flex items-center w-full py-1">
-            {stats.map((s, i) => (
-              <div key={s.value} className="flex items-center flex-1">
-                <div className="flex flex-col items-center text-center flex-1">
-                  <span className="text-2xl font-bold font-playfair text-white">
-                    {s.value}
-                  </span>
-                  <span className="text-[10px] font-poppins text-white/60 tracking-widest uppercase mt-0.5">
-                    {s.label}
-                  </span>
-                </div>
-                {i < stats.length - 1 && (
-                  <div className="w-px h-8 bg-white/30 shrink-0" />
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* Steps card */}
-          <div className="w-full flex flex-col bg-black/50 backdrop-blur-md border border-white/10 rounded-2xl px-5 py-4 gap-3">
-            {steps.map((step, i) => (
-              <div key={step.phase} className="flex flex-col">
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full shrink-0 ${step.dot}`} />
-                  <p className="text-[10px] text-white/60 font-poppins tracking-[1.5px] uppercase leading-none">
-                    {step.phase}
-                  </p>
-                </div>
-                <p className="text-sm font-semibold font-poppins text-white leading-tight mt-0.5 pl-4">
-                  {step.label}
-                </p>
-                {i < steps.length - 1 && (
-                  <div className="h-px w-full bg-white/10 mt-3" />
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* CTA */}
-          <button
-            onClick={onOpen}
-            className="inline-flex items-center justify-center w-full px-8 py-4 rounded-full text-white text-sm font-semibold tracking-widest font-poppins transition-opacity hover:opacity-90 cursor-pointer"
-            style={{ background: "linear-gradient(to right, #E85D8A, #FCCAE2)" }}
-          >
-            ZAKAŽI TERMIN
-          </button>
-          <p className="text-xs text-white/60 font-poppins text-center -mt-1">
-            Ništa se ne brini. Na prvom tretmanu se sve dogovaramo.
-          </p>
-        </div>
+          ZAKAŽI TERMIN
+        </button>
+        <p className="text-xs text-white/60 font-poppins text-center -mt-1">
+          Ništa se ne brini. Na prvom tretmanu se sve dogovaramo.
+        </p>
       </div>
 
       {/* ── DESKTOP layout ────────────────────────────────────────────────────── */}
@@ -298,9 +251,6 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
 
         {/* Left — Headline */}
         <div className="col-span-5 flex flex-col justify-center gap-5">
-          {/* Heading container: min-height large enough for all three headings
-              at desktop font size (3.5rem) with up to ~120% system font scaling.
-              240px = 2 lines × 3.5rem × 1.1 line-height × 1.2 scale + gradient line. */}
           <div style={{ minHeight: "240px", overflow: "hidden" }}>
             <AnimatePresence mode="wait">
               <motion.h1
@@ -356,39 +306,23 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
         <div className="col-span-3 flex flex-col items-center justify-center gap-0">
           {stats.map((s, i) => (
             <div key={s.value} className="flex flex-col items-center text-center">
-              <span className="text-4xl font-bold font-playfair text-foreground">
-                {s.value}
-              </span>
-              <span className="text-xs font-poppins text-foreground/50 tracking-widest uppercase mt-1">
-                {s.label}
-              </span>
-              {i < stats.length - 1 && (
-                <div className="w-px h-7 bg-foreground/10 mt-5 mb-5" />
-              )}
+              <span className="text-4xl font-bold font-playfair text-foreground">{s.value}</span>
+              <span className="text-xs font-poppins text-foreground/50 tracking-widest uppercase mt-1">{s.label}</span>
+              {i < stats.length - 1 && <div className="w-px h-7 bg-foreground/10 mt-5 mb-5" />}
             </div>
           ))}
         </div>
 
-        {/* Right — 3-step card.
-            bg-white/20: fallback for browsers without backdrop-filter support
-              (more opaque fallback replaced with a less opaque tinted glass look).
-            supports-[backdrop-filter]:bg-white/50: when blur is available, the
-              frosted glass effect works and we want less background saturation. */}
+        {/* Right — 3-step card */}
         <div className="col-span-4 flex items-center justify-end">
           <div className="bg-white/20 supports-[backdrop-filter]:bg-white/50 backdrop-blur-md border border-foreground/10 rounded-2xl px-8 py-7 flex flex-col gap-6 w-72">
-            <p className="text-[10px] font-poppins text-foreground/40 tracking-[3px] uppercase">
-              Vaš put
-            </p>
+            <p className="text-[10px] font-poppins text-foreground/40 tracking-[3px] uppercase">Vaš put</p>
             {steps.map((step) => (
               <div key={step.phase} className="flex items-start gap-4">
                 <div className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${step.dot}`} />
                 <div>
-                  <p className="text-xs text-foreground/45 font-poppins tracking-[2px] uppercase">
-                    {step.phase}
-                  </p>
-                  <p className="text-base font-semibold font-poppins text-foreground mt-0.5">
-                    {step.label}
-                  </p>
+                  <p className="text-xs text-foreground/45 font-poppins tracking-[2px] uppercase">{step.phase}</p>
+                  <p className="text-base font-semibold font-poppins text-foreground mt-0.5">{step.label}</p>
                 </div>
               </div>
             ))}
