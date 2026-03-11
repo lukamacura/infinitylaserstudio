@@ -51,7 +51,11 @@ function AnimatedChars({
                 key={cIdx}
                 initial={reduced ? false : { opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: CHAR_DUR, delay: startDelay + (wordStartIdx + cIdx) * STAGGER, ease: "easeOut" }}
+                transition={{
+                  duration: CHAR_DUR,
+                  delay: startDelay + (wordStartIdx + cIdx) * STAGGER,
+                  ease: "easeOut",
+                }}
                 style={{ display: "inline-block" }}
               >
                 {char}
@@ -61,7 +65,10 @@ function AnimatedChars({
               <motion.span
                 initial={reduced ? false : { opacity: 0 }}
                 animate={{ opacity: 1 }}
-                transition={{ duration: CHAR_DUR, delay: startDelay + (wordStartIdx + word.length) * STAGGER }}
+                transition={{
+                  duration: CHAR_DUR,
+                  delay: startDelay + (wordStartIdx + word.length) * STAGGER,
+                }}
                 style={{ display: "inline-block" }}
               >
                 {"\u00A0"}
@@ -75,15 +82,15 @@ function AnimatedChars({
 }
 
 const steps = [
-  { dot: "bg-rose-300",  phase: "Danas",         label: "Svaki dan se briješ" },
-  { dot: "bg-pink-400",  phase: "8-10 tretmana", label: "Epilacija" },
-  { dot: "bg-teal",      phase: "Zauvek",         label: "Glatka koža" },
+  { dot: "bg-rose-300", phase: "Danas", label: "Svaki dan se briješ" },
+  { dot: "bg-pink-400", phase: "8-10 tretmana", label: "Epilacija" },
+  { dot: "bg-teal", phase: "Zauvek", label: "Glatka koža" },
 ] as const;
 
 const stats = [
-  { value: "4000+",  label: "Klijenata" },
+  { value: "4000+", label: "Klijenata" },
   { value: "5 god.", label: "Iskustva" },
-  { value: "99%",    label: "Zadovoljnih" },
+  { value: "99%", label: "Zadovoljnih" },
 ] as const;
 
 export default function Hero({ onOpen }: { onOpen: () => void }) {
@@ -92,7 +99,10 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
 
   useEffect(() => {
     if (prefersReduced) return;
-    const id = setInterval(() => setHIdx((i) => (i + 1) % heroHeadings.length), INTERVAL_MS);
+    const id = setInterval(
+      () => setHIdx((i) => (i + 1) % heroHeadings.length),
+      INTERVAL_MS
+    );
     return () => clearInterval(id);
   }, [prefersReduced]);
 
@@ -102,21 +112,32 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
 
   return (
     <section
-      className="relative h-dvh overflow-hidden"
+      className="relative overflow-hidden"
       style={{
-        background: "linear-gradient(115deg, #7DD8D5 0%, #ACE6E4 25%, #FCD6ED 65%, #FCCAE2 100%)",
+        height: "100svh",
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore -- fallback for older browsers that don't support svh
+        ["--fallback-height" as string]: "100vh",
+        background:
+          "linear-gradient(115deg, #7DD8D5 0%, #ACE6E4 25%, #FCD6ED 65%, #FCCAE2 100%)",
       }}
     >
       {/* Background image — mobile only */}
       <div className="absolute inset-0 z-10 lg:hidden">
-        <Image src="/hero.jpeg" alt="" fill className="object-cover object-center" priority />
+        <Image
+          src="/hero.jpeg"
+          alt=""
+          fill
+          className="object-cover object-center"
+          priority
+        />
       </div>
 
       {/* Dark overlay — mobile only */}
       <div className="absolute inset-0 z-[15] bg-black/45 lg:hidden" />
 
-      {/* Ambient blobs */}
-      <div className="absolute inset-0 z-20 pointer-events-none">
+      {/* Ambient blobs — desktop only */}
+      <div className="absolute inset-0 z-20 pointer-events-none hidden lg:block">
         <div className="absolute top-[-10%] left-[-5%] w-[55%] h-[65%] rounded-full bg-pink/15 blur-[110px] mix-blend-soft-light" />
         <div className="absolute bottom-[-15%] right-[-5%] w-[50%] h-[60%] rounded-full bg-teal/10 blur-[110px] mix-blend-soft-light" />
       </div>
@@ -143,21 +164,22 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
       </div>
 
       {/* ── MOBILE layout ──────────────────────────────────────────────────────
-          Single flex column fills the full viewport height.
-          Top region (heading + subtitle) grows to fill available space.
-          Bottom region (stats + steps card + CTA) never shrinks below its content.
+          Two absolutely-positioned zones anchored independently to top/bottom.
+          They cannot overlap each other regardless of content height.
+          The heading is in a fixed-height container to prevent any reflow.
       ──────────────────────────────────────────────────────────────────────── */}
-      <div className="lg:hidden relative z-30 h-full flex flex-col px-6">
-
-        {/* Top: heading + subtitle — fills remaining space, clips if needed */}
-        <div className="flex-1 min-h-0 pt-24 pb-4 flex flex-col justify-start overflow-hidden">
-          {/* Fixed-height heading container prevents layout reflow between rotations */}
-          <div className="min-h-[11rem]">
+      <div className="lg:hidden">
+        {/* Top zone — heading + subtitle, anchored to top */}
+        <div
+          className="absolute top-0 left-0 right-0 z-30 px-6 pt-24 pb-4"
+        >
+          {/* Fixed-height heading container: 160px fits all 3 strings at 390px width */}
+          <div style={{ height: "160px", overflow: "hidden" }}>
             <AnimatePresence mode="wait">
               <motion.h1
                 key={hIdx}
                 exit={{ opacity: 0, transition: { duration: 0.22, ease: "easeIn" } }}
-                className="text-[2.35rem] leading-[1.15] font-bold font-playfair text-white"
+                className="text-[2.2rem] leading-[1.15] font-bold font-playfair text-white"
               >
                 <AnimatedChars text={h.line1} startDelay={0} reduced={prefersReduced} />
                 <br />
@@ -174,28 +196,43 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.1, delay: afterDelay }}
                   style={{ display: "inline-block" }}
-                >{"\u00A0"}</motion.span>
-                <AnimatedChars text={h.after.trimStart()} startDelay={afterDelay} reduced={prefersReduced} />
+                >
+                  {"\u00A0"}
+                </motion.span>
+                <AnimatedChars
+                  text={h.after.trimStart()}
+                  startDelay={afterDelay}
+                  reduced={prefersReduced}
+                />
               </motion.h1>
             </AnimatePresence>
           </div>
 
-          <p className="text-sm text-white/80 font-poppins max-w-xs leading-relaxed mt-2">
+          <p className="text-sm text-white/80 font-poppins max-w-xs leading-relaxed mt-3">
             Za 8 do 10 tretmana, zauvek se opraštaš od brijača, iritacija i uraslih dlaka.
           </p>
         </div>
 
-        {/* Bottom: stats + steps + CTA — never overlaps the heading */}
-        <div className="shrink-0 flex flex-col gap-3 pb-6" style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}>
+        {/* Bottom zone — stats + steps card + CTA, anchored to bottom */}
+        <div
+          className="absolute bottom-0 left-0 right-0 z-30 px-6 flex flex-col gap-3"
+          style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
+        >
           {/* Stats */}
           <div className="flex items-center w-full py-1">
             {stats.map((s, i) => (
               <div key={s.value} className="flex items-center flex-1">
                 <div className="flex flex-col items-center text-center flex-1">
-                  <span className="text-2xl font-bold font-playfair text-white">{s.value}</span>
-                  <span className="text-[10px] font-poppins text-white/60 tracking-widest uppercase mt-0.5">{s.label}</span>
+                  <span className="text-2xl font-bold font-playfair text-white">
+                    {s.value}
+                  </span>
+                  <span className="text-[10px] font-poppins text-white/60 tracking-widest uppercase mt-0.5">
+                    {s.label}
+                  </span>
                 </div>
-                {i < stats.length - 1 && <div className="w-px h-8 bg-white/30 shrink-0" />}
+                {i < stats.length - 1 && (
+                  <div className="w-px h-8 bg-white/30 shrink-0" />
+                )}
               </div>
             ))}
           </div>
@@ -206,10 +243,16 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
               <div key={step.phase} className="flex flex-col">
                 <div className="flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full shrink-0 ${step.dot}`} />
-                  <p className="text-[10px] text-white/60 font-poppins tracking-[1.5px] uppercase leading-none">{step.phase}</p>
+                  <p className="text-[10px] text-white/60 font-poppins tracking-[1.5px] uppercase leading-none">
+                    {step.phase}
+                  </p>
                 </div>
-                <p className="text-sm font-semibold font-poppins text-white leading-tight mt-0.5 pl-4">{step.label}</p>
-                {i < steps.length - 1 && <div className="h-px w-full bg-white/10 mt-3" />}
+                <p className="text-sm font-semibold font-poppins text-white leading-tight mt-0.5 pl-4">
+                  {step.label}
+                </p>
+                {i < steps.length - 1 && (
+                  <div className="h-px w-full bg-white/10 mt-3" />
+                )}
               </div>
             ))}
           </div>
@@ -222,7 +265,9 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
           >
             ZAKAŽI TERMIN
           </button>
-          <p className="text-xs text-white/60 font-poppins text-center -mt-1">Ništa se ne brini. Na prvom tretmanu se sve dogovaramo.</p>
+          <p className="text-xs text-white/60 font-poppins text-center -mt-1">
+            Ništa se ne brini. Na prvom tretmanu se sve dogovaramo.
+          </p>
         </div>
       </div>
 
@@ -231,8 +276,8 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
 
         {/* Left — Headline */}
         <div className="col-span-5 flex flex-col justify-center gap-5">
-          {/* Fixed min-height prevents column reflow between heading rotations */}
-          <div className="min-h-[14rem]">
+          {/* Fixed-height heading container prevents column reflow between rotations */}
+          <div style={{ height: "220px", overflow: "hidden" }}>
             <AnimatePresence mode="wait">
               <motion.h1
                 key={hIdx}
@@ -254,8 +299,14 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.1, delay: afterDelay }}
                   style={{ display: "inline-block" }}
-                >{"\u00A0"}</motion.span>
-                <AnimatedChars text={h.after.trimStart()} startDelay={afterDelay} reduced={prefersReduced} />
+                >
+                  {"\u00A0"}
+                </motion.span>
+                <AnimatedChars
+                  text={h.after.trimStart()}
+                  startDelay={afterDelay}
+                  reduced={prefersReduced}
+                />
               </motion.h1>
             </AnimatePresence>
           </div>
@@ -271,7 +322,9 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
             >
               ZAKAŽI TERMIN
             </button>
-            <p className="text-xs text-foreground/45 font-poppins">Ništa se ne brini. Na prvom tretmanu se sve dogovaramo.</p>
+            <p className="text-xs text-foreground/45 font-poppins">
+              Ništa se ne brini. Na prvom tretmanu se sve dogovaramo.
+            </p>
           </div>
         </div>
 
@@ -279,9 +332,15 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
         <div className="col-span-3 flex flex-col items-center justify-center gap-0">
           {stats.map((s, i) => (
             <div key={s.value} className="flex flex-col items-center text-center">
-              <span className="text-4xl font-bold font-playfair text-foreground">{s.value}</span>
-              <span className="text-xs font-poppins text-foreground/50 tracking-widest uppercase mt-1">{s.label}</span>
-              {i < stats.length - 1 && <div className="w-px h-7 bg-foreground/10 mt-5 mb-5" />}
+              <span className="text-4xl font-bold font-playfair text-foreground">
+                {s.value}
+              </span>
+              <span className="text-xs font-poppins text-foreground/50 tracking-widest uppercase mt-1">
+                {s.label}
+              </span>
+              {i < stats.length - 1 && (
+                <div className="w-px h-7 bg-foreground/10 mt-5 mb-5" />
+              )}
             </div>
           ))}
         </div>
@@ -289,13 +348,19 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
         {/* Right — 3-step card */}
         <div className="col-span-4 flex items-center justify-end">
           <div className="supports-[backdrop-filter]:bg-white/50 bg-white/50 backdrop-blur-md border border-foreground/10 rounded-2xl px-8 py-7 flex flex-col gap-6 w-72">
-            <p className="text-[10px] font-poppins text-foreground/40 tracking-[3px] uppercase">Vaš put</p>
+            <p className="text-[10px] font-poppins text-foreground/40 tracking-[3px] uppercase">
+              Vaš put
+            </p>
             {steps.map((step) => (
               <div key={step.phase} className="flex items-start gap-4">
                 <div className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${step.dot}`} />
                 <div>
-                  <p className="text-xs text-foreground/45 font-poppins tracking-[2px] uppercase">{step.phase}</p>
-                  <p className="text-base font-semibold font-poppins text-foreground mt-0.5">{step.label}</p>
+                  <p className="text-xs text-foreground/45 font-poppins tracking-[2px] uppercase">
+                    {step.phase}
+                  </p>
+                  <p className="text-base font-semibold font-poppins text-foreground mt-0.5">
+                    {step.label}
+                  </p>
                 </div>
               </div>
             ))}
@@ -303,7 +368,6 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
         </div>
 
       </div>
-
     </section>
   );
 }
