@@ -22,7 +22,7 @@ const SR_MONTHS     = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "avg", "
 const STATUS_STYLES: Record<ReservationStatus, { bg: string; text: string; border: string; label: string }> = {
   pending:   { bg: "bg-amber-50",  text: "text-amber-800",  border: "border-amber-300", label: "Na čekanju" },
   confirmed: { bg: "bg-green-50",  text: "text-green-800",  border: "border-green-300", label: "Potvrđeno" },
-  cancelled: { bg: "bg-gray-100",  text: "text-gray-500",   border: "border-gray-300",  label: "Otkazano" },
+  cancelled: { bg: "bg-red-50",    text: "text-red-700",    border: "border-red-300",   label: "Otkazano" },
 };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -446,8 +446,8 @@ export default function AdminPage() {
             {/* Status selector */}
             <div className="px-6 pb-6">
               <p className="text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-3">PROMENI STATUS</p>
-              <div className="grid grid-cols-3 gap-2">
-                {(Object.entries(STATUS_STYLES) as [ReservationStatus, typeof STATUS_STYLES[ReservationStatus]][]).map(([key, s]) => (
+              <div className="grid grid-cols-2 gap-2">
+                {(Object.entries(STATUS_STYLES) as [ReservationStatus, typeof STATUS_STYLES[ReservationStatus]][]).filter(([key]) => key !== "pending").map(([key, s]) => (
                   <button
                     key={key}
                     onClick={() => setNewStatus(key)}
