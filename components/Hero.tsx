@@ -153,7 +153,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
       <div className="relative z-30 h-full max-w-7xl mx-auto flex flex-col lg:grid lg:grid-cols-12 px-6 lg:px-12">
 
         {/* Left — Headline */}
-        <div className="lg:col-span-5 flex flex-col pt-24 lg:justify-center lg:pt-0 gap-3 lg:gap-5">
+        <div className="lg:col-span-5 flex-1 lg:flex-none min-h-0 flex flex-col pt-24 lg:justify-center lg:pt-0 gap-3 lg:gap-5">
           {/* Heading — no fixed height; bottom content is pinned via mt-auto below */}
           <AnimatePresence mode="wait">
             <motion.h1
@@ -229,7 +229,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
         {/* ── Mobile bottom content — mt-auto pins this block to the bottom of the h-dvh section ── */}
 
         {/* Stats row — mobile */}
-        <div className="lg:hidden mt-auto flex items-center w-full py-3">
+        <div className="lg:hidden shrink-0 flex items-center w-full py-3">
           {stats.map((s, i) => (
             <div key={s.value} className="flex items-center flex-1">
               <div className="flex flex-col items-center text-center flex-1">
@@ -242,7 +242,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
         </div>
 
         {/* Steps card — mobile */}
-        <div className="lg:hidden pb-3">
+        <div className="lg:hidden shrink-0 pb-3">
           <div className="w-full flex flex-col bg-black/50 backdrop-blur-md border border-white/10 rounded-2xl px-5 py-4 gap-3">
             {steps.map((step, i) => (
               <div key={step.phase} className="flex flex-col">
@@ -258,7 +258,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
         </div>
 
         {/* CTA button — mobile */}
-        <div className="lg:hidden pb-6 pt-2 flex flex-col gap-2">
+        <div className="lg:hidden shrink-0 pb-6 pt-2 flex flex-col gap-2">
           <button
             onClick={onOpen}
             className="inline-flex items-center justify-center w-full px-8 py-4 rounded-full text-white text-sm font-semibold tracking-widest font-poppins transition-opacity hover:opacity-90 cursor-pointer"
