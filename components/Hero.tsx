@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import { motion, useReducedMotion, AnimatePresence } from "framer-motion";
 
@@ -96,15 +97,21 @@ const stats = [
 export default function Hero({ onOpen }: { onOpen: () => void }) {
   const prefersReduced = useReducedMotion();
   const [hIdx, setHIdx] = useState(0);
-  const [heroHeight, setHeroHeight] = useState("100vh");
 
-  useEffect(() => {
-    // iOS Safari fix: window.innerHeight gives the true visual viewport height,
-    // avoiding svh/dvh unit inconsistencies across iOS versions.
-    const update = () => setHeroHeight(`${window.innerHeight}px`);
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
+  // Use a ref on the section element and write the height directly to the DOM.
+  // This avoids React state entirely, so:
+  //   - No hydration mismatch: server renders with 100svh, client patches the DOM
+  //     synchronously before first paint via useLayoutEffect.
+  //   - No component re-render (and therefore no animation restart) caused by
+  //     a height state change.
+  //   - No resize listener: Chrome on iOS fires resize on toolbar show/hide which
+  //     would cause layout jumps; locking height at mount time is intentional.
+  const sectionRef = useRef<HTMLElement>(null);
+
+  useLayoutEffect(() => {
+    if (sectionRef.current) {
+      sectionRef.current.style.height = `${window.innerHeight}px`;
+    }
   }, []);
 
   useEffect(() => {
@@ -122,9 +129,13 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
 
   return (
     <section
+      ref={sectionRef}
       className="relative overflow-hidden"
       style={{
-        height: heroHeight,
+        // 100svh is the safe default for SSR and the pre-useLayoutEffect frame.
+        // It accounts for the browser chrome on mobile better than 100vh does.
+        // useLayoutEffect replaces this with window.innerHeight before paint.
+        height: "100svh",
         background:
           "linear-gradient(115deg, #7DD8D5 0%, #ACE6E4 25%, #FCD6ED 65%, #FCCAE2 100%)",
       }}
@@ -173,15 +184,19 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
       {/* ── MOBILE layout ──────────────────────────────────────────────────────
           Two absolutely-positioned zones anchored independently to top/bottom.
           They cannot overlap each other regardless of content height.
-          The heading is in a fixed-height container to prevent any reflow.
+          The heading sits in a min-height container that clips via overflow:hidden
+          so layout is stable across heading rotations.
       ──────────────────────────────────────────────────────────────────────── */}
       <div className="lg:hidden">
-        {/* Top zone — heading + subtitle, anchored to top */}
-        <div
-          className="absolute top-0 left-0 right-0 z-30 px-6 pt-24 pb-4"
-        >
-          {/* Fixed-height heading container: 160px fits all 3 strings at 390px width */}
-          <div style={{ height: "160px", overflow: "hidden" }}>
+        {/* Top zone — heading + subtitle, anchored to top.
+            No pb-4 here: the zone is absolute so bottom padding has no effect
+            on sibling layout. Vertical rhythm is handled by mt-3 on the subtitle. */}
+        <div className="absolute top-0 left-0 right-0 z-30 px-6 pt-24">
+          {/* Heading container: min-height large enough for all three headings
+              at 375px viewport width with up to ~120% system font scaling.
+              180px = 3 lines × 2.2rem × 1.15 line-height × 1.2 scale + gradient line.
+              overflow:hidden prevents any excess from pushing the subtitle down. */}
+          <div style={{ minHeight: "180px", overflow: "hidden" }}>
             <AnimatePresence mode="wait">
               <motion.h1
                 key={hIdx}
@@ -283,8 +298,10 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
 
         {/* Left — Headline */}
         <div className="col-span-5 flex flex-col justify-center gap-5">
-          {/* Fixed-height heading container prevents column reflow between rotations */}
-          <div style={{ height: "220px", overflow: "hidden" }}>
+          {/* Heading container: min-height large enough for all three headings
+              at desktop font size (3.5rem) with up to ~120% system font scaling.
+              240px = 2 lines × 3.5rem × 1.1 line-height × 1.2 scale + gradient line. */}
+          <div style={{ minHeight: "240px", overflow: "hidden" }}>
             <AnimatePresence mode="wait">
               <motion.h1
                 key={hIdx}
@@ -352,9 +369,13 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
           ))}
         </div>
 
-        {/* Right — 3-step card */}
+        {/* Right — 3-step card.
+            bg-white/20: fallback for browsers without backdrop-filter support
+              (more opaque fallback replaced with a less opaque tinted glass look).
+            supports-[backdrop-filter]:bg-white/50: when blur is available, the
+              frosted glass effect works and we want less background saturation. */}
         <div className="col-span-4 flex items-center justify-end">
-          <div className="supports-[backdrop-filter]:bg-white/50 bg-white/50 backdrop-blur-md border border-foreground/10 rounded-2xl px-8 py-7 flex flex-col gap-6 w-72">
+          <div className="bg-white/20 supports-[backdrop-filter]:bg-white/50 backdrop-blur-md border border-foreground/10 rounded-2xl px-8 py-7 flex flex-col gap-6 w-72">
             <p className="text-[10px] font-poppins text-foreground/40 tracking-[3px] uppercase">
               Vaš put
             </p>
