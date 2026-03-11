@@ -75,15 +75,15 @@ function AnimatedChars({
 }
 
 const steps = [
-  { dot: "bg-rose-300",  phase: "Danas",        label: "Svaki dan se briješ" },
+  { dot: "bg-rose-300",  phase: "Danas",         label: "Svaki dan se briješ" },
   { dot: "bg-pink-400",  phase: "8-10 tretmana", label: "Epilacija" },
-  { dot: "bg-teal",      phase: "Zauvek",        label: "Glatka koža" },
+  { dot: "bg-teal",      phase: "Zauvek",         label: "Glatka koža" },
 ] as const;
 
 const stats = [
   { value: "4000+",  label: "Klijenata" },
   { value: "5 god.", label: "Iskustva" },
-  { value: "99%",   label: "Zadovoljnih" },
+  { value: "99%",    label: "Zadovoljnih" },
 ] as const;
 
 export default function Hero({ onOpen }: { onOpen: () => void }) {
@@ -110,13 +110,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
     >
       {/* Background image — mobile only */}
       <div className="absolute inset-0 z-10 lg:hidden">
-        <Image
-          src="/hero.jpeg"
-          alt=""
-          fill
-          className="object-cover object-center"
-          priority
-        />
+        <Image src="/hero.jpeg" alt="" fill className="object-cover object-center" priority />
       </div>
 
       {/* Dark overlay — mobile only */}
@@ -129,7 +123,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
       </div>
 
       {/* Model image — desktop only */}
-      <div className="absolute right-0 z-[25] pointer-events-none hidden lg:block lg:top-0 lg:h-[100dvh]">
+      <div className="absolute right-0 z-[25] pointer-events-none hidden lg:block top-0 h-full">
         <motion.div
           className="h-full w-auto"
           initial={prefersReduced ? false : { x: 80, opacity: 0 }}
@@ -142,24 +136,99 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
             fill={false}
             height={900}
             width={700}
-            className="h-full w-auto object-contain object-bottom lg:object-top"
+            className="h-full w-auto object-contain object-top"
             style={{ height: "100%", width: "auto" }}
             priority
           />
         </motion.div>
       </div>
 
-      {/* Content grid — h-full so it fills the fixed-height section */}
-      <div className="relative z-30 h-full max-w-7xl mx-auto flex flex-col lg:grid lg:grid-cols-12 px-6 lg:px-12">
+      {/* ── MOBILE layout ─────────────────────────────────────────────────────── */}
+
+      {/* Mobile: heading pinned to top */}
+      <div className="lg:hidden absolute top-0 left-0 right-0 z-30 px-6 pt-24">
+        <AnimatePresence mode="wait">
+          <motion.h1
+            key={hIdx}
+            exit={{ opacity: 0, transition: { duration: 0.22, ease: "easeIn" } }}
+            className="text-[2.6rem] leading-[1.1] font-bold font-playfair text-white"
+          >
+            <AnimatedChars text={h.line1} startDelay={0} reduced={prefersReduced} />
+            <br />
+            <motion.span
+              initial={prefersReduced ? false : { opacity: 0, scaleX: 0.85 }}
+              animate={{ opacity: 1, scaleX: 1 }}
+              transition={{ duration: 0.35, delay: gradientDelay, ease: "easeOut" }}
+              className="bg-gradient-to-r from-pink to-rose bg-clip-text text-transparent inline-block origin-left"
+            >
+              {h.gradient}
+            </motion.span>
+            <motion.span
+              initial={prefersReduced ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.1, delay: afterDelay }}
+              style={{ display: "inline-block" }}
+            >{"\u00A0"}</motion.span>
+            <AnimatedChars text={h.after.trimStart()} startDelay={afterDelay} reduced={prefersReduced} />
+          </motion.h1>
+        </AnimatePresence>
+
+        <p className="text-base text-white/80 font-poppins max-w-sm leading-relaxed mt-3">
+          Za 8 do 10 tretmana, zauvek se opraštaš od brijača, iritacija i uraslih dlaka.
+        </p>
+      </div>
+
+      {/* Mobile: bottom content pinned to bottom */}
+      <div className="lg:hidden absolute bottom-0 left-0 right-0 z-30 px-6 pb-6 flex flex-col gap-3">
+        {/* Stats */}
+        <div className="flex items-center w-full py-2">
+          {stats.map((s, i) => (
+            <div key={s.value} className="flex items-center flex-1">
+              <div className="flex flex-col items-center text-center flex-1">
+                <span className="text-2xl font-bold font-playfair text-white">{s.value}</span>
+                <span className="text-[10px] font-poppins text-white/60 tracking-widest uppercase mt-0.5">{s.label}</span>
+              </div>
+              {i < stats.length - 1 && <div className="w-px h-8 bg-white/30 shrink-0" />}
+            </div>
+          ))}
+        </div>
+
+        {/* Steps */}
+        <div className="w-full flex flex-col bg-black/50 backdrop-blur-md border border-white/10 rounded-2xl px-5 py-4 gap-3">
+          {steps.map((step, i) => (
+            <div key={step.phase} className="flex flex-col">
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full shrink-0 ${step.dot}`} />
+                <p className="text-[10px] text-white/60 font-poppins tracking-[1.5px] uppercase leading-none">{step.phase}</p>
+              </div>
+              <p className="text-sm font-semibold font-poppins text-white leading-tight mt-0.5 pl-4">{step.label}</p>
+              {i < steps.length - 1 && <div className="h-px w-full bg-white/10 mt-3" />}
+            </div>
+          ))}
+        </div>
+
+        {/* CTA */}
+        <button
+          onClick={onOpen}
+          className="inline-flex items-center justify-center w-full px-8 py-4 rounded-full text-white text-sm font-semibold tracking-widest font-poppins transition-opacity hover:opacity-90 cursor-pointer"
+          style={{ background: "linear-gradient(to right, #E85D8A, #FCCAE2)" }}
+        >
+          ZAKAŽI TERMIN
+        </button>
+        <p className="text-xs text-white/60 font-poppins text-center -mt-1">Ništa se ne brini. Na prvom tretmanu se sve dogovaramo.</p>
+      </div>
+
+      {/* ── DESKTOP layout ────────────────────────────────────────────────────── */}
+
+      <div className="hidden lg:grid lg:grid-cols-12 relative z-30 h-full max-w-7xl mx-auto px-12">
 
         {/* Left — Headline */}
-        <div className="lg:col-span-5 flex-1 lg:flex-none min-h-0 flex flex-col pt-24 lg:justify-center lg:pt-0 gap-3 lg:gap-5">
-          {/* Heading — no fixed height; bottom content is pinned via mt-auto below */}
+        <div className="col-span-5 flex flex-col justify-center gap-5">
           <AnimatePresence mode="wait">
             <motion.h1
               key={hIdx}
               exit={{ opacity: 0, transition: { duration: 0.22, ease: "easeIn" } }}
-              className="text-[2.6rem] leading-[1.1] md:text-5xl lg:text-[3.5rem] font-bold font-playfair text-white lg:text-foreground"
+              className="text-[3.5rem] leading-[1.1] font-bold font-playfair text-foreground"
             >
               <AnimatedChars text={h.line1} startDelay={0} reduced={prefersReduced} />
               <br />
@@ -181,26 +250,23 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
             </motion.h1>
           </AnimatePresence>
 
-          <p className="text-base md:text-lg text-white/80 lg:text-foreground/60 font-poppins max-w-sm leading-relaxed">
+          <p className="text-lg text-foreground/60 font-poppins max-w-sm leading-relaxed">
             Za 8 do 10 tretmana, zauvek se opraštaš od brijača, iritacija i uraslih dlaka.
           </p>
 
-          {/* CTA — desktop only */}
-          <div className="hidden lg:flex flex-col gap-2 mt-2">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={onOpen}
-                className="inline-flex items-center justify-center px-8 py-3 rounded-full bg-foreground text-white text-xs font-semibold tracking-widest font-poppins border border-foreground hover:bg-foreground/90 transition-colors cursor-pointer"
-              >
-                ZAKAŽI TERMIN
-              </button>
-            </div>
+          <div className="flex flex-col gap-2 mt-2">
+            <button
+              onClick={onOpen}
+              className="self-start inline-flex items-center justify-center px-8 py-3 rounded-full bg-foreground text-white text-xs font-semibold tracking-widest font-poppins border border-foreground hover:bg-foreground/90 transition-colors cursor-pointer"
+            >
+              ZAKAŽI TERMIN
+            </button>
             <p className="text-xs text-foreground/45 font-poppins">Ništa se ne brini. Na prvom tretmanu se sve dogovaramo.</p>
           </div>
         </div>
 
-        {/* Center — Stats (desktop only) */}
-        <div className="hidden lg:flex lg:col-span-3 flex-col items-center justify-center gap-0">
+        {/* Center — Stats */}
+        <div className="col-span-3 flex flex-col items-center justify-center gap-0">
           {stats.map((s, i) => (
             <div key={s.value} className="flex flex-col items-center text-center">
               <span className="text-4xl font-bold font-playfair text-foreground">{s.value}</span>
@@ -210,9 +276,9 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
           ))}
         </div>
 
-        {/* Right — 3-step card (desktop only) */}
-        <div className="hidden lg:flex lg:col-span-4 items-center justify-end">
-          <div className="supports-[backdrop-filter]:bg-white bg-black/50 md:bg-white/50 backdrop-blur-md border border-foreground/10 rounded-2xl px-8 py-7 flex flex-col gap-6 w-72">
+        {/* Right — 3-step card */}
+        <div className="col-span-4 flex items-center justify-end">
+          <div className="supports-[backdrop-filter]:bg-white/50 bg-white/50 backdrop-blur-md border border-foreground/10 rounded-2xl px-8 py-7 flex flex-col gap-6 w-72">
             <p className="text-[10px] font-poppins text-foreground/40 tracking-[3px] uppercase">Vaš put</p>
             {steps.map((step) => (
               <div key={step.phase} className="flex items-start gap-4">
@@ -224,49 +290,6 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
               </div>
             ))}
           </div>
-        </div>
-
-        {/* ── Mobile bottom content — mt-auto pins this block to the bottom of the h-dvh section ── */}
-
-        {/* Stats row — mobile */}
-        <div className="lg:hidden shrink-0 flex items-center w-full py-3">
-          {stats.map((s, i) => (
-            <div key={s.value} className="flex items-center flex-1">
-              <div className="flex flex-col items-center text-center flex-1">
-                <span className="text-2xl font-bold font-playfair text-white">{s.value}</span>
-                <span className="text-[10px] font-poppins text-white/60 tracking-widest uppercase mt-0.5">{s.label}</span>
-              </div>
-              {i < stats.length - 1 && <div className="w-px h-8 bg-white/30 shrink-0" />}
-            </div>
-          ))}
-        </div>
-
-        {/* Steps card — mobile */}
-        <div className="lg:hidden shrink-0 pb-3">
-          <div className="w-full flex flex-col bg-black/50 backdrop-blur-md border border-white/10 rounded-2xl px-5 py-4 gap-3">
-            {steps.map((step, i) => (
-              <div key={step.phase} className="flex flex-col">
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full shrink-0 ${step.dot}`} />
-                  <p className="text-[10px] text-white/60 font-poppins tracking-[1.5px] uppercase leading-none">{step.phase}</p>
-                </div>
-                <p className="text-sm font-semibold font-poppins text-white leading-tight mt-0.5 pl-4">{step.label}</p>
-                {i < steps.length - 1 && <div className="h-px w-full bg-white/10 mt-3" />}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* CTA button — mobile */}
-        <div className="lg:hidden shrink-0 pb-6 pt-2 flex flex-col gap-2">
-          <button
-            onClick={onOpen}
-            className="inline-flex items-center justify-center w-full px-8 py-4 rounded-full text-white text-sm font-semibold tracking-widest font-poppins transition-opacity hover:opacity-90 cursor-pointer"
-            style={{ background: "linear-gradient(to right, #E85D8A, #FCCAE2)" }}
-          >
-            ZAKAŽI TERMIN
-          </button>
-          <p className="text-xs text-white/60 font-poppins text-center">Ništa se ne brini. Na prvom tretmanu se sve dogovaramo.</p>
         </div>
 
       </div>
