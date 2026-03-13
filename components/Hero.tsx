@@ -120,7 +120,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
       {/* Background image — mobile only */}
       <div className="absolute inset-0 z-10 lg:hidden">
         <Image
-          src="/hero.jpeg"
+          src="/phone.JPG"
           alt=""
           fill
           className="object-cover object-center"
@@ -131,31 +131,26 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
       {/* Dark overlay — mobile only */}
       <div className="absolute inset-0 z-[15] bg-black/45 lg:hidden" />
 
+      {/* Background image — desktop only */}
+      <div className="absolute inset-0 z-10 pointer-events-none hidden lg:block">
+        <Image
+          src="/desktop.jpg"
+          alt=""
+          fill
+          className="object-cover object-center"
+          priority
+        />
+      </div>
+
+      {/* Dark gradient overlay — desktop only */}
+      <div className="absolute inset-0 z-[15] pointer-events-none hidden lg:block"
+        style={{ background: "linear-gradient(to right, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.25) 55%, rgba(0,0,0,0.05) 100%)" }}
+      />
+
       {/* Ambient blobs — desktop only */}
       <div className="absolute inset-0 z-20 pointer-events-none hidden lg:block">
         <div className="absolute top-[-10%] left-[-5%] w-[55%] h-[65%] rounded-full bg-pink/15 blur-[110px] mix-blend-soft-light" />
         <div className="absolute bottom-[-15%] right-[-5%] w-[50%] h-[60%] rounded-full bg-teal/10 blur-[110px] mix-blend-soft-light" />
-      </div>
-
-      {/* Model image — desktop only */}
-      <div className="absolute right-0 z-[25] pointer-events-none hidden lg:block top-0 h-full">
-        <motion.div
-          className="h-full w-auto"
-          initial={prefersReduced ? false : { x: 80, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          transition={{ duration: 0.9, ease: [0.25, 0.46, 0.45, 0.94], delay: 0.3 }}
-        >
-          <Image
-            src="/hero_right.png"
-            alt=""
-            fill={false}
-            height={900}
-            width={700}
-            className="h-full w-auto object-contain object-top"
-            style={{ height: "100%", width: "auto" }}
-            priority
-          />
-        </motion.div>
       </div>
 
       {/* ── MOBILE layout ─────────────────────────────────────────────────────
@@ -172,7 +167,8 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
             <motion.h1
               key={hIdx}
               exit={{ opacity: 0, transition: { duration: 0.22, ease: "easeIn" } }}
-              className="text-[2.2rem] leading-[1.15] font-bold font-playfair text-white"
+              className="text-[2.4rem] leading-[1.18] font-bold font-playfair text-white"
+              style={{ filter: "drop-shadow(0 2px 18px rgba(0,0,0,0.7)) drop-shadow(0 1px 3px rgba(0,0,0,0.55))" }}
             >
               <AnimatedChars text={h.line1} startDelay={0} reduced={prefersReduced} />
               <br />
@@ -180,7 +176,13 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
                 initial={prefersReduced ? false : { opacity: 0, scaleX: 0.85 }}
                 animate={{ opacity: 1, scaleX: 1 }}
                 transition={{ duration: 0.35, delay: gradientDelay, ease: "easeOut" }}
-                className="bg-gradient-to-r from-pink to-rose bg-clip-text text-transparent inline-block origin-left"
+                className="inline-block origin-left"
+                style={{
+                  background: "linear-gradient(to right, #F72585, #FF6EB4, #FFB3D9)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  backgroundClip: "text",
+                }}
               >
                 {h.gradient}
               </motion.span>
@@ -256,7 +258,8 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
               <motion.h1
                 key={hIdx}
                 exit={{ opacity: 0, transition: { duration: 0.22, ease: "easeIn" } }}
-                className="text-[3.5rem] leading-[1.1] font-bold font-playfair text-foreground"
+                className="text-[3.75rem] leading-[1.12] font-bold font-playfair text-white"
+                style={{ filter: "drop-shadow(0 2px 22px rgba(0,0,0,0.65)) drop-shadow(0 1px 3px rgba(0,0,0,0.45))" }}
               >
                 <AnimatedChars text={h.line1} startDelay={0} reduced={prefersReduced} />
                 <br />
@@ -264,7 +267,13 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
                   initial={prefersReduced ? false : { opacity: 0, scaleX: 0.85 }}
                   animate={{ opacity: 1, scaleX: 1 }}
                   transition={{ duration: 0.35, delay: gradientDelay, ease: "easeOut" }}
-                  className="bg-gradient-to-r from-pink to-rose bg-clip-text text-transparent inline-block origin-left"
+                  className="inline-block origin-left"
+                  style={{
+                    background: "linear-gradient(to right, #F72585, #FF6EB4, #FFB3D9)",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                    backgroundClip: "text",
+                  }}
                 >
                   {h.gradient}
                 </motion.span>
@@ -285,18 +294,19 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
             </AnimatePresence>
           </div>
 
-          <p className="text-lg text-foreground/60 font-poppins max-w-sm leading-relaxed">
+          <p className="text-lg text-white/70 font-poppins max-w-sm leading-relaxed">
             Za 8 do 10 tretmana, zauvek se opraštaš od brijača, iritacija i uraslih dlaka.
           </p>
 
           <div className="flex flex-col gap-2 mt-2">
             <button
               onClick={onOpen}
-              className="self-start inline-flex items-center justify-center px-8 py-3 rounded-full bg-foreground text-white text-xs font-semibold tracking-widest font-poppins border border-foreground hover:bg-foreground/90 transition-colors cursor-pointer"
+              className="self-start inline-flex items-center justify-center px-8 py-3 rounded-full text-white text-xs font-semibold tracking-widest font-poppins transition-opacity hover:opacity-90 cursor-pointer"
+              style={{ background: "linear-gradient(to right, #E85D8A, #FCCAE2)" }}
             >
               ZAKAŽI TERMIN
             </button>
-            <p className="text-xs text-foreground/45 font-poppins">
+            <p className="text-xs text-white/60 font-poppins">
               Ništa se ne brini. Na prvom tretmanu se sve dogovaramo.
             </p>
           </div>
@@ -306,23 +316,23 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
         <div className="col-span-3 flex flex-col items-center justify-center gap-0">
           {stats.map((s, i) => (
             <div key={s.value} className="flex flex-col items-center text-center">
-              <span className="text-4xl font-bold font-playfair text-foreground">{s.value}</span>
-              <span className="text-xs font-poppins text-foreground/50 tracking-widest uppercase mt-1">{s.label}</span>
-              {i < stats.length - 1 && <div className="w-px h-7 bg-foreground/10 mt-5 mb-5" />}
+              <span className="text-4xl font-bold font-playfair text-white">{s.value}</span>
+              <span className="text-xs font-poppins text-white/60 tracking-widest uppercase mt-1">{s.label}</span>
+              {i < stats.length - 1 && <div className="w-px h-7 bg-white/20 mt-5 mb-5" />}
             </div>
           ))}
         </div>
 
         {/* Right — 3-step card */}
         <div className="col-span-4 flex items-center justify-end">
-          <div className="bg-white/20 supports-[backdrop-filter]:bg-white/50 backdrop-blur-md border border-foreground/10 rounded-2xl px-8 py-7 flex flex-col gap-6 w-72">
-            <p className="text-[10px] font-poppins text-foreground/40 tracking-[3px] uppercase">Vaš put</p>
+          <div className="bg-black/30 supports-[backdrop-filter]:bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl px-8 py-7 flex flex-col gap-6 w-72">
+            <p className="text-[10px] font-poppins text-white/50 tracking-[3px] uppercase">Vaš put</p>
             {steps.map((step) => (
               <div key={step.phase} className="flex items-start gap-4">
                 <div className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${step.dot}`} />
                 <div>
-                  <p className="text-xs text-foreground/45 font-poppins tracking-[2px] uppercase">{step.phase}</p>
-                  <p className="text-base font-semibold font-poppins text-foreground mt-0.5">{step.label}</p>
+                  <p className="text-xs text-white/50 font-poppins tracking-[2px] uppercase">{step.phase}</p>
+                  <p className="text-base font-semibold font-poppins text-white mt-0.5">{step.label}</p>
                 </div>
               </div>
             ))}
