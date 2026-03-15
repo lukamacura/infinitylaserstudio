@@ -32,14 +32,14 @@ const services: ServiceCard[] = [
   },
   {
     name: "Nausnice + brada",
-    description: "Savršeno definisane linije. Jutro bez brijanja, lice bez traga dlake.",
+    description: "Čista linija lica, bez senke, dlaka i redovnog brijanja. Prirodan, uredan izgled koji ostaje dugo.",
     price: "1800 rsd",
     type: "photo",
     photo: "/face.png",
   },
   {
     name: "Stomak + Grudi",
-    description: "Čisto i uredno. Koža uvek spremna — bez iritacija, bez problema.",
+    description: "Čisto i uredno. Koža uvek spremna - bez iritacija, bez problema.",
     price: "5700 rsd",
     type: "photo",
     photo: "/full_body.png",

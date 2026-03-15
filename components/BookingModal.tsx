@@ -18,7 +18,7 @@ interface BookingModalProps {
   onClose: () => void;
 }
 
-type Step = 1 | 2 | 3 | "success";
+type Step = 1 | 2 | 3 | 4 | 5 | "success";
 type Gender = "zene" | "muskarci";
 
 // ── Icon mapping ──────────────────────────────────────────────────────────────
@@ -180,9 +180,11 @@ const ACCENTS = {
 } as const;
 
 const STEP_LABELS: Record<Step, [string, string]> = {
-  1: ["KORAK 1 OD 3", "Za koga zakazuješ?"],
-  2: ["KORAK 2 OD 3", "Odaberi regije za tretman"],
-  3: ["KORAK 3 OD 3", "Izaberi datum i vreme"],
+  1: ["KORAK 1 OD 5", "Za koga zakazuješ?"],
+  2: ["KORAK 2 OD 5", "Odaberi regije za tretman"],
+  3: ["KORAK 3 OD 5", "Izaberi datum"],
+  4: ["KORAK 4 OD 5", "Izaberi vreme"],
+  5: ["KORAK 5 OD 5", "Vaši podaci"],
   success: ["POTVRĐENO", "Termin je uspešno zakazan"],
 };
 
@@ -371,6 +373,8 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
   function handleBack() {
     if (step === 2) { setStep(1); setGender(null); setSelectedIds([]); setServices([]); }
     else if (step === 3) { setStep(2); setSelectedDate(""); setSelectedTime(""); }
+    else if (step === 4) { setStep(3); setSelectedTime(""); }
+    else if (step === 5) { setStep(4); }
   }
 
   function toggleService(id: string) {
@@ -475,7 +479,7 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
           <div className="flex items-center gap-3">
-            {(step === 2 || step === 3) && (
+            {(step === 2 || step === 3 || step === 4 || step === 5) && (
               <button onClick={handleBack} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-foreground/5 transition-colors cursor-pointer" aria-label="Nazad">
                 <ArrowLeft size={18} />
               </button>
@@ -571,211 +575,221 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
             </div>
           )}
 
-          {/* ══ STEP 3: Date / Time / Form ══════════════════════════════════ */}
+          {/* ══ STEP 3: Date only ══════════════════════════════════════════════ */}
           {step === 3 && (
-            <div className="flex flex-col gap-6">
-
-              {/* Day picker */}
-              <div>
-                <p className="text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-3">IZABERI DAN</p>
-
-                {dayOptions.length === 0 ? (
-                  <div className="flex items-center gap-2 p-4 rounded-xl bg-foreground/5 text-foreground/50 text-sm font-poppins">
-                    <AlertCircle size={16} />
-                    Nema dostupnih termina u narednih 7 dana.
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-2">
-                    {dayOptions.map((day) => {
-                      const isSelected = selectedDate === day.date;
-                      return (
-                        <button
-                          key={day.date}
-                          onClick={() => handleDaySelect(day.date)}
-                          className={`relative flex flex-col items-start p-4 rounded-2xl border-2 text-left cursor-pointer transition-all ${
-                            isSelected
-                              ? `${accent.border} ${accent.bgLight}`
-                              : "border-foreground/8 hover:border-foreground/20"
-                          }`}
-                        >
-                          {day.isToday && (
-                            <span
-                              className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md text-[10px] font-bold font-poppins text-white"
-                              style={{ backgroundColor: accent.hex }}
-                            >
-                              DANAS
-                            </span>
-                          )}
-                          <p
-                            className="text-sm font-bold font-poppins leading-tight"
-                            style={isSelected ? { color: accent.hex } : undefined}
+            <div className="flex flex-col gap-4">
+              <p className="text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-1">IZABERI DAN</p>
+              {dayOptions.length === 0 ? (
+                <div className="flex items-center gap-2 p-4 rounded-xl bg-foreground/5 text-foreground/50 text-sm font-poppins">
+                  <AlertCircle size={16} />
+                  Nema dostupnih termina u narednih 7 dana.
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  {dayOptions.map((day) => {
+                    const isSelected = selectedDate === day.date;
+                    return (
+                      <button
+                        key={day.date}
+                        onClick={() => handleDaySelect(day.date)}
+                        className={`relative flex flex-col items-start p-4 rounded-2xl border-2 text-left cursor-pointer transition-all ${
+                          isSelected
+                            ? `${accent.border} ${accent.bgLight}`
+                            : "border-foreground/8 hover:border-foreground/20"
+                        }`}
+                      >
+                        {day.isToday && (
+                          <span
+                            className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md text-[10px] font-bold font-poppins text-white"
+                            style={{ backgroundColor: accent.hex }}
                           >
-                            {day.label}
-                          </p>
-                          <p className="text-xs text-foreground/50 font-poppins mt-0.5">{day.shortDate}</p>
-                        </button>
-                      );
-                    })}
+                            DANAS
+                          </span>
+                        )}
+                        <p
+                          className="text-sm font-bold font-poppins leading-tight"
+                          style={isSelected ? { color: accent.hex } : undefined}
+                        >
+                          {day.label}
+                        </p>
+                        <p className="text-xs text-foreground/50 font-poppins mt-0.5">{day.shortDate}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => setStep(4)}
+                disabled={!selectedDate}
+                className="w-full py-3.5 rounded-full text-sm font-semibold tracking-widest font-poppins text-white transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{ backgroundColor: accent.hex }}
+              >
+                NASTAVI
+              </button>
+            </div>
+          )}
+
+          {/* ══ STEP 4: Time only ══════════════════════════════════════════════ */}
+          {step === 4 && (
+            <div className="flex flex-col gap-4">
+              <p className="text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-1">SLOBODNI TERMINI</p>
+              {loadingSlots ? (
+                <div className="flex justify-center py-6">
+                  <Loader2 size={22} className="animate-spin text-foreground/30" />
+                </div>
+              ) : availableSlots.length === 0 ? (
+                <div className="flex items-center gap-2 p-4 rounded-xl bg-foreground/5 text-foreground/50 text-sm font-poppins">
+                  <AlertCircle size={16} />
+                  Nema slobodnih termina za ovaj datum.
+                </div>
+              ) : (
+                <div className="grid grid-cols-4 gap-1.5">
+                  {availableSlots.map((slot) => (
+                    <button
+                      key={slot}
+                      type="button"
+                      onClick={() => setSelectedTime(slot)}
+                      className="py-2.5 rounded-lg text-sm font-semibold font-poppins transition-all cursor-pointer"
+                      style={
+                        selectedTime === slot
+                          ? { backgroundColor: accent.hex, color: "white" }
+                          : { backgroundColor: "rgba(0,0,0,0.05)", color: "rgba(0,0,0,0.6)" }
+                      }
+                    >
+                      {slot}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => setStep(5)}
+                disabled={!selectedTime}
+                className="w-full py-3.5 rounded-full text-sm font-semibold tracking-widest font-poppins text-white transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{ backgroundColor: accent.hex }}
+              >
+                NASTAVI
+              </button>
+            </div>
+          )}
+
+          {/* ══ STEP 5: Vaši podaci only ══════════════════════════════════════════════ */}
+          {step === 5 && (
+            <div className="flex flex-col gap-4">
+              <p className="text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-1">VAŠI PODACI</p>
+
+              <div>
+                <label className="block text-xs text-foreground/50 font-poppins mb-1">Ime i prezime *</label>
+                <input
+                  type="text"
+                  placeholder="Ana Marković"
+                  value={form.name}
+                  onChange={(e) => { setForm((p) => ({ ...p, name: e.target.value })); setFieldErrors((p) => ({ ...p, name: false })); }}
+                  className={`w-full px-4 py-3 rounded-xl border-2 focus:outline-none font-poppins text-sm transition-colors ${fieldErrors.name ? "border-red-400 bg-red-50" : "border-foreground/10"}`}
+                  onFocus={(e) => { if (!fieldErrors.name) e.target.style.borderColor = accent.hex; }}
+                  onBlur={(e) => { e.target.style.borderColor = ""; }}
+                />
+                {fieldErrors.name && <p className="text-xs text-red-500 font-poppins mt-1">Unesite ime i prezime.</p>}
+              </div>
+
+              <div>
+                <label className="block text-xs text-foreground/50 font-poppins mb-1">Email *</label>
+                <input
+                  type="email"
+                  placeholder="ana@primer.rs"
+                  value={form.email}
+                  onChange={(e) => { setForm((p) => ({ ...p, email: e.target.value })); setFieldErrors((p) => ({ ...p, email: false })); }}
+                  className={`w-full px-4 py-3 rounded-xl border-2 focus:outline-none font-poppins text-sm transition-colors ${fieldErrors.email ? "border-red-400 bg-red-50" : "border-foreground/10"}`}
+                  onFocus={(e) => { if (!fieldErrors.email) e.target.style.borderColor = accent.hex; }}
+                  onBlur={(e) => { e.target.style.borderColor = ""; }}
+                />
+                {fieldErrors.email && <p className="text-xs text-red-500 font-poppins mt-1">Unesite email adresu.</p>}
+              </div>
+
+              <div>
+                <label className="block text-xs text-foreground/50 font-poppins mb-1">Telefon</label>
+                <input
+                  type="tel"
+                  placeholder="+381 60 123 4567"
+                  value={form.phone}
+                  onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
+                  className="w-full px-4 py-3 rounded-xl border-2 border-foreground/10 focus:outline-none font-poppins text-sm transition-colors"
+                  onFocus={(e) => (e.target.style.borderColor = accent.hex)}
+                  onBlur={(e) => (e.target.style.borderColor = "")}
+                />
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-2">PROMO KOD</p>
+                <p className="text-xs text-foreground/40 font-poppins mb-2">Imaš promo kod?</p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="npr. xx-yyyy"
+                    value={promoCode}
+                    onChange={(e) => { setPromoCode(e.target.value); setPromoStatus("idle"); setDiscountedPrice(null); setAppliedPromoCode(null); }}
+                    className="flex-1 px-4 py-3 rounded-xl border-2 border-foreground/10 focus:outline-none font-poppins text-sm transition-colors"
+                    onFocus={(e) => (e.target.style.borderColor = accent.hex)}
+                    onBlur={(e) => (e.target.style.borderColor = "")}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleApplyPromo}
+                    disabled={!promoCode.trim() || promoChecking}
+                    className="px-4 py-3 rounded-xl text-xs font-semibold tracking-widest font-poppins text-white transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                    style={{ backgroundColor: accent.hex }}
+                  >
+                    {promoChecking ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : "PRIMENI"}
+                  </button>
+                </div>
+                {promoStatus === "valid" && (
+                  <div className="mt-2 flex items-center justify-between px-3 py-2.5 rounded-xl bg-green-50">
+                    <p className="text-xs text-green-700 font-poppins font-semibold">
+                      {appliedPromoCode === "ils-10"
+                        ? "Kod primenjen - 10% popusta aktivirano."
+                        : "Kod primenjen - 50% popusta aktivirano."}
+                    </p>
+                    <div className="text-right shrink-0 ml-3">
+                      <p className="text-[10px] text-foreground/35 font-poppins line-through leading-none">{formatPrice(totalPrice)} RSD</p>
+                      <p className="text-sm font-bold font-poppins text-green-700 leading-tight">{formatPrice(discountedPrice ?? totalPrice)} RSD</p>
+                    </div>
                   </div>
+                )}
+                {promoStatus === "invalid" && (
+                  <p className="text-xs text-red-500 font-poppins mt-1.5">
+                    {promoCode.trim().toLowerCase() === "tb-2026"
+                      ? "Kod je već iskorišćen."
+                      : promoCode.trim().toLowerCase() === "ils-10"
+                      ? "Nemaš prethodne rezervacije."
+                      : "Nevažeći promo kod."}
+                  </p>
                 )}
               </div>
 
-              {/* Time slots */}
-              {selectedDate && (
-                <div>
-                  <p className="text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-3">SLOBODNI TERMINI</p>
-                  {loadingSlots ? (
-                    <div className="flex justify-center py-6">
-                      <Loader2 size={22} className="animate-spin text-foreground/30" />
-                    </div>
-                  ) : availableSlots.length === 0 ? (
-                    <div className="flex items-center gap-2 p-4 rounded-xl bg-foreground/5 text-foreground/50 text-sm font-poppins">
-                      <AlertCircle size={16} />
-                      Nema slobodnih termina za ovaj datum.
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-4 gap-1.5">
-                      {availableSlots.map((slot) => (
-                        <button
-                          key={slot}
-                          onClick={() => setSelectedTime(slot)}
-                          className="py-2.5 rounded-lg text-sm font-semibold font-poppins transition-all cursor-pointer"
-                          style={
-                            selectedTime === slot
-                              ? { backgroundColor: accent.hex, color: "white" }
-                              : { backgroundColor: "rgba(0,0,0,0.05)", color: "rgba(0,0,0,0.6)" }
-                          }
-                        >
-                          {slot}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+              {submitError && (
+                <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 text-red-600 text-sm font-poppins">
+                  <AlertCircle size={15} />
+                  {submitError}
                 </div>
               )}
 
-              {/* Customer form - shown once a time is picked */}
-              {selectedTime && (
-                <div className="flex flex-col gap-3">
-                  <p className="text-xs font-semibold tracking-widest text-foreground/40 font-poppins">VAŠI PODACI</p>
-
-                  {/* Name */}
-                  <div>
-                    <label className="block text-xs text-foreground/50 font-poppins mb-1">Ime i prezime *</label>
-                    <input
-                      type="text"
-                      placeholder="Ana Marković"
-                      value={form.name}
-                      onChange={(e) => { setForm((p) => ({ ...p, name: e.target.value })); setFieldErrors((p) => ({ ...p, name: false })); }}
-                      className={`w-full px-4 py-3 rounded-xl border-2 focus:outline-none font-poppins text-sm transition-colors ${fieldErrors.name ? "border-red-400 bg-red-50" : "border-foreground/10"}`}
-                      onFocus={(e) => { if (!fieldErrors.name) e.target.style.borderColor = accent.hex; }}
-                      onBlur={(e) => { e.target.style.borderColor = ""; }}
-                    />
-                    {fieldErrors.name && <p className="text-xs text-red-500 font-poppins mt-1">Unesite ime i prezime.</p>}
-                  </div>
-
-                  {/* Email */}
-                  <div>
-                    <label className="block text-xs text-foreground/50 font-poppins mb-1">Email *</label>
-                    <input
-                      type="email"
-                      placeholder="ana@primer.rs"
-                      value={form.email}
-                      onChange={(e) => { setForm((p) => ({ ...p, email: e.target.value })); setFieldErrors((p) => ({ ...p, email: false })); }}
-                      className={`w-full px-4 py-3 rounded-xl border-2 focus:outline-none font-poppins text-sm transition-colors ${fieldErrors.email ? "border-red-400 bg-red-50" : "border-foreground/10"}`}
-                      onFocus={(e) => { if (!fieldErrors.email) e.target.style.borderColor = accent.hex; }}
-                      onBlur={(e) => { e.target.style.borderColor = ""; }}
-                    />
-                    {fieldErrors.email && <p className="text-xs text-red-500 font-poppins mt-1">Unesite email adresu.</p>}
-                  </div>
-
-                  {/* Phone */}
-                  <div>
-                    <label className="block text-xs text-foreground/50 font-poppins mb-1">Telefon</label>
-                    <input
-                      type="tel"
-                      placeholder="+381 60 123 4567"
-                      value={form.phone}
-                      onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
-                      className="w-full px-4 py-3 rounded-xl border-2 border-foreground/10 focus:outline-none font-poppins text-sm transition-colors"
-                      onFocus={(e) => (e.target.style.borderColor = accent.hex)}
-                      onBlur={(e) => (e.target.style.borderColor = "")}
-                    />
-                  </div>
-
-                  {/* Promo code */}
-                  <div>
-                    <p className="text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-2">PROMO KOD</p>
-                    <p className="text-xs text-foreground/40 font-poppins mb-2">Imaš promo kod?</p>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="npr. xx-yyyy"
-                        value={promoCode}
-                        onChange={(e) => { setPromoCode(e.target.value); setPromoStatus("idle"); setDiscountedPrice(null); setAppliedPromoCode(null); }}
-                        className="flex-1 px-4 py-3 rounded-xl border-2 border-foreground/10 focus:outline-none font-poppins text-sm transition-colors"
-                        onFocus={(e) => (e.target.style.borderColor = accent.hex)}
-                        onBlur={(e) => (e.target.style.borderColor = "")}
-                      />
-                      <button
-                        type="button"
-                        onClick={handleApplyPromo}
-                        disabled={!promoCode.trim() || promoChecking}
-                        className="px-4 py-3 rounded-xl text-xs font-semibold tracking-widest font-poppins text-white transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                        style={{ backgroundColor: accent.hex }}
-                      >
-                        {promoChecking ? (
-                          <Loader2 size={14} className="animate-spin" />
-                        ) : "PRIMENI"}
-                      </button>
-                    </div>
-                    {promoStatus === "valid" && (
-                      <div className="mt-2 flex items-center justify-between px-3 py-2.5 rounded-xl bg-green-50">
-                        <p className="text-xs text-green-700 font-poppins font-semibold">
-                          {appliedPromoCode === "ils-10"
-                            ? "Kod primenjen - 10% popusta aktivirano."
-                            : "Kod primenjen - 50% popusta aktivirano."}
-                        </p>
-                        <div className="text-right shrink-0 ml-3">
-                          <p className="text-[10px] text-foreground/35 font-poppins line-through leading-none">{formatPrice(totalPrice)} RSD</p>
-                          <p className="text-sm font-bold font-poppins text-green-700 leading-tight">{formatPrice(discountedPrice ?? totalPrice)} RSD</p>
-                        </div>
-                      </div>
-                    )}
-                    {promoStatus === "invalid" && (
-                      <p className="text-xs text-red-500 font-poppins mt-1.5">
-                        {promoCode.trim().toLowerCase() === "tb-2026"
-                          ? "Kod je već iskorišćen."
-                          : promoCode.trim().toLowerCase() === "ils-10"
-                          ? "Nemaš prethodne rezervacije."
-                          : "Nevažeći promo kod."}
-                      </p>
-                    )}
-                  </div>
-
-                  {submitError && (
-                    <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 text-red-600 text-sm font-poppins">
-                      <AlertCircle size={15} />
-                      {submitError}
-                    </div>
-                  )}
-
-                  {/* ── Submit button lives HERE, at the bottom of the form ── */}
-                  <button
-                    onClick={handleSubmit}
-                    disabled={submitting}
-                    className="w-full py-3.5 rounded-full text-sm font-semibold tracking-widest font-poppins text-white mt-2 transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-                    style={{ backgroundColor: accent.hex }}
-                  >
-                    {submitting ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <Loader2 size={16} className="animate-spin" />
-                        Zakazivanje...
-                      </span>
-                    ) : "POTVRDI TERMIN"}
-                  </button>
-                </div>
-              )}
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="w-full py-3.5 rounded-full text-sm font-semibold tracking-widest font-poppins text-white mt-2 transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{ backgroundColor: accent.hex }}
+              >
+                {submitting ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 size={16} className="animate-spin" />
+                    Zakazivanje...
+                  </span>
+                ) : "POTVRDI TERMIN"}
+              </button>
             </div>
           )}
 
