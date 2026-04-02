@@ -80,6 +80,8 @@ export default function Footer({ onOpen }: Props) {
             href="tel:+38163527325"
             aria-label="Pozovi"
             className="w-9 h-9 rounded-full bg-gray-100 hover:bg-pink transition-colors flex items-center justify-center"
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            onClick={() => (window as any).fbq?.("track", "Contact")}
           >
             <svg viewBox="0 0 24 24" className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" strokeWidth="1.8">
               <rect x="7" y="2" width="10" height="20" rx="3" />

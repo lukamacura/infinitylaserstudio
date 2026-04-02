@@ -246,6 +246,8 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
     if (isOpen) {
       requestAnimationFrame(() => setIsAnimating(true));
       document.body.style.overflow = "hidden";
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).fbq?.("track", "InitiateCheckout");
     } else {
       setIsAnimating(false);
       document.body.style.overflow = "";
@@ -455,6 +457,12 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
       }),
     }).catch(() => {});
 
+    const finalPrice = discountedPrice ?? totalPrice;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).fbq?.("track", "Schedule", {
+      value: +(finalPrice / 102).toFixed(2),
+      currency: "USD",
+    });
     setStep("success");
     setSubmitting(false);
   }

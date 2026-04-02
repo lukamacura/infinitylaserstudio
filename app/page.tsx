@@ -20,7 +20,19 @@ export default function Home() {
   const [showSticky, setShowSticky] = useState(false);
 
   useEffect(() => {
-    const onScroll = () => setShowSticky(window.scrollY > 400);
+    let depth50Fired = false;
+    const onScroll = () => {
+      setShowSticky(window.scrollY > 400);
+      if (!depth50Fired) {
+        const scrolled = window.scrollY + window.innerHeight;
+        const total = document.documentElement.scrollHeight;
+        if (scrolled / total >= 0.5) {
+          depth50Fired = true;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (window as any).fbq?.("trackCustom", "ScrollDepth50");
+        }
+      }
+    };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);

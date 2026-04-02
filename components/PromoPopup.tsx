@@ -43,6 +43,8 @@ export default function PromoPopup({ onOpenBooking, isBookingOpen }: PromoPopupP
       if (triggeredRef.current || isBookingOpen) return;
       triggeredRef.current = true;
       setVisible(true);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).fbq?.("trackCustom", "PromoPopupView");
       requestAnimationFrame(() => setIsAnimating(true));
     }, 5000);
 
@@ -83,9 +85,13 @@ export default function PromoPopup({ onOpenBooking, isBookingOpen }: PromoPopupP
     }
 
     setPopupState("success");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).fbq?.("track", "Lead");
   }
 
   function handleBookNow() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).fbq?.("track", "InitiateCheckout");
     handleClose();
     onOpenBooking();
   }
