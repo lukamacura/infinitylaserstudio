@@ -136,7 +136,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
       {/* Background image — desktop only */}
       <div className="absolute inset-0 z-10 pointer-events-none hidden lg:block">
         <Image
-          src="/desktop.jpg"
+          src="/desktop.JPG"
           alt=""
           fill
           className="object-cover object-center"

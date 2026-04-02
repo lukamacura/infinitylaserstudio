@@ -4,7 +4,7 @@ export default function MenSection({ onOpen }: Props) {
   return (
     <section className="py-20 px-6 bg-white">
       <div className="max-w-6xl mx-auto">
-        <div className="bg-gradient-to-br from-teal/20 to-mint/30 rounded-3xl p-10 md:p-14 grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+        <div className="bg-linear-to-br from-teal/20 to-mint/30 rounded-3xl p-10 md:p-14 grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
           {/* Text */}
           <div>
             <span className="inline-flex items-center gap-2 font-poppins text-sm text-gray-500 mb-4">
@@ -18,7 +18,7 @@ export default function MenSection({ onOpen }: Props) {
               Dlake na leđima, ramenima ili vratu ne bi trebalo da budu razlog za nelagodnost.
             </p>
             <p className="font-poppins text-gray-600 text-base leading-relaxed mb-4">
-              Sportisti, aktivni muškarci i svi koji cene uredan izgled '' laserska epilacija je isto što i redovan frizer. Samo ređe.
+              Sportisti, aktivni muškarci i svi koji cene uredan izgled &apos;&apos; laserska epilacija je isto što i redovan frizer. Samo ređe.
             </p>
             <p className="font-poppins text-gray-500 text-sm leading-relaxed mb-8">
               Tretmani su brzi i prilagođeni muškoj koži.
@@ -46,7 +46,7 @@ export default function MenSection({ onOpen }: Props) {
                 key={item.zone}
                 className="flex items-center gap-4 bg-white/70 backdrop-blur-sm rounded-2xl px-5 py-4"
               >
-                <div className="w-2 h-2 rounded-full bg-teal flex-shrink-0" />
+                <div className="w-2 h-2 rounded-full bg-teal shrink-0" />
                 <div>
                   <p className="font-poppins text-sm font-semibold text-gray-800">{item.zone}</p>
                   <p className="font-poppins text-xs text-gray-500">{item.desc}</p>

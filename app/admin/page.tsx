@@ -3,9 +3,10 @@
 import { useState, useEffect, useCallback, type FormEvent } from "react";
 import {
   ChevronLeft, ChevronRight, LogOut, X,
-  Clock, User, Mail, Phone, Calendar,
+  Clock, User, Mail, Phone, Calendar, CalendarPlus,
 } from "lucide-react";
 import { supabase, timeToMinutes } from "@/lib/supabase";
+import AdminReservationModal from "@/components/AdminReservationModal";
 import type { ReservationStatus } from "@/lib/database.types";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -97,6 +98,7 @@ export default function AdminPage() {
   const [selected, setSelected]           = useState<ReservationFull | null>(null);
   const [newStatus, setNewStatus]         = useState<ReservationStatus>("pending");
   const [saving, setSaving]               = useState(false);
+  const [reservationModalOpen, setReservationModalOpen] = useState(false);
 
   // Check session on mount
   useEffect(() => {
@@ -271,7 +273,21 @@ export default function AdminPage() {
         >
           Danas
         </button>
+
+        <button
+          onClick={() => setReservationModalOpen(true)}
+          className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#0B8078] text-white text-xs font-semibold font-poppins cursor-pointer hover:bg-blue-600 transition-colors"
+        >
+          <CalendarPlus size={16} />
+          Nova rezervacija
+        </button>
       </div>
+
+      <AdminReservationModal
+        isOpen={reservationModalOpen}
+        onClose={() => setReservationModalOpen(false)}
+        onSuccess={() => fetchWeek(weekStart)}
+      />
 
       {/* Calendar grid */}
       <div className="flex-1 overflow-auto">
