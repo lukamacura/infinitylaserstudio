@@ -36,13 +36,15 @@ function AnimatedChars({
   reduced: boolean | null | undefined;
 }) {
   const words = text.split(" ");
-  let globalIdx = 0;
+  const wordStartIndices = words.reduce<number[]>((acc, word, i) => {
+    acc.push(i === 0 ? 0 : acc[i - 1] + words[i - 1].length + 1);
+    return acc;
+  }, []);
 
   return (
     <>
       {words.map((word, wIdx) => {
-        const wordStartIdx = globalIdx;
-        globalIdx += word.length + 1;
+        const wordStartIdx = wordStartIndices[wIdx];
 
         return (
           <span key={wIdx} style={{ display: "inline-block", whiteSpace: "nowrap" }}>
@@ -129,7 +131,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
       </div>
 
       {/* Dark overlay — mobile only */}
-      <div className="absolute inset-0 z-[15] bg-black/45 lg:hidden" />
+      <div className="absolute inset-0 z-15 bg-black/45 lg:hidden" />
 
       {/* Background image — desktop only */}
       <div className="absolute inset-0 z-10 pointer-events-none hidden lg:block">
@@ -143,7 +145,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
       </div>
 
       {/* Dark gradient overlay — desktop only */}
-      <div className="absolute inset-0 z-[15] pointer-events-none hidden lg:block"
+      <div className="absolute inset-0 z-15 pointer-events-none hidden lg:block"
         style={{ background: "linear-gradient(to right, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.25) 55%, rgba(0,0,0,0.05) 100%)" }}
       />
 
@@ -325,7 +327,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
 
         {/* Right — 3-step card */}
         <div className="col-span-4 flex items-center justify-end">
-          <div className="bg-black/30 supports-[backdrop-filter]:bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl px-8 py-7 flex flex-col gap-6 w-72">
+          <div className="bg-black/30 supports-backdrop-filter:bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl px-8 py-7 flex flex-col gap-6 w-72">
             <p className="text-[10px] font-poppins text-white/50 tracking-[3px] uppercase">Vaš put</p>
             {steps.map((step) => (
               <div key={step.phase} className="flex items-start gap-4">
