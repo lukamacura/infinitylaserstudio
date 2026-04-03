@@ -250,6 +250,7 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
     if (isOpen) {
       requestAnimationFrame(() => setIsAnimating(true));
       document.body.style.overflow = "hidden";
+      (window as Window & { fbq?: (...args: unknown[]) => void }).fbq?.("track", "ViewContent");
     } else {
       setIsAnimating(false);
       document.body.style.overflow = "";
