@@ -82,7 +82,7 @@ export default function BrandStory() {
               <Check className="w-4 h-4 text-white" strokeWidth={2.5} />
             </div>
             <div>
-              <p className="font-poppins text-xs font-semibold text-gray-800">Dr. med. Ana Kasap</p>
+              <p className="font-poppins text-xs font-semibold text-gray-800">Dr Ana Kasap</p>
               <p className="font-poppins text-xs text-gray-500">Osnivač &amp; Lekar</p>
             </div>
           </div>
