@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data: [eventPayload] }),
+        body: JSON.stringify({ data: [eventPayload], test_event_code: "TEST38527" }),
       }
     );
 
