@@ -85,13 +85,36 @@ export default function PromoPopup({ onOpenBooking, isBookingOpen }: PromoPopupP
     }
 
     setPopupState("success");
+
+    const leadEventId = crypto.randomUUID();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).fbq?.("track", "Lead");
+    (window as any).fbq?.("track", "Lead", {}, { eventID: leadEventId });
+    fetch("/api/meta-capi", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        event_name: "Lead",
+        event_id: leadEventId,
+        event_source_url: window.location.href,
+        email: email.trim(),
+      }),
+    }).catch(() => {});
   }
 
   function handleBookNow() {
+    const eventId = crypto.randomUUID();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).fbq?.("track", "InitiateCheckout");
+    (window as any).fbq?.("track", "InitiateCheckout", {}, { eventID: eventId });
+    fetch("/api/meta-capi", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        event_name: "InitiateCheckout",
+        event_id: eventId,
+        event_source_url: window.location.href,
+        email: email.trim(),
+      }),
+    }).catch(() => {});
     handleClose();
     onOpenBooking();
   }

@@ -461,13 +461,63 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
     }).catch(() => {});
 
     const finalPrice = discountedPrice ?? totalPrice;
+    const usdValue = +(finalPrice / 102).toFixed(2);
+    const eventId = crypto.randomUUID();
+
+    // Browser Pixel — include eventID for deduplication with CAPI
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).fbq?.("track", "Schedule", {
-      value: +(finalPrice / 102).toFixed(2),
+      value: usdValue,
       currency: "USD",
-    });
+    }, { eventID: eventId });
+
+    // Server-side CAPI — mirrors the Pixel event
+    fetch("/api/meta-capi", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        event_name: "Schedule",
+        event_id: eventId,
+        event_source_url: window.location.href,
+        email: form.email.trim(),
+        phone: form.phone.trim() || undefined,
+        value: usdValue,
+        currency: "USD",
+      }),
+    }).catch(() => {});
+
     setStep("success");
     setSubmitting(false);
+  }
+
+  function handleAddToCart() {
+    const eventId = crypto.randomUUID();
+    (window as Window & { fbq?: (...args: unknown[]) => void }).fbq?.("track", "AddToCart", {}, { eventID: eventId });
+    fetch("/api/meta-capi", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        event_name: "AddToCart",
+        event_id: eventId,
+        event_source_url: window.location.href,
+      }),
+    }).catch(() => {});
+    setStep(3);
+  }
+
+  function handleInitiateCheckout() {
+    const eventId = crypto.randomUUID();
+    (window as Window & { fbq?: (...args: unknown[]) => void }).fbq?.("track", "InitiateCheckout", {}, { eventID: eventId });
+    fetch("/api/meta-capi", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        event_name: "InitiateCheckout",
+        event_id: eventId,
+        event_source_url: window.location.href,
+      }),
+    }).catch(() => {});
+    setStep(4);
   }
 
   if (!isOpen) return null;
@@ -631,7 +681,7 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
               )}
               <button
                 type="button"
-                onClick={() => { (window as Window & { fbq?: (...args: unknown[]) => void }).fbq?.("track", "InitiateCheckout"); setStep(4); }}
+                onClick={handleInitiateCheckout}
                 disabled={!selectedDate}
                 className="w-full py-3.5 rounded-full text-sm font-semibold tracking-widest font-poppins text-white transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{ backgroundColor: accent.hex }}
@@ -930,7 +980,7 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
               </div>
             </div>
             <button
-              onClick={() => { (window as Window & { fbq?: (...args: unknown[]) => void }).fbq?.("track", "AddToCart"); setStep(3); }}
+              onClick={handleAddToCart}
               className="px-6 py-3 rounded-full text-xs font-semibold tracking-widest font-poppins text-white transition-opacity hover:opacity-90 cursor-pointer"
               style={{ backgroundColor: accent.hex }}
             >
