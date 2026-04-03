@@ -246,8 +246,6 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
     if (isOpen) {
       requestAnimationFrame(() => setIsAnimating(true));
       document.body.style.overflow = "hidden";
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any).fbq?.("track", "InitiateCheckout");
     } else {
       setIsAnimating(false);
       document.body.style.overflow = "";
@@ -672,7 +670,7 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
               )}
               <button
                 type="button"
-                onClick={() => setStep(5)}
+                onClick={() => { (window as Window & { fbq?: (...args: unknown[]) => void }).fbq?.("track", "InitiateCheckout"); setStep(5); }}
                 disabled={!selectedTime}
                 className="w-full py-3.5 rounded-full text-sm font-semibold tracking-widest font-poppins text-white transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{ backgroundColor: accent.hex }}

@@ -69,7 +69,7 @@ export default function BrandStory() {
         {/* Image */}
         <div className="relative flex justify-center order-first md:order-last">
           <Image
-            src="/ana.jpeg"
+            src="/ana.jpg"
             alt="Ana Kasap, osnivač Infinity Laser Studio"
             width={400}
             height={500}
@@ -78,7 +78,7 @@ export default function BrandStory() {
 
           {/* Top-right badge: Dr. med. */}
           <div className="absolute -top-4 -right-4 z-20 bg-white rounded-2xl shadow-md px-4 py-3 flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-teal flex items-center justify-center flex-shrink-0">
+            <div className="w-8 h-8 rounded-full bg-teal flex items-center justify-center shrink-0">
               <Check className="w-4 h-4 text-white" strokeWidth={2.5} />
             </div>
             <div>
@@ -89,7 +89,7 @@ export default function BrandStory() {
 
           {/* Bottom-left badge: Certified studio */}
           <div className="absolute -bottom-4 -left-4 z-20 bg-white rounded-2xl shadow-md px-4 py-3 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-teal flex items-center justify-center flex-shrink-0">
+            <div className="w-10 h-10 rounded-full bg-teal flex items-center justify-center shrink-0">
               <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none">
                 <path d="M10 3l1.8 3.6L16 7.6l-3 2.9.7 4.1L10 12.5l-3.7 2.1.7-4.1L4 7.6l4.2-.9L10 3z" fill="#FCFAE5" stroke="#ACE6E4" strokeWidth="0.5" />
               </svg>

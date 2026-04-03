@@ -1,7 +1,7 @@
 # META Events in this web application 
  
  ## Standard Meta Events                              
- ### Event: PageView                                
+ ### Event: PageView                               
   Where: layout.tsx                            
   Trigger: Fires on every page load
   ────────────────────────────────────────     

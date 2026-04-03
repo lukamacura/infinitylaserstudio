@@ -11,6 +11,7 @@ import StatsSection from "@/components/StatsSection";
 import MenSection from "@/components/MenSection";
 import FAQSection from "@/components/FAQSection";
 import CostComparison from "@/components/CostComparison";
+import TeamSection from "@/components/TeamSection";
 import CommunitySection from "@/components/CommunitySection";
 import Footer from "@/components/Footer";
 
@@ -45,6 +46,7 @@ export default function Home() {
       <ServiceHighlights />
       <StatsSection />
       <CostComparison onOpen={open} />
+      <TeamSection />
       <MenSection onOpen={open} />
       <FAQSection />
       <CommunitySection onOpen={open} />
