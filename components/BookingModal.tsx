@@ -925,7 +925,7 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
               </div>
             </div>
             <button
-              onClick={() => { (window as any).fbq?.("track", "InitiateCheckout"); setStep(3); }}
+              onClick={() => { (window as { fbq?: (...args: unknown[]) => void }).fbq?.("track", "InitiateCheckout"); setStep(3); }}
               className="px-6 py-3 rounded-full text-xs font-semibold tracking-widest font-poppins text-white transition-opacity hover:opacity-90 cursor-pointer"
               style={{ backgroundColor: accent.hex }}
             >
