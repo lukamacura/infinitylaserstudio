@@ -7,9 +7,13 @@
  Where: layout.tsx
  Trigger: Fires on every page load
  ────────────────────────────────────────
-### Event: InitiateCheckout
+### Event: AddToCart
  Where: BookingModal.tsx
  Trigger: User clicks NASTAVI after service selection (Step 2 → Step 3)
+ ────────────────────────────────────────
+### Event: InitiateCheckout
+ Where: BookingModal.tsx
+ Trigger: User clicks NASTAVI after date selection (Step 3 → Step 4)
  ────────────────────────────────────────
 ### Event: Schedule
  Where: BookingModal.tsx

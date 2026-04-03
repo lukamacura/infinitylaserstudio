@@ -22,12 +22,21 @@ export const supabase = new Proxy({} as ReturnType<typeof getSupabaseClient>, {
 export const SLOT_SIZE             = 10;      // minutes per slot
 export const CONSULTATION_MINUTES  = 15;      // mandatory pre-treatment consultation
 
-/** Returns business hours (minutes since midnight) for a date string, or null if closed (Sunday). */
+// ── Temporary availability whitelist ────────────────────────────────────────
+// Remove this map (and the check below) to restore full-time scheduling.
+export const SPECIAL_AVAILABILITY: Record<string, { start: number; end: number }> = {
+  "2026-04-07": { start: 12 * 60,        end: 16 * 60 + 30 }, // 12:00–16:30
+  "2026-04-08": { start: 15 * 60,        end: 20 * 60      }, // 15:00–20:00
+  "2026-04-11": { start: 10 * 60 + 30,   end: 17 * 60      }, // 10:30–17:00
+  "2026-04-18": { start: 14 * 60,        end: 19 * 60      }, // 14:00–19:00
+  "2026-04-20": { start: 13 * 60,        end: 20 * 60      }, // 13:00–20:00
+  "2026-04-27": { start: 14 * 60,        end: 19 * 60      }, // 14:00–19:00
+};
+
+/** Returns business hours (minutes since midnight) for a date string, or null if closed. */
 export function getBusinessHours(dateStr: string): { start: number; end: number } | null {
-  const dow = new Date(`${dateStr}T00:00:00`).getDay(); // 0=Sun … 6=Sat
-  if (dow === 0) return null;                            // Sunday – closed
-  if (dow === 6) return { start: 10 * 60, end: 15 * 60 }; // Saturday 10:00–15:00
-  return { start: 14 * 60, end: 19 * 60 };              // Mon–Fri 14:00–19:00
+  // Temporary: only allow whitelisted dates
+  return SPECIAL_AVAILABILITY[dateStr] ?? null;
 }
 
 /** Total duration (including inter-service pauses, but NOT a trailing pause after the last service), rounded up to slot boundary */

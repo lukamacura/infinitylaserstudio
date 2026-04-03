@@ -9,7 +9,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import {
   supabase, calcBookingDuration, getAvailableSlots, getBusinessHours,
-  minutesToTime, timeToMinutes, SLOT_SIZE,
+  minutesToTime, timeToMinutes, SLOT_SIZE, SPECIAL_AVAILABILITY,
 } from "@/lib/supabase";
 import type { Service } from "@/lib/database.types";
 
@@ -69,33 +69,37 @@ interface DayOption {
 }
 
 /**
- * Build the next 6 bookable days (Mon–Sat; Sun is closed).
- * Today is included only when there is theoretical time left within the day's business hours.
- * Mon–Fri: 14:00–19:00 | Sat: 10:00–15:00
+ * Build bookable days from the special availability whitelist.
+ * Only shows future dates (or today if a slot still fits within the 2-hour buffer).
+ * Remove the SPECIAL_AVAILABILITY import/usage to restore full-time scheduling.
  */
 function buildDayOptions(totalDuration: number): DayOption[] {
   const now = new Date();
+  const todayStr = toDateStr(now);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   const minStartToday = nowMinutes + 120; // 2-hour notice
 
+  const whitelistDates: string[] = Object.keys(SPECIAL_AVAILABILITY).sort();
+
   const days: DayOption[] = [];
 
-  for (let offset = 0; days.length < 6 && offset < 14; offset++) {
-    const d = new Date(now);
-    d.setDate(now.getDate() + offset);
-
-    const dateStr = toDateStr(d);
+  for (const dateStr of whitelistDates) {
     const biz = getBusinessHours(dateStr);
-    if (!biz) continue; // Sunday or other closed day
+    if (!biz) continue;
 
-    const idx = monIdx(d);
-    const isToday = offset === 0;
+    // Skip dates in the past
+    if (dateStr < todayStr) continue;
 
-    // For today: only show if at least one slot fits within this day's business hours
+    const isToday = dateStr === todayStr;
+
+    // For today: only show if at least one slot fits after the 2-hour buffer
     if (isToday) {
       const earliestSlot = Math.ceil(minStartToday / SLOT_SIZE) * SLOT_SIZE;
       if (earliestSlot + totalDuration > biz.end) continue;
     }
+
+    const d = new Date(`${dateStr}T00:00:00`);
+    const idx = monIdx(d);
 
     days.push({
       date: dateStr,
@@ -626,7 +630,7 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
               )}
               <button
                 type="button"
-                onClick={() => setStep(4)}
+                onClick={() => { (window as Window & { fbq?: (...args: unknown[]) => void }).fbq?.("track", "InitiateCheckout"); setStep(4); }}
                 disabled={!selectedDate}
                 className="w-full py-3.5 rounded-full text-sm font-semibold tracking-widest font-poppins text-white transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{ backgroundColor: accent.hex }}
@@ -925,7 +929,7 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
               </div>
             </div>
             <button
-              onClick={() => { (window as { fbq?: (...args: unknown[]) => void }).fbq?.("track", "InitiateCheckout"); setStep(3); }}
+              onClick={() => { (window as Window & { fbq?: (...args: unknown[]) => void }).fbq?.("track", "AddToCart"); setStep(3); }}
               className="px-6 py-3 rounded-full text-xs font-semibold tracking-widest font-poppins text-white transition-opacity hover:opacity-90 cursor-pointer"
               style={{ backgroundColor: accent.hex }}
             >
