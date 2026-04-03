@@ -3,7 +3,6 @@ import { DM_Serif_Display, Poppins } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
-import Image from "next/image";
 
 const dmSerif = DM_Serif_Display({
   variable: "--font-playfair",
@@ -45,7 +44,8 @@ export default function RootLayout({
           `}
         </Script>
         <noscript>
-          <Image
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
             height="1"
             width="1"
             style={{ display: "none" }}
