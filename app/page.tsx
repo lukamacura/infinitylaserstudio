@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import BookingModal from "@/components/BookingModal";
 import PromoPopup from "@/components/PromoPopup";
 import Hero from "@/components/Hero";
@@ -19,8 +19,26 @@ import WistiaVideo from "@/components/WistiaVideo";
 
 export default function Home() {
   const [bookingOpen, setBookingOpen] = useState(false);
-  const open = () => setBookingOpen(true);
+  const [promoKey, setPromoKey] = useState(0);
+  const [pendingBooking, setPendingBooking] = useState(false);
+  const promoSubmitted = useRef(false);
   const [showSticky, setShowSticky] = useState(false);
+
+  function open() {
+    if (!promoSubmitted.current) {
+      setPromoKey((k) => k + 1);
+      setPendingBooking(true);
+    } else {
+      setBookingOpen(true);
+    }
+  }
+
+  function handlePromoClose() {
+    if (pendingBooking) {
+      setPendingBooking(false);
+      setBookingOpen(true);
+    }
+  }
 
   useEffect(() => {
     let depth50Fired = false;
@@ -56,7 +74,13 @@ export default function Home() {
       <CommunitySection onOpen={open} />
       <Footer onOpen={open} />
       <BookingModal isOpen={bookingOpen} onClose={() => setBookingOpen(false)} />
-      <PromoPopup onOpenBooking={open} isBookingOpen={bookingOpen} />
+      <PromoPopup
+        onOpenBooking={() => { setPendingBooking(false); setBookingOpen(true); }}
+        isBookingOpen={bookingOpen}
+        forceShowCount={promoKey}
+        onClose={handlePromoClose}
+        onSubmitted={() => { promoSubmitted.current = true; }}
+      />
       {showSticky && (
         <button
           onClick={open}

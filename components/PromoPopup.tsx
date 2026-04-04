@@ -8,6 +8,9 @@ import { supabase } from "@/lib/supabase";
 interface PromoPopupProps {
   onOpenBooking: () => void;
   isBookingOpen: boolean;
+  forceShowCount?: number;
+  onClose?: () => void;
+  onSubmitted?: () => void;
 }
 
 type PopupState =
@@ -24,7 +27,7 @@ const MONTH_NAMES_GEN = [
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export default function PromoPopup({ onOpenBooking, isBookingOpen }: PromoPopupProps) {
+export default function PromoPopup({ onOpenBooking, isBookingOpen, forceShowCount = 0, onClose, onSubmitted }: PromoPopupProps) {
   const [visible, setVisible]         = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const [popupState, setPopupState]   = useState<PopupState>("idle");
@@ -52,10 +55,24 @@ export default function PromoPopup({ onOpenBooking, isBookingOpen }: PromoPopupP
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Force-show when a booking button is clicked ──────────────────────────────
+  useEffect(() => {
+    if (forceShowCount === 0) return;
+    triggeredRef.current = true;
+    setPopupState("idle");
+    setEmail("");
+    setVisible(true);
+    requestAnimationFrame(() => setIsAnimating(true));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forceShowCount]);
+
   // ── Handlers ───────────────────────────────────────────────────────────────
   function handleClose() {
     setIsAnimating(false);
-    setTimeout(() => setVisible(false), 300);
+    setTimeout(() => {
+      setVisible(false);
+      onClose?.();
+    }, 300);
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -85,6 +102,7 @@ export default function PromoPopup({ onOpenBooking, isBookingOpen }: PromoPopupP
     }
 
     setPopupState("success");
+    onSubmitted?.();
 
     const leadEventId = crypto.randomUUID();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
