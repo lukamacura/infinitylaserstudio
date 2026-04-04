@@ -54,7 +54,7 @@ export default function BrandStory() {
           {/* Trust stats */}
           <div className="flex gap-8 mt-8">
             {[
-              { value: "4000+", label: "Zadovoljnih klijenata" },
+              { value: "1700+", label: "Zadovoljnih klijenata" },
               { value: "20+", label: "Godina iskustva" },
               { value: "99%", label: "Klijenata koji se vraćaju" },
             ].map((stat) => (

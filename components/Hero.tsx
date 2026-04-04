@@ -90,7 +90,7 @@ const steps = [
 ] as const;
 
 const stats = [
-  { value: "4000+",  label: "Klijenata" },
+  { value: "1700+",  label: "Klijenata" },
   { value: "5 god.", label: "Iskustva" },
   { value: "99%",    label: "Zadovoljnih" },
 ] as const;

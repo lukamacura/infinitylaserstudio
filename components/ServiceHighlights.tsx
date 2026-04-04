@@ -38,7 +38,7 @@ export default function ServiceHighlights() {
           </h2>
         </div>
         <p className="text-center font-poppins text-gray-500 text-sm mb-16 max-w-xl mx-auto leading-relaxed">
-          Bez brijača, bez crvenila, bez jutarnjeg rituala koji niko nije tražio. Više od 4.000 klijentkinja već zna kako izgleda sloboda.
+          Bez brijača, bez crvenila, bez jutarnjeg rituala koji niko nije tražio. Više od 1.700 klijentkinja već zna kako izgleda sloboda.
         </p>
 
         {/* Three-column layout: 4 highlights | image | 4 highlights */}

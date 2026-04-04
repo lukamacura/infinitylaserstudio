@@ -10,10 +10,12 @@ import ServiceHighlights from "@/components/ServiceHighlights";
 import StatsSection from "@/components/StatsSection";
 import MenSection from "@/components/MenSection";
 import FAQSection from "@/components/FAQSection";
+import PreparationSection from "@/components/PreparationSection";
 import CostComparison from "@/components/CostComparison";
 import TeamSection from "@/components/TeamSection";
 import CommunitySection from "@/components/CommunitySection";
 import Footer from "@/components/Footer";
+import WistiaVideo from "@/components/WistiaVideo";
 
 export default function Home() {
   const [bookingOpen, setBookingOpen] = useState(false);
@@ -41,6 +43,7 @@ export default function Home() {
   return (
     <main>
       <Hero onOpen={open} />
+      <WistiaVideo />
       <FeaturedServices onOpen={open} />
       <BrandStory />
       <ServiceHighlights />
@@ -49,6 +52,7 @@ export default function Home() {
       <TeamSection />
       <MenSection onOpen={open} />
       <FAQSection />
+      <PreparationSection />
       <CommunitySection onOpen={open} />
       <Footer onOpen={open} />
       <BookingModal isOpen={bookingOpen} onClose={() => setBookingOpen(false)} />

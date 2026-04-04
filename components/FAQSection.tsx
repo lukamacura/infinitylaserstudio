@@ -10,11 +10,11 @@ const faqs = [
   },
   {
     q: "Da li boli?",
-    a: "Onaj ko vam kaže NE – laže! Istina je da se bol ne može uporediti sa bolom depilacije. Može se osetiti samo blago peckanje koje prestaje odmah po završetku tretmana.",
+    a: "Tokom tretmana može se osetiti nelagodnost u vidu peckanja slabijeg ili jačeg intenziteta koja vrlo kratko traje i prestaje odmah nakon završenog tretmana.",
   },
   {
     q: "Da li je tretman bezbedan?",
-    a: "Apsolutno! Laserski snop prodire samo nekoliko milimetara u kožu pa ne ugrožava žlezde niti okolna tkiva.",
+    a: "Apsolutno. Laserski snop prepoznaje talasnu dužinu melanina u dlaci i uništava koren dlake. Nema dejstvo na ostala tkiva.",
   },
   {
     q: "Kada se vide prvi rezultati?",
@@ -22,12 +22,19 @@ const faqs = [
   },
   {
     q: "Koliko tretmana treba?",
-    a: "Između 6 i 10 tretmana, na svakih 4–6 nedelja. Dlake prolaze kroz različite faze rasta, a laser deluje samo u aktivnoj fazi - zbog toga je serija ključna za trajni rezultat. Posle serije, dlaka se ne vraća.",
+    a: "Od 6–10 tretmana koji se rade na 6–8 nedelja. Dlake prolaze kroz različite faze rasta, a samo dlaka u aktivnoj fazi može biti uništena. Zbog toga je serija tretmana ključna za trajni rezultat.",
   },
-
   {
-    q: "Ko ne sme da radi tretmane laserske epilacije?",
-    a: "Osobe koje imaju epilepsiju ne smeju na tretmane laserske epilacije. Trudnicama se ne preporučuju tretmani, kao i osobama koje imaju psorijazu.",
+    q: "Ko ne sme da radi tretman?",
+    a: "Trudnice, dojilje, osobe koje boluju od malignih bolesti i progresivnih neuroloških oboljenja. Oprez se preporučuje kod dijabetičara, osoba sa proširenim venama, psorijazom i osoba koje boluju od epilepsije. Nakon obavljenih konsultacija sa doktoricom odlučuje se o tretmanima.",
+  },
+  {
+    q: "Da li tretmane laserske epilacije mogu da rade maloletne osobe?",
+    a: "Epilacija se može raditi od 15. godine uz saglasnost roditelja i uz prethodnu konsultaciju sa doktoricom.",
+  },
+  {
+    q: "Da li se laserska epilacija može raditi leti?",
+    a: "Uz mere opreza kao što su izbegavanje direktnog izlaganja suncu/solarijumu minimalno 5 dana pre i nakon tretmana.",
   },
 ];
 
