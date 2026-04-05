@@ -4,6 +4,7 @@ import Script from "next/script";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
 import FloatingBookingButton from "@/components/FloatingBookingButton";
+import SocialProofToast from "@/components/SocialProofToast";
 
 const dmSerif = DM_Serif_Display({
   variable: "--font-playfair",
@@ -105,6 +106,7 @@ export default function RootLayout({
         className={`${dmSerif.variable} ${poppins.variable} antialiased`}
       >
         <Navbar />
+        <SocialProofToast />
         {children}
         <FloatingBookingButton />
       </body>
