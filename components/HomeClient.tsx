@@ -18,8 +18,6 @@ import WistiaVideo from "@/components/WistiaVideo";
 export default function HomeClient() {
   const [bookingOpen, setBookingOpen] = useState(false);
   const [preselectedNames, setPreselectedNames] = useState<string[]>([]);
-  const [showSticky, setShowSticky] = useState(false);
-
   function open() {
     setPreselectedNames([]);
     setBookingOpen(true);
@@ -33,7 +31,6 @@ export default function HomeClient() {
   useEffect(() => {
     let depth50Fired = false;
     const onScroll = () => {
-      setShowSticky(window.scrollY > 400);
       if (!depth50Fired) {
         const scrolled = window.scrollY + window.innerHeight;
         const total = document.documentElement.scrollHeight;
@@ -79,15 +76,6 @@ export default function HomeClient() {
         </div>
       </div>
 
-      {showSticky && (
-        <button
-          onClick={open}
-          className="fixed bottom-6 right-6 z-50 inline-flex items-center gap-2 px-6 py-3 rounded-full bg-foreground text-white text-xs font-semibold tracking-widest font-poppins shadow-lg hover:bg-foreground/90 transition-all cursor-pointer"
-          style={{ animation: "fadeInUp 0.3s ease forwards" }}
-        >
-          ZAKAŽI
-        </button>
-      )}
     </main>
   );
 }

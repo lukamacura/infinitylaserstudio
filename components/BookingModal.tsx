@@ -216,7 +216,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
   const [, setPromoCode]             = useState("");
   const [promoStatus, setPromoStatus]         = useState<"idle" | "valid" | "invalid">("idle");
   const []     = useState(false);
-  const [discountedPrice, setDiscountedPrice] = useState<number | null>(null);
+  const [, setDiscountedPrice] = useState<number | null>(null);
   const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null);
   const [displayedPrice, setDisplayedPrice]   = useState(0);
   const animFrameRef = useRef<number>(0);
@@ -226,9 +226,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
   const selectedServices = services.filter((s) => selectedIds.includes(s.id));
   const { effective: effectiveServices, appliedCombos } = applyComboRules(selectedServices, services);
   const totalDuration    = selectedServices.length > 0 ? calcBookingDuration(selectedServices) : 0;
-  const basePrice        = selectedServices.reduce((sum, s) => sum + s.price, 0);
   const totalPrice       = effectiveServices.reduce((sum, s) => sum + s.price, 0);
-  const comboSaving      = basePrice - totalPrice;
   const accent           = ACCENTS[gender ?? "zene"];
 
   // Day options rebuild whenever totalDuration changes

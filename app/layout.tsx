@@ -3,6 +3,7 @@ import { DM_Serif_Display, Poppins } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
+import FloatingBookingButton from "@/components/FloatingBookingButton";
 
 const dmSerif = DM_Serif_Display({
   variable: "--font-playfair",
@@ -105,6 +106,7 @@ export default function RootLayout({
       >
         <Navbar />
         {children}
+        <FloatingBookingButton />
       </body>
     </html>
   );
