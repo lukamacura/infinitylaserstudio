@@ -3,13 +3,17 @@
 import { motion } from "framer-motion";
 import Image from "next/image";
 
-interface Props { onOpen: () => void; }
+interface Props {
+  onOpen: () => void;
+  onOpenService: (keywords: string[]) => void;
+}
 
 type ServiceCard =
   | {
       name: string;
       description: string;
       price: string;
+      keywords: string[];
       type: "photo";
       photo: string;
     }
@@ -17,6 +21,7 @@ type ServiceCard =
       name: string;
       description: string;
       price: string;
+      keywords: string[];
       type: "icon";
       gradient: string;
       icon: React.ReactNode;
@@ -27,6 +32,7 @@ const services: ServiceCard[] = [
     name: "Noge + Intima",
     description: "Sloboda na plaži i u svakom trenutku. Glatka koža bez posledica brijanja i voska.",
     price: "6000 rsd",
+    keywords: ["noge", "intima"],
     type: "photo",
     photo: "/intime.png",
   },
@@ -34,19 +40,14 @@ const services: ServiceCard[] = [
     name: "Nausnice + brada",
     description: "Čista linija lica, bez senke, dlaka i redovnog brijanja. Prirodan, uredan izgled koji ostaje dugo.",
     price: "1800 rsd",
+    keywords: ["nausnice", "brada"],
     type: "photo",
     photo: "/face.png",
   },
-  {
-    name: "Stomak + Grudi",
-    description: "Čisto i uredno. Koža uvek spremna - bez iritacija, bez problema.",
-    price: "5700 rsd",
-    type: "photo",
-    photo: "/full_body.png",
-  },
+
 ];
 
-export default function FeaturedServices({ onOpen }: Props) {
+export default function FeaturedServices({ onOpen, onOpenService }: Props) {
   return (
     <section id="usluge" className="py-20 px-6 bg-white">
       <motion.div
@@ -72,11 +73,12 @@ export default function FeaturedServices({ onOpen }: Props) {
         </p>
 
         {/* Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-3xl mx-auto">
           {services.map((s) => (
-            <div
+            <button
               key={s.name}
-              className="group bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-lg transition-shadow duration-300"
+              onClick={() => onOpenService(s.keywords)}
+              className="group bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-xl hover:border-pink/30 transition-all duration-300 text-left cursor-pointer w-full"
             >
               {/* Image area */}
               {s.type === "photo" ? (
@@ -85,12 +87,12 @@ export default function FeaturedServices({ onOpen }: Props) {
                     src={s.photo}
                     alt={s.name}
                     fill
-                    className="object-cover object-top"
+                    className="object-cover object-top group-hover:scale-105 transition-transform duration-500"
                     sizes="(max-width: 768px) 100vw, 33vw"
                   />
                 </div>
               ) : (
-                <div className={`bg-gradient-to-br ${s.gradient} h-56 flex items-center justify-center p-10`}>
+                <div className={`bg-linear-to-br ${s.gradient} h-56 flex items-center justify-center p-10`}>
                   <div className="w-32 h-32">
                     {s.icon}
                   </div>
@@ -101,9 +103,14 @@ export default function FeaturedServices({ onOpen }: Props) {
               <div className="p-6">
                 <h3 className="font-playfair text-xl text-gray-800 mb-1">{s.name}</h3>
                 <p className="font-poppins text-sm text-gray-500 mb-3 leading-relaxed">{s.description}</p>
-                <p className="font-poppins text-base font-semibold text-gray-700 mb-4">{s.price}</p>
+                <div className="flex items-center justify-between">
+                  <p className="font-poppins text-base font-semibold text-gray-700">{s.price}</p>
+                  <span className="text-xs font-poppins font-semibold tracking-widest text-[#E85D8A] opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                    ZAKAŽI →
+                  </span>
+                </div>
               </div>
-            </div>
+            </button>
           ))}
         </div>
 

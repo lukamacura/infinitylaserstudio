@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import {
-  X, ChevronRight, ScanFace, Hand, Footprints,
+  X, ScanFace, Hand, Footprints,
   Flower2, Minus, Target, Shirt, ArrowLeft,
-  PersonStanding, Loader2, CheckCircle2, AlertCircle, Sparkles, User,
+  PersonStanding, Loader2, CheckCircle2, AlertCircle,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -16,9 +16,10 @@ import type { Service } from "@/lib/database.types";
 interface BookingModalProps {
   isOpen: boolean;
   onClose: () => void;
+  preselectedNames?: string[];
 }
 
-type Step = 1 | 2 | 3 | 4 | 5 | "success";
+type Step = 1 | 2 | 3 | 4 | 5 | "success" | "preparation";
 type Gender = "zene" | "muskarci";
 
 // ── Icon mapping ──────────────────────────────────────────────────────────────
@@ -184,19 +185,20 @@ const ACCENTS = {
 } as const;
 
 const STEP_LABELS: Record<Step, [string, string]> = {
-  1: ["KORAK 1 OD 5", "Za koga zakazuješ?"],
-  2: ["KORAK 2 OD 5", "Odaberi regije za tretman"],
-  3: ["KORAK 3 OD 5", "Izaberi datum"],
-  4: ["KORAK 4 OD 5", "Izaberi vreme"],
-  5: ["KORAK 5 OD 5", "Vaši podaci"],
+  1: ["KORAK 1 OD 4", "Za koga zakazuješ?"],
+  2: ["KORAK 1 OD 4", "Odaberi regije za tretman"],
+  3: ["KORAK 2 OD 4", "Izaberi datum"],
+  4: ["KORAK 3 OD 4", "Izaberi vreme"],
+  5: ["KORAK 4 OD 4", "Vaši podaci"],
   success: ["POTVRĐENO", "Termin je uspešno zakazan"],
+  preparation: ["PRE TRETMANA", "Šta treba da uradiš?"],
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
-export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
+export default function BookingModal({ isOpen, onClose, preselectedNames }: BookingModalProps) {
   const [isAnimating, setIsAnimating] = useState(false);
-  const [step, setStep]               = useState<Step>(1);
-  const [gender, setGender]           = useState<Gender | null>(null);
+  const [step, setStep]               = useState<Step>(2);
+  const [gender, setGender]           = useState<Gender | null>("zene");
   const [services, setServices]       = useState<Service[]>([]);
   const [loadingServices, setLoadingServices] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -211,13 +213,14 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
   const [submitting, setSubmitting]       = useState(false);
   const [submitError, setSubmitError]     = useState<string | null>(null);
   const [bookingRef, setBookingRef]       = useState<string | null>(null);
-  const [promoCode, setPromoCode]             = useState("");
+  const [, setPromoCode]             = useState("");
   const [promoStatus, setPromoStatus]         = useState<"idle" | "valid" | "invalid">("idle");
-  const [promoChecking, setPromoChecking]     = useState(false);
+  const []     = useState(false);
   const [discountedPrice, setDiscountedPrice] = useState<number | null>(null);
   const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null);
   const [displayedPrice, setDisplayedPrice]   = useState(0);
   const animFrameRef = useRef<number>(0);
+  const appliedPreselect = useRef(false);
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const selectedServices = services.filter((s) => selectedIds.includes(s.id));
@@ -272,8 +275,8 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
   // ── Animated price count-down on success screen ───────────────────────────
   useEffect(() => {
     if (step !== "success") return;
-    const target = discountedPrice ?? totalPrice;
-    const from   = discountedPrice !== null ? totalPrice : target;
+    const target = Math.round(totalPrice * 0.5);
+    const from   = totalPrice;
 
     if (from === target) { setDisplayedPrice(target); return; }
 
@@ -304,9 +307,30 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
       .then(({ data }) => { setDaySlots(data ?? []); setLoadingSlots(false); });
   }, [selectedDate]);
 
+  // ── Auto-select preselected services when modal opens ─────────────────────
+  useEffect(() => {
+    if (!isOpen) {
+      appliedPreselect.current = false;
+      return;
+    }
+    if (appliedPreselect.current) return;
+    if (!preselectedNames || preselectedNames.length === 0) {
+      appliedPreselect.current = true;
+      return;
+    }
+    if (services.length === 0) return; // wait for services to load
+    const matchedIds = services
+      .filter((s) => !isComboService(s.name))
+      .filter((s) => preselectedNames.some((kw) => s.name.toLowerCase().includes(kw)))
+      .map((s) => s.id);
+    if (matchedIds.length > 0) setSelectedIds(matchedIds);
+    appliedPreselect.current = true;
+   
+  }, [isOpen, preselectedNames, services]);
+
   // ── Handlers ──────────────────────────────────────────────────────────────
   function resetAll() {
-    setStep(1); setGender(null); setServices([]); setSelectedIds([]);
+    setStep(2); setGender("zene"); setSelectedIds([]);
     setSelectedDate(""); setSelectedTime(""); setDaySlots([]);
     setForm({ name: "", email: "", phone: "" });
     setFieldErrors({ name: false, email: false });
@@ -314,61 +338,6 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
     setPromoCode(""); setPromoStatus("idle"); setDiscountedPrice(null); setAppliedPromoCode(null);
   }
 
-  async function handleApplyPromo() {
-    const code = promoCode.trim().toLowerCase();
-    const emailToCheck = form.email.trim();
-
-    if (code === "tb-2026") {
-      if (!emailToCheck) {
-        setPromoStatus("invalid");
-        setDiscountedPrice(null);
-        setAppliedPromoCode(null);
-        return;
-      }
-      setPromoChecking(true);
-      const { data: lead } = await supabase
-        .from("leads")
-        .select("id, promo_used")
-        .eq("email", emailToCheck)
-        .maybeSingle();
-      setPromoChecking(false);
-      if (lead && !lead.promo_used) {
-        setPromoStatus("valid");
-        setDiscountedPrice(Math.round(totalPrice * 0.5));
-        setAppliedPromoCode("tb-2026");
-      } else {
-        setPromoStatus("invalid");
-        setDiscountedPrice(null);
-        setAppliedPromoCode(null);
-      }
-    } else if (code === "ils-10") {
-      if (!emailToCheck) {
-        setPromoStatus("invalid");
-        setDiscountedPrice(null);
-        setAppliedPromoCode(null);
-        return;
-      }
-      setPromoChecking(true);
-      const { count } = await supabase
-        .from("reservations")
-        .select("id", { count: "exact", head: true })
-        .eq("customer_email", emailToCheck);
-      setPromoChecking(false);
-      if (count && count >= 1) {
-        setPromoStatus("valid");
-        setDiscountedPrice(Math.round(totalPrice * 0.9));
-        setAppliedPromoCode("ils-10");
-      } else {
-        setPromoStatus("invalid");
-        setDiscountedPrice(null);
-        setAppliedPromoCode(null);
-      }
-    } else {
-      setPromoStatus("invalid");
-      setDiscountedPrice(null);
-      setAppliedPromoCode(null);
-    }
-  }
 
   function handleClose() {
     setIsAnimating(false);
@@ -376,10 +345,10 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
   }
 
   function handleBack() {
-    if (step === 2) { setStep(1); setGender(null); setSelectedIds([]); setServices([]); }
-    else if (step === 3) { setStep(2); setSelectedDate(""); setSelectedTime(""); }
+    if (step === 3) { setStep(2); setSelectedDate(""); setSelectedTime(""); }
     else if (step === 4) { setStep(3); setSelectedTime(""); }
     else if (step === 5) { setStep(4); }
+    else if (step === "preparation") { setStep("success"); }
   }
 
   function toggleService(id: string) {
@@ -396,7 +365,7 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
     // Validate – highlight empty required fields instead of blocking silently
     const errors = { name: !form.name.trim(), email: !form.email.trim() };
     setFieldErrors(errors);
-    if (errors.name || errors.email || !selectedDate || !selectedTime || !gender) return;
+    if (errors.name || errors.email || !selectedDate || !selectedTime) return;
 
     setSubmitting(true);
     setSubmitError(null);
@@ -454,13 +423,13 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
         services:         effectiveServices.map((s) => ({ name: s.name, price: s.price })),
         total_duration:   totalDuration,
         total_price:      totalPrice,
-        discounted_price: discountedPrice,
-        promo_code:       appliedPromoCode,
+        discounted_price: Math.round(totalPrice * 0.5),
+        promo_code:       "50% promo",
         booking_ref:      bookingRefValue,
       }),
     }).catch(() => {});
 
-    const finalPrice = discountedPrice ?? totalPrice;
+    const finalPrice = Math.round(totalPrice * 0.5);
     const usdValue = +(finalPrice / 102).toFixed(2);
     const eventId = crypto.randomUUID();
 
@@ -527,6 +496,12 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <style>{`
+        @keyframes nastaviGlow {
+          0%, 100% { box-shadow: 0 0 14px rgba(232,93,138,0.45), 0 4px 14px rgba(232,93,138,0.25); }
+          50% { box-shadow: 0 0 28px rgba(232,93,138,0.75), 0 6px 22px rgba(232,93,138,0.45); }
+        }
+      `}</style>
       {/* Backdrop */}
       <div
         className={`absolute inset-0 bg-foreground/40 backdrop-blur-sm transition-opacity duration-300 ${isAnimating ? "opacity-100" : "opacity-0"}`}
@@ -540,7 +515,7 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
           <div className="flex items-center gap-3">
-            {(step === 2 || step === 3 || step === 4 || step === 5) && (
+            {(step === 3 || step === 4 || step === 5 || step === "preparation") && (
               <button onClick={handleBack} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-foreground/5 transition-colors cursor-pointer" aria-label="Nazad">
                 <ArrowLeft size={18} />
               </button>
@@ -561,42 +536,21 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
         {/* Scrollable content */}
         <div className="px-6 pb-6 overflow-y-auto flex-1">
 
-          {/* ══ STEP 1: Gender ══════════════════════════════════════════════ */}
-          {step === 1 && (
-            <div className="flex flex-col gap-3">
-              <button
-                onClick={() => { setGender("zene"); setStep(2); }}
-                className="group flex items-center gap-4 w-full p-5 rounded-2xl border-2 border-foreground/10 hover:border-pink transition-colors text-left cursor-pointer"
-              >
-                <div className="w-14 h-14 rounded-xl bg-pink/15 flex items-center justify-center shrink-0 group-hover:bg-pink/25 transition-colors">
-                  <Sparkles size={28} className="text-[#E85D8A]" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-lg font-bold font-poppins">Ženske usluge</p>
-                  <p className="text-sm text-foreground/50 font-poppins mt-0.5">10 regija dostupno</p>
-                </div>
-                <ChevronRight size={20} className="text-foreground/30 group-hover:text-pink transition-colors" />
-              </button>
-
-              <button
-                onClick={() => { setGender("muskarci"); setStep(2); }}
-                className="group flex items-center gap-4 w-full p-5 rounded-2xl border-2 border-foreground/10 hover:border-teal transition-colors text-left cursor-pointer"
-              >
-                <div className="w-14 h-14 rounded-xl bg-teal/15 flex items-center justify-center shrink-0 group-hover:bg-teal/25 transition-colors">
-                  <User size={28} className="text-[#0D9488]" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-lg font-bold font-poppins">Muške usluge</p>
-                  <p className="text-sm text-foreground/50 font-poppins mt-0.5">9 regija dostupno</p>
-                </div>
-                <ChevronRight size={20} className="text-foreground/30 group-hover:text-teal transition-colors" />
-              </button>
-            </div>
-          )}
 
           {/* ══ STEP 2: Services ════════════════════════════════════════════ */}
           {step === 2 && (
             <div className="flex flex-col gap-2">
+              {/* Social proof signals */}
+              <div className="flex flex-col gap-2 mb-3">
+                <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-green-100 border border-green-100">
+                  <span className="text-green-500 text-base leading-none shrink-0">✓</span>
+                  <p className="text-xs font-poppins text-green-700 font-semibold leading-snug">Vraćamo novac ukoliko se ne rešiš 70–90% dlačica</p>
+                </div>
+                <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-pink-100 border border-pink/15">
+                  <span className="text-[#E85D8A] text-base leading-none shrink-0">♥</span>
+                  <p className="text-xs font-poppins text-foreground/65 font-medium leading-snug">Preko 1700 žena se uspešno rešilo dlačica</p>
+                </div>
+              </div>
               {loadingServices ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 size={28} className="animate-spin text-foreground/30" />
@@ -679,15 +633,18 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
                   })}
                 </div>
               )}
-              <button
-                type="button"
-                onClick={handleInitiateCheckout}
-                disabled={!selectedDate}
-                className="w-full py-3.5 rounded-full text-sm font-semibold tracking-widest font-poppins text-white transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-                style={{ backgroundColor: accent.hex }}
-              >
-                NASTAVI
-              </button>
+              <div className="flex flex-col items-center gap-1">
+                <button
+                  type="button"
+                  onClick={handleInitiateCheckout}
+                  disabled={!selectedDate}
+                  className="w-full py-4 rounded-full text-sm font-semibold tracking-widest font-poppins text-white active:scale-95 transition-transform cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                  style={{ backgroundColor: accent.hex, animation: selectedDate ? "nastaviGlow 2s ease-in-out infinite" : undefined }}
+                >
+                  NASTAVI
+                </button>
+                <p className="text-[10px] font-poppins text-foreground/40">Preko 1700 žena se uspešno rešilo dlačica</p>
+              </div>
             </div>
           )}
 
@@ -723,15 +680,18 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
                   ))}
                 </div>
               )}
-              <button
-                type="button"
-                onClick={() => setStep(5)}
-                disabled={!selectedTime}
-                className="w-full py-3.5 rounded-full text-sm font-semibold tracking-widest font-poppins text-white transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-                style={{ backgroundColor: accent.hex }}
-              >
-                NASTAVI
-              </button>
+              <div className="flex flex-col items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setStep(5)}
+                  disabled={!selectedTime}
+                  className="w-full py-4 rounded-full text-sm font-semibold tracking-widest font-poppins text-white active:scale-95 transition-transform cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                  style={{ backgroundColor: accent.hex, animation: selectedTime ? "nastaviGlow 2s ease-in-out infinite" : undefined }}
+                >
+                  NASTAVI
+                </button>
+                <p className="text-[10px] font-poppins text-foreground/40">Vraćamo novac ako se ne rešiš 70–90% dlačica</p>
+              </div>
             </div>
           )}
 
@@ -781,54 +741,35 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
                 />
               </div>
 
-              <div>
-                <p className="text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-2">PROMO KOD</p>
-                <p className="text-xs text-foreground/40 font-poppins mb-2">Imaš promo kod?</p>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="npr. xx-yyyy"
-                    value={promoCode}
-                    onChange={(e) => { setPromoCode(e.target.value); setPromoStatus("idle"); setDiscountedPrice(null); setAppliedPromoCode(null); }}
-                    className="flex-1 px-4 py-3 rounded-xl border-2 border-foreground/10 focus:outline-none font-poppins text-sm transition-colors"
-                    onFocus={(e) => (e.target.style.borderColor = accent.hex)}
-                    onBlur={(e) => (e.target.style.borderColor = "")}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleApplyPromo}
-                    disabled={!promoCode.trim() || promoChecking}
-                    className="px-4 py-3 rounded-xl text-xs font-semibold tracking-widest font-poppins text-white transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                    style={{ backgroundColor: accent.hex }}
-                  >
-                    {promoChecking ? (
-                      <Loader2 size={14} className="animate-spin" />
-                    ) : "PRIMENI"}
-                  </button>
-                </div>
-                {promoStatus === "valid" && (
-                  <div className="mt-2 flex items-center justify-between px-3 py-2.5 rounded-xl bg-green-50">
-                    <p className="text-xs text-green-700 font-poppins font-semibold">
-                      {appliedPromoCode === "ils-10"
-                        ? "Kod primenjen - 10% popusta aktivirano."
-                        : "Kod primenjen - 50% popusta aktivirano."}
-                    </p>
-                    <div className="text-right shrink-0 ml-3">
-                      <p className="text-[10px] text-foreground/35 font-poppins line-through leading-none">{formatPrice(totalPrice)} RSD</p>
-                      <p className="text-sm font-bold font-poppins text-green-700 leading-tight">{formatPrice(discountedPrice ?? totalPrice)} RSD</p>
+              {/* Price summary with savings */}
+              {selectedIds.length > 0 && (
+                <div className="rounded-2xl bg-foreground/4 p-4">
+                  <p className="text-[10px] font-semibold tracking-widest text-foreground/40 font-poppins mb-2">PREGLED CENE</p>
+                  {/* Selected regions */}
+                  <div className="mb-3">
+                    {effectiveServices.map((s) => (
+                      <div key={s.id} className="flex justify-between items-center py-0.5">
+                        <span className="text-xs font-poppins text-foreground/60">{s.name}</span>
+                        <span className="text-xs font-poppins text-foreground/40">{formatPrice(s.price)} RSD</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="border-t border-foreground/10 pt-2.5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-poppins text-foreground/50">Redovna cena</span>
+                      <span className="text-sm font-poppins font-semibold text-foreground/40 line-through">{formatPrice(totalPrice)} RSD</span>
+                    </div>
+                    <div className="flex justify-between items-center mt-1.5">
+                      <span className="text-sm font-poppins text-green-700 font-semibold">Konačna cena sa popustom (−50%)</span>
+                      <span className="text-sm font-poppins font-bold text-green-700">{formatPrice(Math.round(totalPrice * 0.5))} RSD</span>
+                    </div>
+                    <div className="flex justify-between items-center mt-1 pt-2 border-t border-foreground/8">
+                      <span className="text-xs font-poppins text-foreground/40">Ušteda za 1. tretman</span>
+                      <span className="text-xs font-poppins font-semibold" style={{ color: "#E85D8A" }}>{formatPrice(Math.round(totalPrice * 0.5))} RSD</span>
                     </div>
                   </div>
-                )}
-                {promoStatus === "invalid" && (
-                  <p className="text-xs text-red-500 font-poppins mt-1.5">
-                    {promoCode.trim().toLowerCase() === "tb-2026"
-                      ? "Kod je već iskorišćen."
-                      : promoCode.trim().toLowerCase() === "ils-10"
-                      ? "Nemaš prethodne rezervacije."
-                      : "Nevažeći promo kod."}
-                  </p>
-                )}
-              </div>
+                </div>
+              )}
 
               {submitError && (
                 <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 text-red-600 text-sm font-poppins">
@@ -879,25 +820,21 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
                 >
                   <p className="text-[10px] font-semibold tracking-widest text-foreground/40 font-poppins mb-1">CENA</p>
 
-                  {/* Original price - struck through when promo is active */}
-                  {promoStatus === "valid" && (
-                    <p className="text-xs text-foreground/35 font-poppins line-through leading-none mb-0.5">
-                      {formatPrice(totalPrice)} RSD
-                    </p>
-                  )}
+                  {/* Original price — always struck through */}
+                  <p className="text-xs text-foreground/35 font-poppins line-through leading-none mb-0.5">
+                    {formatPrice(totalPrice)} RSD
+                  </p>
 
-                  {/* Animated number */}
+                  {/* Animated discounted number */}
                   <p className="text-3xl font-bold font-poppins leading-none tabular-nums" style={{ color: accent.hex }}>
                     {formatPrice(displayedPrice)}
                   </p>
                   <p className="text-xs font-semibold font-poppins mt-1" style={{ color: accent.hex }}>RSD</p>
 
-                  {/* Promo badge */}
-                  {promoStatus === "valid" && (
-                    <span className="mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold font-poppins text-white bg-green-500">
-                      {appliedPromoCode === "ils-10" ? "−10% POPUST" : "−50% POPUST"}
-                    </span>
-                  )}
+                  {/* Always show discount badge */}
+                  <span className="mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold font-poppins text-white bg-green-500">
+                    −50% POPUST
+                  </span>
                 </div>
               </div>
 
@@ -935,57 +872,80 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
               </div>
 
               <button
+                type="button"
+                onClick={() => setStep("preparation")}
+                className="mt-4 w-full py-3 rounded-full text-sm font-semibold tracking-widest font-poppins border-2 cursor-pointer transition-all hover:opacity-80"
+                style={{ borderColor: accent.hex, color: accent.hex }}
+              >
+                ŠTA TREBA DA URADIM PRE TERMINA
+              </button>
+
+              <button
                 onClick={handleClose}
-                className="mt-6 w-full py-3 rounded-full text-sm font-semibold tracking-widest font-poppins text-white cursor-pointer transition-opacity hover:opacity-90"
+                className="mt-2 w-full py-3 rounded-full text-sm font-semibold tracking-widest font-poppins text-white cursor-pointer transition-opacity hover:opacity-90"
                 style={{ backgroundColor: accent.hex }}
               >
                 ZATVORI
               </button>
             </div>
           )}
+
+          {/* ══ PREPARATION ═══════════════════════════════════════════════ */}
+          {step === "preparation" && (
+            <div className="flex flex-col gap-6 py-2">
+              {[
+                { num: "01", text: "Pre prvog tretmana mora proći minimum mesec dana od poslednjeg čupanja dlačica bilo koje vrste." },
+                { num: "02", text: "Dlačice uklanjati isključivo brijačem ili kremom za depilaciju — nikako čupanjem." },
+                { num: "03", text: "Dan pre dolaska na tretman obrijati dlačice ili ih ukloniti depilacijskom kremom." },
+                { num: "04", text: "Na dan tretmana na kožu ne nanositi nikakve preparate (kreme, ulja, dezodorans)." },
+              ].map((step) => (
+                <div key={step.num} className="flex items-start gap-5">
+                  <span className="font-playfair text-3xl leading-none shrink-0 w-10 text-right" style={{ color: `${accent.hex}99` }}>
+                    {step.num}
+                  </span>
+                  <div className="border-l-2 pl-5 py-0.5" style={{ borderColor: `${accent.hex}4D` }}>
+                    <p className="font-poppins text-sm text-foreground/60 leading-relaxed">{step.text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ── Footer: step 2 continue ───────────────────────────────────── */}
         {step === 2 && selectedIds.length > 0 && (
-          <div className="px-6 py-4 border-t border-foreground/10 shrink-0 flex items-center justify-between">
-            <div className="flex flex-col gap-2">
-              <div>
-                <p className="text-xs text-foreground/50 font-poppins">Ukupno vreme termina</p>
-                <p className="text-lg font-bold font-poppins">{totalDuration} min</p>
-                <p className="text-[11px] text-foreground/40 font-poppins">uklj. konsultacija i pauze</p>
+          <div className="px-6 py-4 border-t border-foreground/10 shrink-0 flex items-center justify-between gap-4">
+            <div className="flex flex-col gap-1 min-w-0">
+              <p className="text-[11px] text-foreground/35 font-poppins mb-0.5">{totalDuration} min  sa konsultacijom</p>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-foreground/40 font-poppins">Bez popusta</span>
+                <span className="text-sm font-poppins text-foreground/35 line-through">{formatPrice(totalPrice)} RSD</span>
               </div>
-              <div>
-                {appliedCombos.length > 0 && (
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <span
-                      className="px-2 py-0.5 rounded-full text-[10px] font-bold font-poppins text-white"
-                      style={{ backgroundColor: accent.hex }}
-                    >
-                      COMBO
-                    </span>
-                    <span className="text-[11px] font-poppins text-green-600 font-semibold">
-                      -{formatPrice(comboSaving)} RSD popusta
-                    </span>
-                  </div>
-                )}
-                <p className="text-xs text-foreground/50 font-poppins">Cena tretmana</p>
-                {comboSaving > 0 && (
-                  <p className="text-[11px] text-foreground/35 font-poppins line-through leading-none">
-                    {formatPrice(basePrice)} RSD
-                  </p>
-                )}
-                <p className="text-sm font-bold font-poppins" style={{ color: accent.hex }}>
-                  {formatPrice(totalPrice)} RSD
-                </p>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-foreground/60 font-poppins font-medium">Sa 50% popustom</span>
+                <span className="text-base font-bold font-poppins" style={{ color: "#E85D8A" }}>{formatPrice(Math.round(totalPrice * 0.5))} RSD</span>
               </div>
+              <div className="flex items-center justify-between gap-3 pt-1 border-t border-foreground/8 mt-0.5">
+                <span className="text-[11px] text-green-700 font-poppins font-semibold">Uštediš</span>
+                <span className="text-[11px] text-green-700 font-poppins font-semibold">{formatPrice(Math.round(totalPrice * 0.5))} RSD</span>
+              </div>
+              {appliedCombos.length > 0 && (
+                <div className="flex items-center gap-1 mt-0.5">
+                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold font-poppins text-white" style={{ backgroundColor: accent.hex }}>COMBO</span>
+                  <span className="text-[10px] font-poppins text-foreground/40">paket popust uračunat</span>
+                </div>
+              )}
             </div>
-            <button
-              onClick={handleAddToCart}
-              className="px-6 py-3 rounded-full text-xs font-semibold tracking-widest font-poppins text-white transition-opacity hover:opacity-90 cursor-pointer"
-              style={{ backgroundColor: accent.hex }}
-            >
-              NASTAVI
-            </button>
+            <div className="flex flex-col items-end gap-1 shrink-0">
+              <button
+                onClick={handleAddToCart}
+                className="px-8 py-3.5 rounded-full text-sm font-semibold tracking-widest font-poppins text-white active:scale-95 transition-transform cursor-pointer"
+                style={{ backgroundColor: "#E85D8A", animation: "nastaviGlow 2s ease-in-out infinite" }}
+              >
+                NASTAVI
+              </button>
+              <p className="text-[10px] font-poppins text-foreground/40 text-right">Pre 1. tretmana sve objašnjavamo</p>
+            </div>
           </div>
         )}
 

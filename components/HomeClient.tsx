@@ -1,16 +1,14 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import BookingModal from "@/components/BookingModal";
-import PromoPopup from "@/components/PromoPopup";
 import Hero from "@/components/Hero";
 import FeaturedServices from "@/components/FeaturedServices";
 import BrandStory from "@/components/BrandStory";
 import ServiceHighlights from "@/components/ServiceHighlights";
 import StatsSection from "@/components/StatsSection";
-import MenSection from "@/components/MenSection";
+// import MenSection from "@/components/MenSection";
 import FAQSection from "@/components/FAQSection";
-import PreparationSection from "@/components/PreparationSection";
 import CostComparison from "@/components/CostComparison";
 import TeamSection from "@/components/TeamSection";
 import CommunitySection from "@/components/CommunitySection";
@@ -19,25 +17,17 @@ import WistiaVideo from "@/components/WistiaVideo";
 
 export default function HomeClient() {
   const [bookingOpen, setBookingOpen] = useState(false);
-  const [promoKey, setPromoKey] = useState(0);
-  const [pendingBooking, setPendingBooking] = useState(false);
-  const promoSubmitted = useRef(false);
+  const [preselectedNames, setPreselectedNames] = useState<string[]>([]);
   const [showSticky, setShowSticky] = useState(false);
 
   function open() {
-    if (!promoSubmitted.current) {
-      setPromoKey((k) => k + 1);
-      setPendingBooking(true);
-    } else {
-      setBookingOpen(true);
-    }
+    setPreselectedNames([]);
+    setBookingOpen(true);
   }
 
-  function handlePromoClose() {
-    if (pendingBooking) {
-      setPendingBooking(false);
-      setBookingOpen(true);
-    }
+  function openWithPreselect(keywords: string[]) {
+    setPreselectedNames(keywords);
+    setBookingOpen(true);
   }
 
   useEffect(() => {
@@ -61,26 +51,34 @@ export default function HomeClient() {
   return (
     <main>
       <Hero onOpen={open} />
-      <WistiaVideo />
-      <FeaturedServices onOpen={open} />
+      <FeaturedServices onOpen={open} onOpenService={openWithPreselect} />
       <BrandStory />
+      <WistiaVideo />
       <ServiceHighlights />
       <StatsSection />
       <CostComparison onOpen={open} />
       <TeamSection />
-      <MenSection onOpen={open} />
+      {/* <MenSection onOpen={open} /> */}
+<CommunitySection onOpen={open} />
       <FAQSection />
-      <PreparationSection />
-      <CommunitySection onOpen={open} />
       <Footer onOpen={open} />
-      <BookingModal isOpen={bookingOpen} onClose={() => setBookingOpen(false)} />
-      <PromoPopup
-        onOpenBooking={() => { setPendingBooking(false); setBookingOpen(true); }}
-        isBookingOpen={bookingOpen}
-        forceShowCount={promoKey}
-        onClose={handlePromoClose}
-        onSubmitted={() => { promoSubmitted.current = true; }}
+      <BookingModal
+        isOpen={bookingOpen}
+        onClose={() => { setBookingOpen(false); setPreselectedNames([]); }}
+        preselectedNames={preselectedNames}
       />
+
+      {/* Promo banner — fixed top-right */}
+      <div className="fixed top-4 right-4 z-40 pointer-events-none select-none">
+        <div
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white text-[11px] font-semibold font-poppins tracking-wide shadow-lg"
+          style={{ backgroundColor: "#E85D8A" }}
+        >
+          <span className="text-xs leading-none">🏷</span>
+          50% popusta na 1. tretman
+        </div>
+      </div>
+
       {showSticky && (
         <button
           onClick={open}

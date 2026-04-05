@@ -1,87 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Image from "next/image";
-import { motion, useReducedMotion, AnimatePresence } from "framer-motion";
-
-const heroHeadings = [
-  {
-    line1: "72 sata godišnje trošiš na brijanje.",
-    gradient: "A možeš",
-    after: " na bilo šta drugo.",
-  },
-  {
-    line1: "Brijanje, depilacija, crvenilo, urasle dlake.",
-    gradient: "Postoji bolje",
-    after: " rešenje.",
-  },
-  {
-    line1: "Jednom epilacija. Zauvek bez dlaka.",
-    gradient: "Tvoja koža,",
-    after: " tvoja sloboda.",
-  },
-] as const;
-
-const STAGGER = 0.018;
-const CHAR_DUR = 0.18;
-const INTERVAL_MS = 4500;
-
-function AnimatedChars({
-  text,
-  startDelay,
-  reduced,
-}: {
-  text: string;
-  startDelay: number;
-  reduced: boolean | null | undefined;
-}) {
-  const words = text.split(" ");
-  const wordStartIndices = words.reduce<number[]>((acc, word, i) => {
-    acc.push(i === 0 ? 0 : acc[i - 1] + words[i - 1].length + 1);
-    return acc;
-  }, []);
-
-  return (
-    <>
-      {words.map((word, wIdx) => {
-        const wordStartIdx = wordStartIndices[wIdx];
-
-        return (
-          <span key={wIdx} style={{ display: "inline-block", whiteSpace: "nowrap" }}>
-            {word.split("").map((char, cIdx) => (
-              <motion.span
-                key={cIdx}
-                initial={reduced ? false : { opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{
-                  duration: CHAR_DUR,
-                  delay: startDelay + (wordStartIdx + cIdx) * STAGGER,
-                  ease: "easeOut",
-                }}
-                style={{ display: "inline-block" }}
-              >
-                {char}
-              </motion.span>
-            ))}
-            {wIdx < words.length - 1 && (
-              <motion.span
-                initial={reduced ? false : { opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{
-                  duration: CHAR_DUR,
-                  delay: startDelay + (wordStartIdx + word.length) * STAGGER,
-                }}
-                style={{ display: "inline-block" }}
-              >
-                {"\u00A0"}
-              </motion.span>
-            )}
-          </span>
-        );
-      })}
-    </>
-  );
-}
 
 const steps = [
   { dot: "bg-rose-300", phase: "Danas",         label: "Svaki dan se briješ" },
@@ -96,22 +15,6 @@ const stats = [
 ] as const;
 
 export default function Hero({ onOpen }: { onOpen: () => void }) {
-  const prefersReduced = useReducedMotion();
-  const [hIdx, setHIdx] = useState(0);
-
-  useEffect(() => {
-    if (prefersReduced) return;
-    const id = setInterval(
-      () => setHIdx((i) => (i + 1) % heroHeadings.length),
-      INTERVAL_MS
-    );
-    return () => clearInterval(id);
-  }, [prefersReduced]);
-
-  const h = heroHeadings[hIdx];
-  const gradientDelay = h.line1.length * STAGGER + 0.05;
-  const afterDelay = gradientDelay + 0.35;
-
   return (
     <section
       className="relative overflow-hidden min-h-screen lg:h-screen"
@@ -131,7 +34,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
       </div>
 
       {/* Dark overlay — mobile only */}
-      <div className="absolute inset-0 z-15 bg-black/45 lg:hidden" />
+      <div className="absolute inset-0 z-15 bg-black/55 lg:hidden" />
 
       {/* Background image — desktop only */}
       <div className="absolute inset-0 z-10 pointer-events-none hidden lg:block">
@@ -146,7 +49,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
 
       {/* Dark gradient overlay — desktop only */}
       <div className="absolute inset-0 z-15 pointer-events-none hidden lg:block"
-        style={{ background: "linear-gradient(to right, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.25) 55%, rgba(0,0,0,0.05) 100%)" }}
+        style={{ background: "linear-gradient(to right, rgba(0,0,0,0.70) 0%, rgba(0,0,0,0.40) 55%, rgba(0,0,0,0.10) 100%)" }}
       />
 
       {/* Ambient blobs — desktop only */}
@@ -160,59 +63,30 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
         Laserska epilacija Beograd — Infinity Laser Studio
       </h1>
 
-      {/* ── MOBILE layout ─────────────────────────────────────────────────────
-          Normal document flow — section is min-h-screen so it fills the
-          viewport but grows to fit content on small devices. No fixed height,
-          no absolute positioning, no JS measurement needed.
-      ──────────────────────────────────────────────────────────────────────── */}
+      {/* ── MOBILE layout ──────────────────────────────────────────────────────── */}
       <div className="lg:hidden relative z-30 flex flex-col px-6 pt-24 pb-6 gap-4"
         style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
       >
-        {/* Heading — minHeight prevents layout shift during heading rotations */}
-        <div style={{ minHeight: "180px", overflow: "hidden" }}>
-          <AnimatePresence mode="wait">
-            <motion.div
-              aria-hidden="true"
-              key={hIdx}
-              exit={{ opacity: 0, transition: { duration: 0.22, ease: "easeIn" } }}
-              className="text-[2.4rem] leading-[1.18] font-bold font-playfair text-white"
-              style={{ filter: "drop-shadow(0 2px 18px rgba(0,0,0,0.7)) drop-shadow(0 1px 3px rgba(0,0,0,0.55))" }}
-            >
-              <AnimatedChars text={h.line1} startDelay={0} reduced={prefersReduced} />
-              <br />
-              <motion.span
-                initial={prefersReduced ? false : { opacity: 0, scaleX: 0.85 }}
-                animate={{ opacity: 1, scaleX: 1 }}
-                transition={{ duration: 0.35, delay: gradientDelay, ease: "easeOut" }}
-                className="inline-block origin-left"
-                style={{
-                  background: "linear-gradient(to right, #F72585, #FF6EB4, #FFB3D9)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                  backgroundClip: "text",
-                }}
-              >
-                {h.gradient}
-              </motion.span>
-              <motion.span
-                initial={prefersReduced ? false : { opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.1, delay: afterDelay }}
-                style={{ display: "inline-block" }}
-              >
-                {"\u00A0"}
-              </motion.span>
-              <AnimatedChars
-                text={h.after.trimStart()}
-                startDelay={afterDelay}
-                reduced={prefersReduced}
-              />
-            </motion.div>
-          </AnimatePresence>
+        {/* Heading */}
+        <div
+          className="text-[2.4rem] leading-[1.18] font-bold font-playfair text-white"
+          style={{ filter: "drop-shadow(0 1px 6px rgba(0,0,0,0.9)) drop-shadow(0 1px 2px rgba(0,0,0,0.8))" }}
+        >
+          Reši se 70–90% dlačica ili{" "}
+          <span
+            style={{
+              background: "linear-gradient(to right, #F72585, #FF6EB4, #FFB3D9)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              backgroundClip: "text",
+            }}
+          >
+            VRAĆAMO NOVAC
+          </span>
         </div>
 
         {/* Subtitle */}
-        <p className="text-sm text-white/80 font-poppins max-w-xs leading-relaxed">
+        <p className="text-sm text-white font-poppins max-w-xs leading-relaxed" style={{ textShadow: "0 1px 8px rgba(0,0,0,0.8)" }}>
           Za 8 do 10 tretmana, zauvek se opraštaš od brijača, iritacija i uraslih dlaka.
         </p>
 
@@ -261,49 +135,24 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
 
         {/* Left — Headline */}
         <div className="col-span-5 flex flex-col justify-center gap-5">
-          <div style={{ minHeight: "240px", overflow: "hidden" }}>
-            <AnimatePresence mode="wait">
-              <motion.div
-                aria-hidden="true"
-                key={hIdx}
-                exit={{ opacity: 0, transition: { duration: 0.22, ease: "easeIn" } }}
-                className="text-[3.75rem] leading-[1.12] font-bold font-playfair text-white"
-                style={{ filter: "drop-shadow(0 2px 22px rgba(0,0,0,0.65)) drop-shadow(0 1px 3px rgba(0,0,0,0.45))" }}
-              >
-                <AnimatedChars text={h.line1} startDelay={0} reduced={prefersReduced} />
-                <br />
-                <motion.span
-                  initial={prefersReduced ? false : { opacity: 0, scaleX: 0.85 }}
-                  animate={{ opacity: 1, scaleX: 1 }}
-                  transition={{ duration: 0.35, delay: gradientDelay, ease: "easeOut" }}
-                  className="inline-block origin-left"
-                  style={{
-                    background: "linear-gradient(to right, #F72585, #FF6EB4, #FFB3D9)",
-                    WebkitBackgroundClip: "text",
-                    WebkitTextFillColor: "transparent",
-                    backgroundClip: "text",
-                  }}
-                >
-                  {h.gradient}
-                </motion.span>
-                <motion.span
-                  initial={prefersReduced ? false : { opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.1, delay: afterDelay }}
-                  style={{ display: "inline-block" }}
-                >
-                  {"\u00A0"}
-                </motion.span>
-                <AnimatedChars
-                  text={h.after.trimStart()}
-                  startDelay={afterDelay}
-                  reduced={prefersReduced}
-                />
-              </motion.div>
-            </AnimatePresence>
+          <div
+            className="text-[3.75rem] leading-[1.12] font-bold font-playfair text-white"
+            style={{ filter: "drop-shadow(0 1px 6px rgba(0,0,0,0.9)) drop-shadow(0 1px 2px rgba(0,0,0,0.8))" }}
+          >
+            Reši se 70–90% dlačica ili{" "}
+            <span
+              style={{
+                background: "linear-gradient(to right, #F72585, #FF6EB4, #FFB3D9)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+              }}
+            >
+              VRAĆAMO NOVAC
+            </span>
           </div>
 
-          <p className="text-lg text-white/70 font-poppins max-w-sm leading-relaxed">
+          <p className="text-lg text-white font-poppins max-w-sm leading-relaxed" style={{ textShadow: "0 1px 10px rgba(0,0,0,0.85)" }}>
             Za 8 do 10 tretmana, zauvek se opraštaš od brijača, iritacija i uraslih dlaka.
           </p>
 
