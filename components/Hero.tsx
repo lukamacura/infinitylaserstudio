@@ -155,6 +155,11 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
         <div className="absolute bottom-[-15%] right-[-5%] w-[50%] h-[60%] rounded-full bg-teal/10 blur-[110px] mix-blend-soft-light" />
       </div>
 
+      {/* Static H1 for SEO crawlers — visually hidden, always present in HTML */}
+      <h1 className="sr-only">
+        Laserska epilacija Beograd — Infinity Laser Studio
+      </h1>
+
       {/* ── MOBILE layout ─────────────────────────────────────────────────────
           Normal document flow — section is min-h-screen so it fills the
           viewport but grows to fit content on small devices. No fixed height,
@@ -166,7 +171,8 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
         {/* Heading — minHeight prevents layout shift during heading rotations */}
         <div style={{ minHeight: "180px", overflow: "hidden" }}>
           <AnimatePresence mode="wait">
-            <motion.h1
+            <motion.div
+              aria-hidden="true"
               key={hIdx}
               exit={{ opacity: 0, transition: { duration: 0.22, ease: "easeIn" } }}
               className="text-[2.4rem] leading-[1.18] font-bold font-playfair text-white"
@@ -201,7 +207,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
                 startDelay={afterDelay}
                 reduced={prefersReduced}
               />
-            </motion.h1>
+            </motion.div>
           </AnimatePresence>
         </div>
 
@@ -257,7 +263,8 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
         <div className="col-span-5 flex flex-col justify-center gap-5">
           <div style={{ minHeight: "240px", overflow: "hidden" }}>
             <AnimatePresence mode="wait">
-              <motion.h1
+              <motion.div
+                aria-hidden="true"
                 key={hIdx}
                 exit={{ opacity: 0, transition: { duration: 0.22, ease: "easeIn" } }}
                 className="text-[3.75rem] leading-[1.12] font-bold font-playfair text-white"
@@ -292,7 +299,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
                   startDelay={afterDelay}
                   reduced={prefersReduced}
                 />
-              </motion.h1>
+              </motion.div>
             </AnimatePresence>
           </div>
 

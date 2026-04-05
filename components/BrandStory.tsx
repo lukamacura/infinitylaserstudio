@@ -73,6 +73,7 @@ export default function BrandStory() {
             alt="Ana Kasap, osnivač Infinity Laser Studio"
             width={400}
             height={500}
+            priority
             className="relative z-10 w-full max-w-sm rounded-3xl shadow-lg object-cover"
           />
 

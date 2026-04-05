@@ -100,6 +100,7 @@ export default function TeamSection() {
                   src={m.src}
                   alt={m.name}
                   fill
+                  sizes="(max-width: 640px) 100vw, 50vw"
                   className="object-cover object-top transition-transform duration-700 ease-out group-hover:scale-105"
                 />
                 {/* Gradient overlay */}

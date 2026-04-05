@@ -80,9 +80,9 @@ function ServiceCard({ service, accent }: CardProps) {
 
       {/* Name */}
       <div className="flex-1">
-        <p className="font-poppins text-sm font-semibold text-gray-800 leading-snug">
+        <h3 className="font-poppins text-sm font-semibold text-gray-800 leading-snug">
           {service.name}
-        </p>
+        </h3>
       </div>
 
       {/* Price */}

@@ -466,7 +466,7 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
 
     // Browser Pixel — include eventID for deduplication with CAPI
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).fbq?.("track", "Schedule", {
+    (window as any).fbq?.("track", "Purchase", {
       value: usdValue,
       currency: "USD",
     }, { eventID: eventId });
@@ -476,7 +476,7 @@ export default function BookingModal({ isOpen, onClose }: BookingModalProps) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        event_name: "Schedule",
+        event_name: "Purchase",
         event_id: eventId,
         event_source_url: window.location.href,
         email: form.email.trim(),

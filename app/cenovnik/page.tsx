@@ -1,9 +1,23 @@
+import type { Metadata } from "next";
 import { supabase } from "@/lib/supabase";
 import type { Service } from "@/lib/database.types";
 import PricingGrid from "./PricingGrid";
 import BookingCTA from "./BookingCTA";
 
 export const revalidate = 3600;
+
+export const metadata: Metadata = {
+  title: "Cenovnik laserske epilacije",
+  description:
+    "Pregledni cenovnik svih tretmana laserske epilacije u Infinity Laser Studiju. Paketi za žene i muškarce, mogućnost plaćanja na rate.",
+  alternates: { canonical: "https://infinitylaserstudio.rs/cenovnik" },
+  openGraph: {
+    title: "Cenovnik laserske epilacije | Infinity Laser Studio",
+    description:
+      "Pregledni cenovnik svih tretmana laserske epilacije u Infinity Laser Studiju. Paketi za žene i muškarce, mogućnost plaćanja na rate.",
+    url: "https://infinitylaserstudio.rs/cenovnik",
+  },
+};
 
 export default async function CenovnikPage() {
   const { data } = await supabase

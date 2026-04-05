@@ -38,11 +38,28 @@ const faqs = [
   },
 ];
 
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: faqs.map((faq) => ({
+    "@type": "Question",
+    name: faq.q,
+    acceptedAnswer: {
+      "@type": "Answer",
+      text: faq.a,
+    },
+  })),
+};
+
 export default function FAQSection() {
   const [open, setOpen] = useState<number | null>(0);
 
   return (
     <section id="cenovnik" className="py-20 px-6 bg-cream">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+      />
       <motion.div
         className="max-w-3xl mx-auto"
         initial={{ opacity: 0, y: 32 }}
@@ -74,6 +91,7 @@ export default function FAQSection() {
             <div key={i} className="py-5">
               <button
                 className="w-full flex items-center justify-between gap-4 text-left group"
+                aria-expanded={open === i}
                 onClick={() => setOpen(open === i ? null : i)}
               >
                 <span className="font-poppins text-base font-medium text-gray-800 group-hover:text-teal transition-colors">

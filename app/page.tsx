@@ -1,95 +1,19 @@
-"use client";
+import type { Metadata } from "next";
+import HomeClient from "@/components/HomeClient";
 
-import { useState, useEffect, useRef } from "react";
-import BookingModal from "@/components/BookingModal";
-import PromoPopup from "@/components/PromoPopup";
-import Hero from "@/components/Hero";
-import FeaturedServices from "@/components/FeaturedServices";
-import BrandStory from "@/components/BrandStory";
-import ServiceHighlights from "@/components/ServiceHighlights";
-import StatsSection from "@/components/StatsSection";
-import MenSection from "@/components/MenSection";
-import FAQSection from "@/components/FAQSection";
-import PreparationSection from "@/components/PreparationSection";
-import CostComparison from "@/components/CostComparison";
-import TeamSection from "@/components/TeamSection";
-import CommunitySection from "@/components/CommunitySection";
-import Footer from "@/components/Footer";
-import WistiaVideo from "@/components/WistiaVideo";
+export const metadata: Metadata = {
+  title: "Laserska epilacija Beograd | Infinity Laser Studio",
+  description:
+    "Trajno uklanjanje dlaka laserskom epilacijom u Beogradu. Profesionalni tretmani, moderna oprema, medicinski tim. Zakaži besplatne konsultacije.",
+  alternates: { canonical: "https://infinitylaserstudio.rs" },
+  openGraph: {
+    title: "Laserska epilacija Beograd | Infinity Laser Studio",
+    description:
+      "Trajno uklanjanje dlaka laserskom epilacijom u Beogradu. Profesionalni tretmani, moderna oprema, medicinski tim.",
+    url: "https://infinitylaserstudio.rs",
+  },
+};
 
 export default function Home() {
-  const [bookingOpen, setBookingOpen] = useState(false);
-  const [promoKey, setPromoKey] = useState(0);
-  const [pendingBooking, setPendingBooking] = useState(false);
-  const promoSubmitted = useRef(false);
-  const [showSticky, setShowSticky] = useState(false);
-
-  function open() {
-    if (!promoSubmitted.current) {
-      setPromoKey((k) => k + 1);
-      setPendingBooking(true);
-    } else {
-      setBookingOpen(true);
-    }
-  }
-
-  function handlePromoClose() {
-    if (pendingBooking) {
-      setPendingBooking(false);
-      setBookingOpen(true);
-    }
-  }
-
-  useEffect(() => {
-    let depth50Fired = false;
-    const onScroll = () => {
-      setShowSticky(window.scrollY > 400);
-      if (!depth50Fired) {
-        const scrolled = window.scrollY + window.innerHeight;
-        const total = document.documentElement.scrollHeight;
-        if (scrolled / total >= 0.5) {
-          depth50Fired = true;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (window as any).fbq?.("trackCustom", "ScrollDepth50");
-        }
-      }
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
-  return (
-    <main>
-      <Hero onOpen={open} />
-      <WistiaVideo />
-      <FeaturedServices onOpen={open} />
-      <BrandStory />
-      <ServiceHighlights />
-      <StatsSection />
-      <CostComparison onOpen={open} />
-      <TeamSection />
-      <MenSection onOpen={open} />
-      <FAQSection />
-      <PreparationSection />
-      <CommunitySection onOpen={open} />
-      <Footer onOpen={open} />
-      <BookingModal isOpen={bookingOpen} onClose={() => setBookingOpen(false)} />
-      <PromoPopup
-        onOpenBooking={() => { setPendingBooking(false); setBookingOpen(true); }}
-        isBookingOpen={bookingOpen}
-        forceShowCount={promoKey}
-        onClose={handlePromoClose}
-        onSubmitted={() => { promoSubmitted.current = true; }}
-      />
-      {showSticky && (
-        <button
-          onClick={open}
-          className="fixed bottom-6 right-6 z-50 inline-flex items-center gap-2 px-6 py-3 rounded-full bg-foreground text-white text-xs font-semibold tracking-widest font-poppins shadow-lg hover:bg-foreground/90 transition-all cursor-pointer"
-          style={{ animation: "fadeInUp 0.3s ease forwards" }}
-        >
-          ZAKAŽI
-        </button>
-      )}
-    </main>
-  );
+  return <HomeClient />;
 }
