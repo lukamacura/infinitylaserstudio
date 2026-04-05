@@ -13,6 +13,7 @@ const SESSION_KEY = "social_proof_shown";
 export default function SocialProofToast() {
   const [visible, setVisible] = useState(false);
   const [animating, setAnimating] = useState(false);
+
   const [name, setName] = useState("");
 
   const dismiss = useCallback(() => {
@@ -25,6 +26,7 @@ export default function SocialProofToast() {
     if (window.location.pathname.startsWith("/admin")) return;
 
     const randomName = NAMES[Math.floor(Math.random() * NAMES.length)];
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setName(randomName);
 
     const show = setTimeout(() => {
@@ -46,7 +48,7 @@ export default function SocialProofToast() {
 
   return (
     <div
-      className="fixed top-4 left-1/2 z-[60]"
+      className="fixed top-4 left-1/2 z-60"
       style={{
         transform: `translateX(-50%) translateY(${animating ? "0" : "-110%"})`,
         opacity: animating ? 1 : 0,

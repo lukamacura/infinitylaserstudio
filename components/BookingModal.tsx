@@ -912,37 +912,30 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
 
         {/* ── Footer: step 2 continue ───────────────────────────────────── */}
         {step === 2 && selectedIds.length > 0 && (
-          <div className="px-6 py-4 border-t border-foreground/10 shrink-0 flex items-center justify-between gap-4">
-            <div className="flex flex-col gap-1 min-w-0">
-              <p className="text-[11px] text-foreground/35 font-poppins mb-0.5">{totalDuration} min  sa konsultacijom</p>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-xs text-foreground/40 font-poppins">Bez popusta</span>
-                <span className="text-sm font-poppins text-foreground/35 line-through">{formatPrice(totalPrice)} RSD</span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-xs text-foreground/60 font-poppins font-medium">Sa 50% popustom</span>
-                <span className="text-base font-bold font-poppins" style={{ color: "#E85D8A" }}>{formatPrice(Math.round(totalPrice * 0.5))} RSD</span>
-              </div>
-              <div className="flex items-center justify-between gap-3 pt-1 border-t border-foreground/8 mt-0.5">
-                <span className="text-[11px] text-green-700 font-poppins font-semibold">Uštediš</span>
-                <span className="text-[11px] text-green-700 font-poppins font-semibold">{formatPrice(Math.round(totalPrice * 0.5))} RSD</span>
-              </div>
-              {appliedCombos.length > 0 && (
-                <div className="flex items-center gap-1 mt-0.5">
-                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold font-poppins text-white" style={{ backgroundColor: accent.hex }}>COMBO</span>
-                  <span className="text-[10px] font-poppins text-foreground/40">paket popust uračunat</span>
+          <div className="px-4 py-3 border-t border-foreground/10 shrink-0">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-foreground/35 font-poppins line-through">{formatPrice(totalPrice)} RSD</span>
+                  <span className="text-base font-bold font-poppins leading-none" style={{ color: "#E85D8A" }}>{formatPrice(Math.round(totalPrice * 0.5))} RSD</span>
                 </div>
-              )}
-            </div>
-            <div className="flex flex-col items-end gap-1 shrink-0">
+                <span className="text-[10px] text-green-700 font-poppins font-semibold mt-0.5">
+                  Uštediš {formatPrice(Math.round(totalPrice * 0.5))} RSD · {totalDuration} min
+                </span>
+                {appliedCombos.length > 0 && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold font-poppins text-white" style={{ backgroundColor: accent.hex }}>COMBO</span>
+                    <span className="text-[10px] font-poppins text-foreground/40">paket popust uračunat</span>
+                  </div>
+                )}
+              </div>
               <button
                 onClick={handleAddToCart}
-                className="px-8 py-3.5 rounded-full text-sm font-semibold tracking-widest font-poppins text-white active:scale-95 transition-transform cursor-pointer"
+                className="shrink-0 px-5 py-3 rounded-full text-sm font-semibold tracking-widest font-poppins text-white active:scale-95 transition-transform cursor-pointer"
                 style={{ backgroundColor: "#E85D8A", animation: "nastaviGlow 2s ease-in-out infinite" }}
               >
                 NASTAVI
               </button>
-              <p className="text-[10px] font-poppins text-foreground/40 text-right">Pre 1. tretmana sve objašnjavamo</p>
             </div>
           </div>
         )}
