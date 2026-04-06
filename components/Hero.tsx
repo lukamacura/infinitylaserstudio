@@ -60,7 +60,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
 
       {/* Static H1 for SEO crawlers — visually hidden, always present in HTML */}
       <h1 className="sr-only">
-        Laserska epilacija Beograd — Infinity Laser Studio
+        Laserska epilacija Novi Sad — Infinity Laser Studio
       </h1>
 
       {/* ── MOBILE layout ──────────────────────────────────────────────────────── */}
