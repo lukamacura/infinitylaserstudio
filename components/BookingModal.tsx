@@ -484,7 +484,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
         event_source_url: window.location.href,
       }),
     }).catch(() => {});
-    setStep(4);
+    setStep(5);
   }
 
   if (!isOpen) return null;
@@ -634,7 +634,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
               <div className="flex flex-col items-center gap-1">
                 <button
                   type="button"
-                  onClick={handleInitiateCheckout}
+                  onClick={() => setStep(4)}
                   disabled={!selectedDate}
                   className="w-full py-4 rounded-full text-sm font-semibold tracking-widest font-poppins text-white active:scale-95 transition-transform cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                   style={{ backgroundColor: accent.hex, animation: selectedDate ? "nastaviGlow 2s ease-in-out infinite" : undefined }}
@@ -681,7 +681,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
               <div className="flex flex-col items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => setStep(5)}
+                  onClick={handleInitiateCheckout}
                   disabled={!selectedTime}
                   className="w-full py-4 rounded-full text-sm font-semibold tracking-widest font-poppins text-white active:scale-95 transition-transform cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                   style={{ backgroundColor: accent.hex, animation: selectedTime ? "nastaviGlow 2s ease-in-out infinite" : undefined }}
