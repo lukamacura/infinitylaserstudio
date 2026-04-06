@@ -23,11 +23,11 @@ const poppins = Poppins({
 export const metadata: Metadata = {
   metadataBase: new URL("https://infinitylaserstudio.rs"),
   title: {
-    default: "Laserska epilacija Beograd | Infinity Laser Studio",
+    default: "Laserska epilacija Novi Sad | Infinity Laser Studio",
     template: "%s | Infinity Laser Studio",
   },
   description:
-    "Trajno uklanjanje dlaka laserskom epilacijom u Beogradu. Profesionalni tretmani, moderna oprema, medicinski tim. Zakaži besplatne konsultacije.",
+    "Trajno uklanjanje dlaka laserskom epilacijom u Novom Sadu. Profesionalni tretmani, moderna oprema, medicinski tim. Zakaži termin.",
   openGraph: {
     type: "website",
     locale: "sr_RS",
