@@ -26,7 +26,6 @@ export const CONSULTATION_MINUTES  = 15;      // mandatory pre-treatment consult
 // Remove this map (and the check below) to restore full-time scheduling.
 export const SPECIAL_AVAILABILITY: Record<string, { start: number; end: number }> = {
   "2026-04-07": { start: 12 * 60,        end: 16 * 60      }, // 12:00–16:00
-  "2026-04-08": { start: 15 * 60,        end: 20 * 60      }, // 15:00–20:00
   "2026-04-11": { start: 10 * 60 + 30,   end: 17 * 60      }, // 10:30–17:00
   "2026-04-18": { start: 14 * 60,        end: 19 * 60      }, // 14:00–19:00
   "2026-04-20": { start: 13 * 60,        end: 20 * 60      }, // 13:00–20:00
