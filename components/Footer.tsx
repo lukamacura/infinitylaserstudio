@@ -27,6 +27,9 @@ export default function Footer({ onOpen }: Props) {
           <p className="font-poppins text-sm text-gray-500 italic">
             Prihvati slobodu glatke kože. Zauvek.
           </p>
+          <p className="font-poppins text-sm text-gray-500 italic">
+            Miloja Čiplića 51, Novi Sad
+          </p>
         </div>
 
         {/* Nav */}

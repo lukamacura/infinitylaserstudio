@@ -799,7 +799,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
               <div className="w-20 h-20 rounded-full bg-green-50 flex items-center justify-center mb-5">
                 <CheckCircle2 size={44} className="text-green-500" strokeWidth={1.5} />
               </div>
-              <h3 className="text-2xl font-bold font-playfair mb-2">Termin zakazan!</h3>
+              <h3 className="text-2xl font-bold font-playfair mb-2">Termin zakazan! Čekamo Vas u Miloja Čiplića 51 u Novom Sadu</h3>
               <p className="text-sm text-foreground/50 font-poppins mb-6">Potvrda je poslata na {form.email}</p>
 
               {/* ── Stats banner: duration + animated price ── */}
