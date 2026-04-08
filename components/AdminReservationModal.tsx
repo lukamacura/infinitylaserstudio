@@ -6,7 +6,7 @@ import {
   Loader2, CheckCircle2, AlertCircle,
 } from "lucide-react";
 import {
-  supabase, calcBookingDuration, getAvailableSlots, getBusinessHours,
+  supabase, calcBookingDuration, getAvailableSlots, getBusinessWindows,
   minutesToTime, timeToMinutes,
 } from "@/lib/supabase";
 import type { Service } from "@/lib/database.types";
@@ -82,9 +82,9 @@ export default function AdminReservationModal({
   }, []);
   const minStart = isToday ? nowMinutes : undefined;
 
-  const biz = selectedDate ? getBusinessHours(selectedDate) : null;
-  const availableSlots = biz
-    ? getAvailableSlots(daySlots, totalDuration, minStart, biz.start, biz.end)
+  const windows = selectedDate ? getBusinessWindows(selectedDate) : null;
+  const availableSlots = windows?.length
+    ? getAvailableSlots(daySlots, totalDuration, minStart, windows)
     : [];
 
   useEffect(() => {
@@ -369,7 +369,7 @@ export default function AdminReservationModal({
                   className="flex-1 px-4 py-3 rounded-xl border-2 border-foreground/10 focus:border-teal focus:outline-none font-poppins text-sm transition-colors"
                 />
               </div>
-              {selectedDate && !biz && (
+              {selectedDate && !windows && (
                 <div className="flex items-center gap-2 p-4 rounded-xl bg-foreground/5 text-foreground/50 text-sm font-poppins">
                   <AlertCircle size={16} />
                   Radnim danom nije radno (nedelja).
@@ -378,8 +378,8 @@ export default function AdminReservationModal({
               <button
                 type="button"
                 onClick={() => setStep(2)}
-                disabled={!selectedDate || !biz}
-                className={CTA_BASE + (selectedDate && biz ? CTA_ENABLED : CTA_DISABLED)}
+                disabled={!selectedDate || !windows}
+                className={CTA_BASE + (selectedDate && windows ? CTA_ENABLED : CTA_DISABLED)}
               >
                 NASTAVI
               </button>

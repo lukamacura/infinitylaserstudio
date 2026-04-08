@@ -24,18 +24,31 @@ export const CONSULTATION_MINUTES  = 15;      // mandatory pre-treatment consult
 
 // ── Temporary availability whitelist ────────────────────────────────────────
 // Remove this map (and the check below) to restore full-time scheduling.
-export const SPECIAL_AVAILABILITY: Record<string, { start: number; end: number }> = {
-  "2026-04-07": { start: 12 * 60,        end: 16 * 60      }, // 12:00–16:00
-  "2026-04-11": { start: 10 * 60 + 30,   end: 17 * 60      }, // 10:30–17:00
-  "2026-04-18": { start: 14 * 60,        end: 19 * 60      }, // 14:00–19:00
-  "2026-04-20": { start: 13 * 60,        end: 20 * 60      }, // 13:00–20:00
-  "2026-04-27": { start: 14 * 60,        end: 19 * 60      }, // 14:00–19:00
+// Each date may list one or more { start, end } windows (minutes since midnight).
+export type BusinessWindow = { start: number; end: number };
+
+export const SPECIAL_AVAILABILITY: Record<string, BusinessWindow[]> = {
+  "2026-04-07": [{ start: 12 * 60,        end: 16 * 60      }], // 12:00–16:00
+  "2026-04-11": [{ start: 10 * 60 + 30,   end: 17 * 60      }], // 10:30–17:00
+  "2026-04-18": [{ start: 14 * 60,        end: 19 * 60      }], // 14:00–19:00
+  "2026-04-20": [{ start: 13 * 60,        end: 20 * 60      }], // 13:00–20:00
+  "2026-04-22": [{ start: 13 * 60,        end: 19 * 60      }], // 13:00–19:00
+  "2026-04-25": [{ start: 10 * 60,        end: 16 * 60      }], // 10:00–16:00
+  "2026-04-27": [{ start: 14 * 60,        end: 19 * 60      }], // 14:00–19:00
+  "2026-05-05": [
+    { start: 13 * 60,        end: 17 * 60 + 30 }, // 13:00–17:30
+    { start: 18 * 60 + 30,  end: 19 * 60 + 30 }, // 18:30–19:30
+  ],
+  "2026-05-09": [{ start: 10 * 60,        end: 17 * 60      }], // 10:00–17:00
+  "2026-05-15": [{ start: 14 * 60,        end: 20 * 60      }], // 14:00–20:00
+  "2026-05-29": [{ start: 14 * 60,        end: 20 * 60      }], // 14:00–20:00
+  "2026-05-30": [{ start: 10 * 60,        end: 17 * 60      }], // 10:00–17:00
 };
 
-/** Returns business hours (minutes since midnight) for a date string, or null if closed. */
-export function getBusinessHours(dateStr: string): { start: number; end: number } | null {
-  // Temporary: only allow whitelisted dates
-  return SPECIAL_AVAILABILITY[dateStr] ?? null;
+/** Returns bookable time windows (minutes since midnight) for a date, or null if closed. */
+export function getBusinessWindows(dateStr: string): BusinessWindow[] | null {
+  const windows = SPECIAL_AVAILABILITY[dateStr];
+  return windows?.length ? windows : null;
 }
 
 /** Total duration (including inter-service pauses, but NOT a trailing pause after the last service), rounded up to slot boundary */
@@ -72,9 +85,8 @@ export function minutesToTime(minutes: number): string {
 export function getAvailableSlots(
   reservations: { start_time: string; end_time: string; status: string }[],
   durationMinutes: number,
-  minStartMinutes?: number,
-  businessStart = 14 * 60,
-  businessEnd   = 19 * 60,
+  minStartMinutes: number | undefined,
+  businessWindows: BusinessWindow[],
 ): string[] {
   const active = reservations
     .filter((r) => r.status !== "cancelled")
@@ -83,19 +95,21 @@ export function getAvailableSlots(
       end:   timeToMinutes(r.end_time),
     }));
 
-  // Round minStart up to the next clean slot boundary
-  const earliest = minStartMinutes !== undefined
-    ? Math.ceil(minStartMinutes / SLOT_SIZE) * SLOT_SIZE
-    : businessStart;
+  const slotSet = new Set<string>();
 
-  const fromMinute = Math.max(businessStart, earliest);
-  const slots: string[] = [];
+  for (const { start: businessStart, end: businessEnd } of businessWindows) {
+    const earliest = minStartMinutes !== undefined
+      ? Math.ceil(minStartMinutes / SLOT_SIZE) * SLOT_SIZE
+      : businessStart;
 
-  for (let t = fromMinute; t + durationMinutes <= businessEnd; t += SLOT_SIZE) {
-    const slotEnd = t + durationMinutes;
-    const hasConflict = active.some((r) => t < r.end && slotEnd > r.start);
-    if (!hasConflict) slots.push(minutesToTime(t));
+    const fromMinute = Math.max(businessStart, earliest);
+
+    for (let t = fromMinute; t + durationMinutes <= businessEnd; t += SLOT_SIZE) {
+      const slotEnd = t + durationMinutes;
+      const hasConflict = active.some((r) => t < r.end && slotEnd > r.start);
+      if (!hasConflict) slotSet.add(minutesToTime(t));
+    }
   }
 
-  return slots;
+  return Array.from(slotSet).sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
 }

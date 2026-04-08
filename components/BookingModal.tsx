@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
-  supabase, calcBookingDuration, getAvailableSlots, getBusinessHours,
+  supabase, calcBookingDuration, calcTotalDuration, getAvailableSlots, getBusinessWindows,
   minutesToTime, timeToMinutes, SLOT_SIZE, SPECIAL_AVAILABILITY,
 } from "@/lib/supabase";
 import type { Service } from "@/lib/database.types";
@@ -85,8 +85,8 @@ function buildDayOptions(totalDuration: number): DayOption[] {
   const days: DayOption[] = [];
 
   for (const dateStr of whitelistDates) {
-    const biz = getBusinessHours(dateStr);
-    if (!biz) continue;
+    const windows = getBusinessWindows(dateStr);
+    if (!windows) continue;
 
     // Skip dates in the past
     if (dateStr < todayStr) continue;
@@ -96,7 +96,10 @@ function buildDayOptions(totalDuration: number): DayOption[] {
     // For today: only show if at least one slot fits after the 2-hour buffer
     if (isToday) {
       const earliestSlot = Math.ceil(minStartToday / SLOT_SIZE) * SLOT_SIZE;
-      if (earliestSlot + totalDuration > biz.end) continue;
+      const fitsAnyWindow = windows.some(
+        (w) => Math.max(w.start, earliestSlot) + totalDuration <= w.end,
+      );
+      if (!fitsAnyWindow) continue;
     }
 
     const d = new Date(`${dateStr}T00:00:00`);
@@ -116,6 +119,13 @@ function buildDayOptions(totalDuration: number): DayOption[] {
 function formatPrice(price: number): string {
   return price.toLocaleString("sr-RS");
 }
+
+/** Promo codes: `ils-` + any non-empty suffix (e.g. ils-leyla). Case-insensitive. */
+function isIlsPromoCode(raw: string): boolean {
+  return /^ils-.+$/i.test(raw.trim());
+}
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ── Combo detection ───────────────────────────────────────────────────────────
 interface ComboRule {
@@ -213,24 +223,43 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
   const [submitting, setSubmitting]       = useState(false);
   const [submitError, setSubmitError]     = useState<string | null>(null);
   const [bookingRef, setBookingRef]       = useState<string | null>(null);
-  const [, setPromoCode]             = useState("");
-  const [promoStatus, setPromoStatus]         = useState<"idle" | "valid" | "invalid">("idle");
-  const []     = useState(false);
-  const [, setDiscountedPrice] = useState<number | null>(null);
+  const [promoCode, setPromoCode]               = useState("");
+  const [promoStatus, setPromoStatus]           = useState<"idle" | "valid" | "invalid">("idle");
   const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null);
   const [displayedPrice, setDisplayedPrice]   = useState(0);
   const animFrameRef = useRef<number>(0);
   const appliedPreselect = useRef(false);
+  const emailCheckSeqRef = useRef(0);
+
+  /** null = not checked yet for current email; true = exists in reservations */
+  const [isReturningCustomer, setIsReturningCustomer] = useState<boolean | null>(null);
+  const [checkingReturningEmail, setCheckingReturningEmail] = useState(false);
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const selectedServices = services.filter((s) => selectedIds.includes(s.id));
   const { effective: effectiveServices, appliedCombos } = applyComboRules(selectedServices, services);
-  const totalDuration    = selectedServices.length > 0 ? calcBookingDuration(selectedServices) : 0;
+  /** With 15 min consultation — used for day/slot picking so first-time bookings always fit. */
+  const slotDuration =
+    selectedServices.length > 0 ? calcBookingDuration(selectedServices) : 0;
+  /** Stored end time & UI after email check: returning clients skip consultation block. */
+  const reservationDuration =
+    selectedServices.length === 0
+      ? 0
+      : isReturningCustomer === true
+        ? calcTotalDuration(selectedServices)
+        : calcBookingDuration(selectedServices);
   const totalPrice       = effectiveServices.reduce((sum, s) => sum + s.price, 0);
   const accent           = ACCENTS[gender ?? "zene"];
 
-  // Day options rebuild whenever totalDuration changes
-  const dayOptions = useMemo(() => buildDayOptions(totalDuration), [totalDuration]);
+  const firstTreatmentEligible = isReturningCustomer !== true;
+  const baseFirstTreatmentPrice = firstTreatmentEligible ? Math.round(totalPrice * 0.5) : totalPrice;
+  const ilsPromoActive =
+    promoStatus === "valid" && appliedPromoCode != null && isIlsPromoCode(appliedPromoCode);
+  const finalPrice = ilsPromoActive ? Math.round(baseFirstTreatmentPrice * 0.9) : baseFirstTreatmentPrice;
+  const savingsVsList = totalPrice - finalPrice;
+
+  // Day options rebuild whenever slot duration (incl. consultation) changes
+  const dayOptions = useMemo(() => buildDayOptions(slotDuration), [slotDuration]);
 
   // For today: slots must start ≥ now+120min
   const nowMinutes = useMemo(() => {
@@ -241,9 +270,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
   const isToday = dayOptions.find((d) => d.date === selectedDate)?.isToday ?? false;
   const minStart = isToday ? nowMinutes + 120 : undefined;
 
-  const biz = selectedDate ? getBusinessHours(selectedDate) : null;
-  const availableSlots = biz
-    ? getAvailableSlots(daySlots, totalDuration, minStart, biz.start, biz.end)
+  const windows = selectedDate ? getBusinessWindows(selectedDate) : null;
+  const availableSlots = windows?.length
+    ? getAvailableSlots(daySlots, slotDuration, minStart, windows)
     : [];
 
   // ── Side-effects ──────────────────────────────────────────────────────────
@@ -273,7 +302,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
   // ── Animated price count-down on success screen ───────────────────────────
   useEffect(() => {
     if (step !== "success") return;
-    const target = Math.round(totalPrice * 0.5);
+    const target = finalPrice;
     const from   = totalPrice;
 
     if (from === target) { setDisplayedPrice(target); return; }
@@ -292,7 +321,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
     animFrameRef.current = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(animFrameRef.current);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step]);
+  }, [step, finalPrice, totalPrice]);
 
   useEffect(() => {
     if (!selectedDate) return;
@@ -333,7 +362,10 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
     setForm({ name: "", email: "", phone: "" });
     setFieldErrors({ name: false, email: false });
     setSubmitError(null); setBookingRef(null);
-    setPromoCode(""); setPromoStatus("idle"); setDiscountedPrice(null); setAppliedPromoCode(null);
+    setPromoCode(""); setPromoStatus("idle"); setAppliedPromoCode(null);
+    emailCheckSeqRef.current += 1;
+    setIsReturningCustomer(null);
+    setCheckingReturningEmail(false);
   }
 
 
@@ -359,6 +391,46 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
     setSelectedTime("");
   }
 
+  async function runReturningEmailCheck(email: string) {
+    const trimmed = email.trim();
+    if (!EMAIL_REGEX.test(trimmed)) {
+      setIsReturningCustomer(null);
+      setCheckingReturningEmail(false);
+      return;
+    }
+    const seq = ++emailCheckSeqRef.current;
+    setCheckingReturningEmail(true);
+    const { data, error } = await supabase
+      .from("reservations")
+      .select("id")
+      .ilike("customer_email", trimmed)
+      .limit(1)
+      .maybeSingle();
+    if (emailCheckSeqRef.current !== seq) return;
+    setCheckingReturningEmail(false);
+    if (error) {
+      setIsReturningCustomer(false);
+      return;
+    }
+    setIsReturningCustomer(!!data);
+  }
+
+  function handleApplyPromo() {
+    const raw = promoCode.trim();
+    if (!raw) {
+      setPromoStatus("idle");
+      setAppliedPromoCode(null);
+      return;
+    }
+    if (isIlsPromoCode(raw)) {
+      setPromoStatus("valid");
+      setAppliedPromoCode(raw);
+    } else {
+      setPromoStatus("invalid");
+      setAppliedPromoCode(null);
+    }
+  }
+
   async function handleSubmit() {
     // Validate – highlight empty required fields instead of blocking silently
     const errors = { name: !form.name.trim(), email: !form.email.trim() };
@@ -368,7 +440,23 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
     setSubmitting(true);
     setSubmitError(null);
 
-    const endTime = minutesToTime(timeToMinutes(selectedTime) + totalDuration);
+    const emailTrim = form.email.trim();
+    const { data: existingReservation } = await supabase
+      .from("reservations")
+      .select("id")
+      .ilike("customer_email", emailTrim)
+      .limit(1)
+      .maybeSingle();
+    const returningSubmit = !!existingReservation;
+    const baseForSubmit = returningSubmit ? totalPrice : Math.round(totalPrice * 0.5);
+    const ilsAppliedSubmit =
+      promoStatus === "valid" && appliedPromoCode != null && isIlsPromoCode(appliedPromoCode);
+    const finalForSubmit = ilsAppliedSubmit ? Math.round(baseForSubmit * 0.9) : baseForSubmit;
+
+    const durationForReservation = returningSubmit
+      ? calcTotalDuration(selectedServices)
+      : calcBookingDuration(selectedServices);
+    const endTime = minutesToTime(timeToMinutes(selectedTime) + durationForReservation);
 
     const { data: res, error } = await supabase
       .from("reservations")
@@ -379,7 +467,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
         date:           selectedDate,
         start_time:     `${selectedTime}:00`,
         end_time:       `${endTime}:00`,
-        total_duration: totalDuration,
+        total_duration: durationForReservation,
         status:         "confirmed",
       })
       .select()
@@ -397,14 +485,6 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
       );
     }
 
-    // Mark promo as used so it cannot be applied again
-    if (promoStatus === "valid") {
-      await supabase
-        .from("leads")
-        .update({ promo_used: true })
-        .eq("email", form.email.trim());
-    }
-
     const bookingRefValue = res.id.slice(-8).toUpperCase();
     setBookingRef(bookingRefValue);
 
@@ -419,16 +499,17 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
         start_time:       selectedTime,
         end_time:         endTime,
         services:         effectiveServices.map((s) => ({ name: s.name, price: s.price })),
-        total_duration:   totalDuration,
+        total_duration:   durationForReservation,
         total_price:      totalPrice,
-        discounted_price: Math.round(totalPrice * 0.5),
-        promo_code:       "50% promo",
+        discounted_price: finalForSubmit,
+        promo_code:       ilsAppliedSubmit ? appliedPromoCode! : returningSubmit ? "redovna cena" : "50% promo",
         booking_ref:      bookingRefValue,
       }),
     }).catch(() => {});
 
-    const finalPrice = Math.round(totalPrice * 0.5);
-    const usdValue = +(finalPrice / 102).toFixed(2);
+    setIsReturningCustomer(returningSubmit);
+
+    const usdValue = +(finalForSubmit / 102).toFixed(2);
     const eventId = crypto.randomUUID();
 
     // Browser Pixel — include eventID for deduplication with CAPI
@@ -531,8 +612,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
           <p className="text-sm text-foreground/60 font-poppins mt-1">{stepSub}</p>
         </div>
 
-        {/* Scrollable content */}
-        <div className="px-6 pb-6 overflow-y-auto flex-1">
+        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          {/* Scrollable content — primary actions live in sticky footer below */}
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-6 pb-2">
 
 
           {/* ══ STEP 2: Services ════════════════════════════════════════════ */}
@@ -631,18 +713,6 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                   })}
                 </div>
               )}
-              <div className="flex flex-col items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setStep(4)}
-                  disabled={!selectedDate}
-                  className="w-full py-4 rounded-full text-sm font-semibold tracking-widest font-poppins text-white active:scale-95 transition-transform cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-                  style={{ backgroundColor: accent.hex, animation: selectedDate ? "nastaviGlow 2s ease-in-out infinite" : undefined }}
-                >
-                  NASTAVI
-                </button>
-                <p className="text-[10px] font-poppins text-foreground/40">Preko 1700 žena se uspešno rešilo dlačica</p>
-              </div>
             </div>
           )}
 
@@ -678,18 +748,6 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                   ))}
                 </div>
               )}
-              <div className="flex flex-col items-center gap-1">
-                <button
-                  type="button"
-                  onClick={handleInitiateCheckout}
-                  disabled={!selectedTime}
-                  className="w-full py-4 rounded-full text-sm font-semibold tracking-widest font-poppins text-white active:scale-95 transition-transform cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-                  style={{ backgroundColor: accent.hex, animation: selectedTime ? "nastaviGlow 2s ease-in-out infinite" : undefined }}
-                >
-                  NASTAVI
-                </button>
-                <p className="text-[10px] font-poppins text-foreground/40">Vraćamo novac ako se ne rešiš 70–90% dlačica</p>
-              </div>
             </div>
           )}
 
@@ -718,12 +776,28 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                   type="email"
                   placeholder="ana@primer.rs"
                   value={form.email}
-                  onChange={(e) => { setForm((p) => ({ ...p, email: e.target.value })); setFieldErrors((p) => ({ ...p, email: false })); }}
+                  onChange={(e) => {
+                    emailCheckSeqRef.current += 1;
+                    setForm((p) => ({ ...p, email: e.target.value }));
+                    setFieldErrors((p) => ({ ...p, email: false }));
+                    setIsReturningCustomer(null);
+                  }}
                   className={`w-full px-4 py-3 rounded-xl border-2 focus:outline-none font-poppins text-sm transition-colors ${fieldErrors.email ? "border-red-400 bg-red-50" : "border-foreground/10"}`}
                   onFocus={(e) => { if (!fieldErrors.email) e.target.style.borderColor = accent.hex; }}
-                  onBlur={(e) => { e.target.style.borderColor = ""; }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = "";
+                    void runReturningEmailCheck(e.target.value);
+                  }}
                 />
                 {fieldErrors.email && <p className="text-xs text-red-500 font-poppins mt-1">Unesite email adresu.</p>}
+                {checkingReturningEmail && (
+                  <p className="text-xs text-foreground/45 font-poppins mt-1.5">Proveravamo istoriju zakazivanja…</p>
+                )}
+                {!checkingReturningEmail && isReturningCustomer === true && (
+                  <p className="text-xs text-foreground/55 font-poppins mt-1.5">
+                    😊 Drago nam je što ste opet kod nas.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -737,6 +811,50 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                   onFocus={(e) => (e.target.style.borderColor = accent.hex)}
                   onBlur={(e) => (e.target.style.borderColor = "")}
                 />
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-2">PROMO KOD</p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="npr. promokod"
+                    value={promoCode}
+                    onChange={(e) => {
+                      setPromoCode(e.target.value);
+                      setPromoStatus("idle");
+                      setAppliedPromoCode(null);
+                    }}
+                    disabled={checkingReturningEmail}
+                    className="flex-1 min-w-0 px-4 py-3 rounded-xl border-2 border-foreground/10 focus:outline-none font-poppins text-sm transition-colors disabled:opacity-60"
+                    onFocus={(e) => (e.target.style.borderColor = accent.hex)}
+                    onBlur={(e) => (e.target.style.borderColor = "")}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleApplyPromo}
+                    disabled={!promoCode.trim() || checkingReturningEmail}
+                    className="shrink-0 px-4 py-3 rounded-xl text-sm font-semibold tracking-wide font-poppins text-white transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: accent.hex }}
+                  >
+                    Primeni
+                  </button>
+                </div>
+                {promoStatus === "valid" && ilsPromoActive && firstTreatmentEligible && (
+                  <p className="text-xs text-green-600 font-poppins mt-2">
+                    Kod primenjen — dodatnih 10% na cenu sa popustom za 1. tretman.
+                  </p>
+                )}
+                {promoStatus === "valid" && ilsPromoActive && isReturningCustomer === true && (
+                  <p className="text-xs text-green-600 font-poppins mt-2">
+                    Kod primenjen — −10% na redovnu cenu.
+                  </p>
+                )}
+                {promoStatus === "invalid" && (
+                  <p className="text-xs text-red-500 font-poppins mt-2">
+                    Unesite kod u formatu ils- i nastavak (npr. ils-leyla).
+                  </p>
+                )}
               </div>
 
               {/* Price summary with savings */}
@@ -753,18 +871,52 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                     ))}
                   </div>
                   <div className="border-t border-foreground/10 pt-2.5">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-poppins text-foreground/50">Redovna cena</span>
-                      <span className="text-sm font-poppins font-semibold text-foreground/40 line-through">{formatPrice(totalPrice)} RSD</span>
-                    </div>
-                    <div className="flex justify-between items-center mt-1.5">
-                      <span className="text-sm font-poppins text-green-700 font-semibold">Konačna cena sa popustom (−50%)</span>
-                      <span className="text-sm font-poppins font-bold text-green-700">{formatPrice(Math.round(totalPrice * 0.5))} RSD</span>
-                    </div>
-                    <div className="flex justify-between items-center mt-1 pt-2 border-t border-foreground/8">
-                      <span className="text-xs font-poppins text-foreground/40">Ušteda za 1. tretman</span>
-                      <span className="text-xs font-poppins font-semibold" style={{ color: "#E85D8A" }}>{formatPrice(Math.round(totalPrice * 0.5))} RSD</span>
-                    </div>
+                    {firstTreatmentEligible ? (
+                      <>
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-poppins text-foreground/50">Redovna cena</span>
+                          <span className="text-sm font-poppins font-semibold text-foreground/40 line-through">{formatPrice(totalPrice)} RSD</span>
+                        </div>
+                        <div className="flex justify-between items-center mt-1.5">
+                          <span className="text-sm font-poppins text-green-700 font-semibold">Cena sa popustom za 1. tretman (−50%)</span>
+                          <span className="text-sm font-poppins font-bold text-green-700">{formatPrice(baseFirstTreatmentPrice)} RSD</span>
+                        </div>
+                        {ilsPromoActive && (
+                          <div className="flex justify-between items-center mt-1.5">
+                            <span className="text-sm font-poppins text-green-800 font-semibold">Sa promo kodom (−10%)</span>
+                            <span className="text-sm font-poppins font-bold text-green-800">{formatPrice(finalPrice)} RSD</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between items-center mt-1 pt-2 border-t border-foreground/8">
+                          <span className="text-xs font-poppins text-foreground/40">Ušteda za 1. tretman</span>
+                          <span className="text-xs font-poppins font-semibold" style={{ color: "#E85D8A" }}>{formatPrice(savingsVsList)} RSD</span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-poppins text-foreground/50">Redovna cena</span>
+                          <span className={`text-sm font-poppins font-semibold ${ilsPromoActive ? "text-foreground/40 line-through" : "font-bold text-foreground"}`}>
+                            {formatPrice(totalPrice)} RSD
+                          </span>
+                        </div>
+                        {ilsPromoActive && (
+                          <div className="flex justify-between items-center mt-1.5">
+                            <span className="text-sm font-poppins text-green-800 font-semibold">Sa promo kodom (−10%)</span>
+                            <span className="text-sm font-poppins font-bold text-green-800">{formatPrice(finalPrice)} RSD</span>
+                          </div>
+                        )}
+                        {!ilsPromoActive && (
+                          <p className="text-xs text-foreground/45 font-poppins mt-1">Bez popusta za prvi tretman (već ste kod nas zakazivali).</p>
+                        )}
+                        {(ilsPromoActive || savingsVsList > 0) && (
+                          <div className="flex justify-between items-center mt-1 pt-2 border-t border-foreground/8">
+                            <span className="text-xs font-poppins text-foreground/40">Ušteda</span>
+                            <span className="text-xs font-poppins font-semibold" style={{ color: "#E85D8A" }}>{formatPrice(savingsVsList)} RSD</span>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -775,21 +927,6 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                   {submitError}
                 </div>
               )}
-
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={submitting}
-                className="w-full py-3.5 rounded-full text-sm font-semibold tracking-widest font-poppins text-white mt-2 transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-                style={{ backgroundColor: accent.hex }}
-              >
-                {submitting ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <Loader2 size={16} className="animate-spin" />
-                    Zakazivanje...
-                  </span>
-                ) : "POTVRDI TERMIN"}
-              </button>
             </div>
           )}
 
@@ -807,7 +944,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                 {/* Duration tile */}
                 <div className="flex flex-col items-center justify-center bg-foreground/5 rounded-2xl py-4 px-3">
                   <p className="text-[10px] font-semibold tracking-widest text-foreground/40 font-poppins mb-1">TRAJANJE</p>
-                  <p className="text-3xl font-bold font-poppins leading-none">{totalDuration}</p>
+                  <p className="text-3xl font-bold font-poppins leading-none">{reservationDuration}</p>
                   <p className="text-xs text-foreground/40 font-poppins mt-1">min</p>
                 </div>
 
@@ -818,21 +955,45 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                 >
                   <p className="text-[10px] font-semibold tracking-widest text-foreground/40 font-poppins mb-1">CENA</p>
 
-                  {/* Original price — always struck through */}
-                  <p className="text-xs text-foreground/35 font-poppins line-through leading-none mb-0.5">
-                    {formatPrice(totalPrice)} RSD
-                  </p>
-
-                  {/* Animated discounted number */}
-                  <p className="text-3xl font-bold font-poppins leading-none tabular-nums" style={{ color: accent.hex }}>
-                    {formatPrice(displayedPrice)}
-                  </p>
-                  <p className="text-xs font-semibold font-poppins mt-1" style={{ color: accent.hex }}>RSD</p>
-
-                  {/* Always show discount badge */}
-                  <span className="mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold font-poppins text-white bg-green-500">
-                    −50% POPUST
-                  </span>
+                  {isReturningCustomer ? (
+                    ilsPromoActive ? (
+                      <>
+                        <p className="text-xs text-foreground/35 font-poppins line-through leading-none mb-0.5">
+                          {formatPrice(totalPrice)} RSD
+                        </p>
+                        <p className="text-3xl font-bold font-poppins leading-none tabular-nums" style={{ color: accent.hex }}>
+                          {formatPrice(displayedPrice)}
+                        </p>
+                        <p className="text-xs font-semibold font-poppins mt-1" style={{ color: accent.hex }}>RSD</p>
+                        <span className="mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold font-poppins text-white bg-green-500">
+                          −10% PROMO
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-3xl font-bold font-poppins leading-none tabular-nums" style={{ color: accent.hex }}>
+                          {formatPrice(displayedPrice)}
+                        </p>
+                        <p className="text-xs font-semibold font-poppins mt-1" style={{ color: accent.hex }}>RSD</p>
+                        <span className="mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold font-poppins text-foreground/70 bg-foreground/10">
+                          Redovna cena
+                        </span>
+                      </>
+                    )
+                  ) : (
+                    <>
+                      <p className="text-xs text-foreground/35 font-poppins line-through leading-none mb-0.5">
+                        {formatPrice(totalPrice)} RSD
+                      </p>
+                      <p className="text-3xl font-bold font-poppins leading-none tabular-nums" style={{ color: accent.hex }}>
+                        {formatPrice(displayedPrice)}
+                      </p>
+                      <p className="text-xs font-semibold font-poppins mt-1" style={{ color: accent.hex }}>RSD</p>
+                      <span className="mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold font-poppins text-white bg-green-500">
+                        {ilsPromoActive ? "−50% + DODATNIH 10%" : "−50% POPUST"}
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -840,21 +1001,24 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
               <div className="w-full bg-foreground/4 rounded-2xl p-5 text-left space-y-3">
                 {[
                   ["Datum", selectedDate ? formatDateFull(selectedDate) : ""],
-                  ["Vreme", `${selectedTime} – ${minutesToTime(timeToMinutes(selectedTime) + totalDuration)}`],
+                  ["Vreme", `${selectedTime} – ${minutesToTime(timeToMinutes(selectedTime) + reservationDuration)}`],
                 ].map(([label, value]) => (
                   <div key={label} className="flex justify-between text-sm font-poppins">
                     <span className="text-foreground/50">{label}</span>
                     <span className="font-semibold">{value}</span>
                   </div>
                 ))}
-                {promoStatus === "valid" && (
+                {promoStatus === "valid" && appliedPromoCode && isIlsPromoCode(appliedPromoCode) && (
                   <p className="text-xs text-green-600 font-poppins text-right">
-                    Promo kod {appliedPromoCode} primenjen ({appliedPromoCode === "ils-10" ? "−10%" : "−50%"})
+                    Promo kod {appliedPromoCode} primenjen (
+                    {isReturningCustomer ? "−10% na redovnu cenu" : "−10% na cenu sa popustom"})
                   </p>
                 )}
                 <div className="border-t border-foreground/10 pt-3">
                   <p className="text-xs text-foreground/40 font-poppins mb-1.5">USLUGE</p>
-                  <p className="text-sm font-poppins font-semibold text-foreground/50">Konsultacija (15 min)</p>
+                  {!isReturningCustomer && (
+                    <p className="text-sm font-poppins font-semibold text-foreground/50">Konsultacija (15 min)</p>
+                  )}
                   {effectiveServices.map((s) => (
                     <p key={s.id} className="text-sm font-poppins font-semibold">{s.name}</p>
                   ))}
@@ -868,23 +1032,6 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                   </div>
                 )}
               </div>
-
-              <button
-                type="button"
-                onClick={() => setStep("preparation")}
-                className="mt-4 w-full py-3 rounded-full text-sm font-semibold tracking-widest font-poppins border-2 cursor-pointer transition-all hover:opacity-80"
-                style={{ borderColor: accent.hex, color: accent.hex }}
-              >
-                ŠTA TREBA DA URADIM PRE TERMINA
-              </button>
-
-              <button
-                onClick={handleClose}
-                className="mt-2 w-full py-3 rounded-full text-sm font-semibold tracking-widest font-poppins text-white cursor-pointer transition-opacity hover:opacity-90"
-                style={{ backgroundColor: accent.hex }}
-              >
-                ZATVORI
-              </button>
             </div>
           )}
 
@@ -908,37 +1055,130 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
               ))}
             </div>
           )}
-        </div>
-
-        {/* ── Footer: step 2 continue ───────────────────────────────────── */}
-        {step === 2 && selectedIds.length > 0 && (
-          <div className="px-4 py-3 border-t border-foreground/10 shrink-0">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex flex-col min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs text-foreground/35 font-poppins line-through">{formatPrice(totalPrice)} RSD</span>
-                  <span className="text-base font-bold font-poppins leading-none" style={{ color: "#E85D8A" }}>{formatPrice(Math.round(totalPrice * 0.5))} RSD</span>
-                </div>
-                <span className="text-[10px] text-green-700 font-poppins font-semibold mt-0.5">
-                  Uštediš {formatPrice(Math.round(totalPrice * 0.5))} RSD · {totalDuration} min
-                </span>
-                {appliedCombos.length > 0 && (
-                  <div className="flex items-center gap-1 mt-1">
-                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold font-poppins text-white" style={{ backgroundColor: accent.hex }}>COMBO</span>
-                    <span className="text-[10px] font-poppins text-foreground/40">paket popust uračunat</span>
-                  </div>
-                )}
-              </div>
-              <button
-                onClick={handleAddToCart}
-                className="shrink-0 px-5 py-3 rounded-full text-sm font-semibold tracking-widest font-poppins text-white active:scale-95 transition-transform cursor-pointer"
-                style={{ backgroundColor: "#E85D8A", animation: "nastaviGlow 2s ease-in-out infinite" }}
-              >
-                NASTAVI
-              </button>
-            </div>
           </div>
-        )}
+
+          {/* ── Sticky footer: primary CTA always visible while scrolling ───────── */}
+          {(step === 2 || step === 3 || step === 4 || step === 5 || step === "success" || step === "preparation") && (
+            <div className="shrink-0 border-t border-foreground/10 bg-white px-4 pt-3 pb-3 shadow-[0_-8px_24px_-4px_rgba(0,0,0,0.08)]">
+              {step === 2 && (
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-col min-w-0">
+                    {selectedIds.length > 0 ? (
+                      <>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs text-foreground/35 font-poppins line-through">{formatPrice(totalPrice)} RSD</span>
+                          <span className="text-base font-bold font-poppins leading-none" style={{ color: accent.hex }}>{formatPrice(Math.round(totalPrice * 0.5))} RSD</span>
+                        </div>
+                        <span className="text-[10px] text-green-700 font-poppins font-semibold mt-0.5">
+                          Uštediš {formatPrice(Math.round(totalPrice * 0.5))} RSD · {slotDuration} min
+                        </span>
+                        {appliedCombos.length > 0 && (
+                          <div className="flex items-center gap-1 mt-1">
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold font-poppins text-white" style={{ backgroundColor: accent.hex }}>COMBO</span>
+                            <span className="text-[10px] font-poppins text-foreground/40">paket popust uračunat</span>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-xs text-foreground/45 font-poppins pr-2">Odaberite bar jednu uslugu za nastavak.</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddToCart}
+                    disabled={selectedIds.length === 0}
+                    className="shrink-0 px-5 py-3 rounded-full text-sm font-semibold tracking-widest font-poppins text-white active:scale-95 transition-transform cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+                    style={{
+                      backgroundColor: accent.hex,
+                      animation: selectedIds.length > 0 ? "nastaviGlow 2s ease-in-out infinite" : undefined,
+                    }}
+                  >
+                    NASTAVI
+                  </button>
+                </div>
+              )}
+
+              {step === 3 && (
+                <div className="flex flex-col gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setStep(4)}
+                    disabled={!selectedDate}
+                    className="w-full py-3.5 rounded-full text-sm font-semibold tracking-widest font-poppins text-white active:scale-95 transition-transform cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: accent.hex, animation: selectedDate ? "nastaviGlow 2s ease-in-out infinite" : undefined }}
+                  >
+                    NASTAVI
+                  </button>
+                  <p className="text-center text-[10px] font-poppins text-foreground/40">Preko 1700 žena se uspešno rešilo dlačica</p>
+                </div>
+              )}
+
+              {step === 4 && (
+                <div className="flex flex-col gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleInitiateCheckout}
+                    disabled={!selectedTime}
+                    className="w-full py-3.5 rounded-full text-sm font-semibold tracking-widest font-poppins text-white active:scale-95 transition-transform cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: accent.hex, animation: selectedTime ? "nastaviGlow 2s ease-in-out infinite" : undefined }}
+                  >
+                    NASTAVI
+                  </button>
+                  <p className="text-center text-[10px] font-poppins text-foreground/40">Vraćamo novac ako se ne rešiš 70–90% dlačica</p>
+                </div>
+              )}
+
+              {step === 5 && (
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={submitting}
+                  className="w-full py-3.5 rounded-full text-sm font-semibold tracking-widest font-poppins text-white transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                  style={{ backgroundColor: accent.hex }}
+                >
+                  {submitting ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <Loader2 size={16} className="animate-spin" />
+                      Zakazivanje...
+                    </span>
+                  ) : "POTVRDI TERMIN"}
+                </button>
+              )}
+
+              {step === "success" && (
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setStep("preparation")}
+                    className="w-full py-3 rounded-full text-sm font-semibold tracking-widest font-poppins border-2 cursor-pointer transition-all hover:opacity-80"
+                    style={{ borderColor: accent.hex, color: accent.hex }}
+                  >
+                    ŠTA TREBA DA URADIM PRE TERMINA
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleClose}
+                    className="w-full py-3 rounded-full text-sm font-semibold tracking-widest font-poppins text-white cursor-pointer transition-opacity hover:opacity-90"
+                    style={{ backgroundColor: accent.hex }}
+                  >
+                    ZATVORI
+                  </button>
+                </div>
+              )}
+
+              {step === "preparation" && (
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="w-full py-3.5 rounded-full text-sm font-semibold tracking-widest font-poppins text-white cursor-pointer transition-opacity hover:opacity-90"
+                  style={{ backgroundColor: accent.hex }}
+                >
+                  ZATVORI
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Bottom accent bar */}
         <div className="h-1 bg-linear-to-r from-teal via-pink to-rose shrink-0" />

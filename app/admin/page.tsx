@@ -177,7 +177,7 @@ export default function AdminPage() {
   // ── Password screen ─────────────────────────────────────────────────────────
   if (!authenticated) {
     return (
-      <main className="min-h-screen bg-gradient-to-br from-[#0D1117] to-[#1A2332] flex items-center justify-center p-4">
+      <main className="min-h-dvh bg-gradient-to-br from-[#0D1117] to-[#1A2332] flex items-center justify-center p-4 pt-20 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8">
           <div className="flex justify-center mb-6">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-teal to-pink flex items-center justify-center">
@@ -220,17 +220,18 @@ export default function AdminPage() {
 
   // ── Calendar screen ─────────────────────────────────────────────────────────
   return (
-    <main className="min-h-screen bg-[#F8F9FA] flex flex-col">
+    <main className="box-border h-dvh max-h-dvh flex flex-col bg-[#F8F9FA] overflow-hidden pt-16 max-md:pb-24">
+      {/* h-dvh + overflow: one scroll surface inside calendar; pt-16 clears fixed navbar; pb clears floating CTA */}
 
       {/* Top bar */}
-      <header className="bg-white border-b border-foreground/10 px-6 py-4 flex items-center gap-4 shrink-0">
-        <div className="flex-1">
-          <h1 className="text-xl font-bold font-playfair">Infinity Laser Studio</h1>
-          <p className="text-xs text-foreground/40 font-poppins">Kalendar rezervacija</p>
+      <header className="bg-white border-b border-foreground/10 px-3 py-3 sm:px-6 sm:py-4 flex items-center gap-2 sm:gap-4 shrink-0">
+        <div className="flex-1 min-w-0">
+          <h1 className="text-lg sm:text-xl font-bold font-playfair truncate">Infinity Laser Studio</h1>
+          <p className="text-[11px] sm:text-xs text-foreground/40 font-poppins">Kalendar rezervacija</p>
         </div>
 
-        {/* Legend */}
-        <div className="hidden md:flex items-center gap-4">
+        {/* Legend — desktop */}
+        <div className="hidden md:flex items-center gap-4 shrink-0">
           {(Object.entries(STATUS_STYLES) as [ReservationStatus, typeof STATUS_STYLES[ReservationStatus]][]).map(([key, s]) => (
             <span key={key} className="flex items-center gap-1.5 text-xs font-poppins text-foreground/60">
               <span className={`w-3 h-3 rounded-sm ${s.bg} ${s.border} border`} />
@@ -240,50 +241,74 @@ export default function AdminPage() {
         </div>
 
         <button
+          type="button"
           onClick={handleLogout}
-          className="flex items-center gap-2 px-4 py-2 rounded-full border-2 border-foreground/10 hover:border-foreground/20 text-sm font-poppins text-foreground/60 cursor-pointer transition-colors"
+          className="flex shrink-0 items-center gap-2 px-3 py-2 sm:px-4 rounded-full border-2 border-foreground/10 hover:border-foreground/20 text-xs sm:text-sm font-poppins text-foreground/60 cursor-pointer transition-colors touch-manipulation"
         >
-          <LogOut size={15} />
+          <LogOut size={15} className="shrink-0" />
           <span className="hidden sm:inline">Odjavi se</span>
         </button>
       </header>
 
-      {/* Week navigation */}
-      <div className="bg-white border-b border-foreground/10 px-6 py-3 flex items-center gap-4 shrink-0">
-        <button
-          onClick={prevWeek}
-          className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-foreground/5 transition-colors cursor-pointer"
-        >
-          <ChevronLeft size={18} />
-        </button>
-
-        <div className="flex-1 text-center">
-          <p className="text-sm font-semibold font-poppins">
-            {fmtShort(weekStart)} – {fmtShort(weekEnd)} {weekEnd.getFullYear()}
-          </p>
+      {/* Legend — mobile: horizontal chip row, no layout squeeze */}
+      <div className="md:hidden bg-white border-b border-foreground/10 px-3 py-2 shrink-0">
+        <div className="flex gap-3 overflow-x-auto pb-0.5 -mx-0.5 px-0.5 overscroll-x-contain touch-pan-x scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          {(Object.entries(STATUS_STYLES) as [ReservationStatus, typeof STATUS_STYLES[ReservationStatus]][]).map(([key, s]) => (
+            <span key={key} className="flex shrink-0 items-center gap-1.5 text-[11px] font-poppins text-foreground/60 whitespace-nowrap">
+              <span className={`w-2.5 h-2.5 rounded-sm ${s.bg} ${s.border} border`} />
+              {s.label}
+            </span>
+          ))}
         </div>
+      </div>
 
-        <button
-          onClick={nextWeek}
-          className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-foreground/5 transition-colors cursor-pointer"
-        >
-          <ChevronRight size={18} />
-        </button>
+      {/* Week navigation */}
+      <div className="bg-white border-b border-foreground/10 px-3 py-2.5 sm:px-6 sm:py-3 shrink-0">
+        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3">
+          <div className="flex items-center gap-1 min-w-0 sm:flex-1 sm:gap-2">
+            <button
+              type="button"
+              onClick={prevWeek}
+              className="w-10 h-10 sm:w-9 sm:h-9 shrink-0 flex items-center justify-center rounded-full hover:bg-foreground/5 active:bg-foreground/10 transition-colors cursor-pointer touch-manipulation"
+              aria-label="Prethodna nedelja"
+            >
+              <ChevronLeft size={18} />
+            </button>
 
-        <button
-          onClick={goToday}
-          className="px-4 py-1.5 rounded-full border-2 border-teal text-teal text-xs font-semibold font-poppins cursor-pointer hover:bg-teal/10 transition-colors"
-        >
-          Danas
-        </button>
+            <div className="flex-1 text-center min-w-0 px-1">
+              <p className="text-xs sm:text-sm font-semibold font-poppins leading-tight">
+                <span className="block sm:inline">{fmtShort(weekStart)} – {fmtShort(weekEnd)}</span>
+                <span className="text-foreground/50 font-normal sm:ml-1">{weekEnd.getFullYear()}</span>
+              </p>
+            </div>
 
-        <button
-          onClick={() => setReservationModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#0B8078] text-white text-xs font-semibold font-poppins cursor-pointer hover:bg-blue-600 transition-colors"
-        >
-          <CalendarPlus size={16} />
-          Nova rezervacija
-        </button>
+            <button
+              type="button"
+              onClick={nextWeek}
+              className="w-10 h-10 sm:w-9 sm:h-9 shrink-0 flex items-center justify-center rounded-full hover:bg-foreground/5 active:bg-foreground/10 transition-colors cursor-pointer touch-manipulation"
+              aria-label="Sledeća nedelja"
+            >
+              <ChevronRight size={18} />
+            </button>
+
+            <button
+              type="button"
+              onClick={goToday}
+              className="shrink-0 px-3 py-2 sm:px-4 sm:py-1.5 rounded-full border-2 border-teal text-teal text-[11px] sm:text-xs font-semibold font-poppins cursor-pointer hover:bg-teal/10 active:bg-teal/15 transition-colors touch-manipulation"
+            >
+              Danas
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setReservationModalOpen(true)}
+            className="w-full sm:w-auto shrink-0 flex items-center justify-center gap-2 px-4 py-2.5 sm:py-2 rounded-full bg-[#0B8078] text-white text-xs font-semibold font-poppins cursor-pointer hover:opacity-95 active:opacity-90 transition-opacity touch-manipulation"
+          >
+            <CalendarPlus size={16} className="shrink-0" />
+            Nova rezervacija
+          </button>
+        </div>
       </div>
 
       <AdminReservationModal
@@ -292,16 +317,21 @@ export default function AdminPage() {
         onSuccess={() => fetchWeek(weekStart)}
       />
 
-      {/* Calendar grid */}
-      <div className="flex-1 overflow-auto">
+      {/* Calendar grid — min-h-0 lets this flex child shrink so overflow scrolls here, not on body */}
+      <div className="flex-1 min-h-0 flex flex-col relative isolate">
         {loading && (
-          <div className="absolute inset-0 bg-white/60 flex items-center justify-center z-10">
+          <div
+            className="absolute inset-0 bg-white/70 flex items-center justify-center z-20 pointer-events-auto"
+            aria-busy="true"
+            aria-live="polite"
+          >
             <div className="w-8 h-8 border-2 border-teal border-t-transparent rounded-full animate-spin" />
           </div>
         )}
 
+        <div className="flex-1 min-h-0 overflow-auto overscroll-y-contain overscroll-x-contain [-webkit-overflow-scrolling:touch]">
         {/* Day header row */}
-        <div className="sticky top-0 z-10 bg-white border-b border-foreground/10 grid" style={{ gridTemplateColumns: "56px repeat(7, 1fr)" }}>
+        <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-foreground/10 grid shadow-sm" style={{ gridTemplateColumns: "56px repeat(7, 1fr)" }}>
           <div /> {/* spacer for time column */}
           {weekDates.map((d, i) => {
             const ds  = toDateStr(d);
@@ -377,9 +407,10 @@ export default function AdminPage() {
 
                   return (
                     <button
+                      type="button"
                       key={r.id}
                       onClick={() => openModal(r)}
-                      className={`absolute inset-x-0.5 rounded-lg border ${s.bg} ${s.border} ${s.text} p-1.5 text-left overflow-hidden cursor-pointer hover:brightness-95 transition-all group`}
+                      className={`absolute inset-x-0.5 rounded-lg border ${s.bg} ${s.border} ${s.text} p-1.5 text-left overflow-hidden cursor-pointer hover:brightness-95 active:brightness-90 transition-all group touch-manipulation`}
                       style={{ top: topPx, height: Math.max(heightPx, 22) }}
                     >
                       <p className="text-[11px] font-semibold font-poppins leading-tight truncate">
@@ -402,27 +433,35 @@ export default function AdminPage() {
             );
           })}
         </div>
+        </div>
       </div>
 
       {/* ── Status change modal ─────────────────────────────────────────────── */}
       {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-foreground/40 backdrop-blur-sm" onClick={() => setSelected(null)} />
-          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-0 sm:p-4">
+          <div
+            className="absolute inset-0 bg-foreground/40 backdrop-blur-sm"
+            onClick={() => setSelected(null)}
+            role="presentation"
+          />
+          <div className="relative z-10 bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-md max-h-[92dvh] sm:max-h-[90dvh] overflow-hidden flex flex-col mb-[env(safe-area-inset-bottom)] sm:mb-0">
 
             {/* Modal header */}
-            <div className="flex items-center justify-between px-6 pt-6 pb-4">
-              <h2 className="text-xl font-bold font-playfair">Detalji rezervacije</h2>
+            <div className="flex shrink-0 items-center justify-between px-5 sm:px-6 pt-5 sm:pt-6 pb-3 sm:pb-4 border-b border-foreground/5">
+              <h2 className="text-lg sm:text-xl font-bold font-playfair pr-2">Detalji rezervacije</h2>
               <button
+                type="button"
                 onClick={() => setSelected(null)}
-                className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-foreground/5 cursor-pointer"
+                className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full hover:bg-foreground/5 active:bg-foreground/10 cursor-pointer touch-manipulation"
+                aria-label="Zatvori"
               >
                 <X size={18} />
               </button>
             </div>
 
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-5 sm:px-6 py-4 [-webkit-overflow-scrolling:touch]">
             {/* Customer info */}
-            <div className="px-6 pb-4 space-y-2">
+            <div className="space-y-2">
               {[
                 { icon: User,     value: selected.customer_name },
                 { icon: Mail,     value: selected.customer_email },
@@ -463,14 +502,15 @@ export default function AdminPage() {
             </div>
 
             {/* Status selector */}
-            <div className="px-6 pb-6">
+            <div className="pt-4 pb-2">
               <p className="text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-3">PROMENI STATUS</p>
               <div className="grid grid-cols-2 gap-2">
                 {(Object.entries(STATUS_STYLES) as [ReservationStatus, typeof STATUS_STYLES[ReservationStatus]][]).filter(([key]) => key !== "pending").map(([key, s]) => (
                   <button
+                    type="button"
                     key={key}
                     onClick={() => setNewStatus(key)}
-                    className={`py-2.5 rounded-xl border-2 text-xs font-semibold font-poppins cursor-pointer transition-all ${
+                    className={`py-2.5 rounded-xl border-2 text-xs font-semibold font-poppins cursor-pointer transition-all touch-manipulation ${
                       newStatus === key ? `${s.bg} ${s.border} ${s.text}` : "border-foreground/10 text-foreground/50 hover:border-foreground/20"
                     }`}
                   >
@@ -480,16 +520,18 @@ export default function AdminPage() {
               </div>
 
               <button
+                type="button"
                 onClick={handleStatusSave}
                 disabled={saving || newStatus === selected.status}
-                className="mt-4 w-full py-3.5 rounded-full bg-teal text-white text-sm font-semibold tracking-widest font-poppins cursor-pointer hover:bg-[#0B8078] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="mt-4 w-full py-3.5 rounded-full bg-teal text-white text-sm font-semibold tracking-widest font-poppins cursor-pointer hover:bg-[#0B8078] transition-colors disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
               >
                 {saving ? "Čuvanje..." : "SAČUVAJ PROMENE"}
               </button>
             </div>
+            </div>
 
             {/* Accent bar */}
-            <div className="h-1 bg-linear-to-r from-teal via-pink to-rose" />
+            <div className="h-1 shrink-0 bg-linear-to-r from-teal via-pink to-rose" />
           </div>
         </div>
       )}
