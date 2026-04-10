@@ -206,6 +206,11 @@ const STEP_LABELS: Record<Step, [string, string]> = {
 
 // ═════════════════════════════════════════════════════════════════════════════
 export default function BookingModal({ isOpen, onClose, preselectedNames }: BookingModalProps) {
+  const fbclidRef = useRef(
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("fbclid")
+      : null,
+  );
   const [isAnimating, setIsAnimating] = useState(false);
   const [step, setStep]               = useState<Step>(2);
   const [gender, setGender]           = useState<Gender | null>("zene");
@@ -531,6 +536,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
         phone: form.phone.trim() || undefined,
         value: usdValue,
         currency: "USD",
+        fbclid: fbclidRef.current || undefined,
       }),
     }).catch(() => {});
 
@@ -548,6 +554,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
         event_name: "AddToCart",
         event_id: eventId,
         event_source_url: window.location.href,
+        fbclid: fbclidRef.current || undefined,
       }),
     }).catch(() => {});
     setStep(3);
@@ -563,6 +570,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
         event_name: "InitiateCheckout",
         event_id: eventId,
         event_source_url: window.location.href,
+        fbclid: fbclidRef.current || undefined,
       }),
     }).catch(() => {});
     setStep(5);

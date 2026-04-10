@@ -12,6 +12,7 @@ import FAQSection from "@/components/FAQSection";
 import CostComparison from "@/components/CostComparison";
 import TeamSection from "@/components/TeamSection";
 import CommunitySection from "@/components/CommunitySection";
+import MapSection from "@/components/MapSection";
 import Footer from "@/components/Footer";
 import WistiaVideo from "@/components/WistiaVideo";
 
@@ -58,6 +59,7 @@ export default function HomeClient() {
       {/* <MenSection onOpen={open} /> */}
 <CommunitySection onOpen={open} />
       <FAQSection />
+      <MapSection/>
       <Footer onOpen={open} />
       <BookingModal
         isOpen={bookingOpen}

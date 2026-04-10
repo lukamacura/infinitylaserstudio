@@ -21,7 +21,7 @@ function hashPhone(phone: string): string {
 function getCookie(cookieHeader: string | null, name: string): string | null {
   if (!cookieHeader) return null;
   const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
-  return match ? decodeURIComponent(match[1]) : null;
+  return match ? match[1] : null;
 }
 
 export async function POST(req: NextRequest) {
@@ -38,9 +38,10 @@ export async function POST(req: NextRequest) {
     phone?: string;
     value?: number;
     currency?: string;
+    fbclid?: string;
   };
 
-  const { event_name, event_id, event_source_url, email, phone, value, currency } = body;
+  const { event_name, event_id, event_source_url, email, phone, value, currency, fbclid } = body;
 
   if (!event_name || !event_id) {
     return NextResponse.json({ ok: false, error: "Missing required fields" }, { status: 400 });
@@ -53,8 +54,14 @@ export async function POST(req: NextRequest) {
     null;
   const userAgent = req.headers.get("user-agent");
   const cookieHeader = req.headers.get("cookie");
-  const fbc = getCookie(cookieHeader, "_fbc");
   const fbp = getCookie(cookieHeader, "_fbp");
+
+  // Prefer the _fbc cookie (set by the Pixel); fall back to constructing it
+  // from the raw fbclid the client extracted from the URL.
+  let fbc = getCookie(cookieHeader, "_fbc");
+  if (!fbc && fbclid) {
+    fbc = `fb.1.${Date.now()}.${fbclid}`;
+  }
 
   // Build user_data — only include fields we actually have
   const userData: Record<string, string | string[]> = {};
