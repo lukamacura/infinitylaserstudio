@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/static-components */
 "use client";
 
 import { useState } from "react";
@@ -15,7 +14,6 @@ import {
 import type { LucideIcon } from "lucide-react";
 import type { Service } from "@/lib/database.types";
 
-// ── Icon mapping (matches BookingModal) ───────────────────────────────────────
 function getIcon(name: string): LucideIcon {
   const n = name.toLowerCase();
   if (n.includes("nausnice")) return ScanFace;
@@ -32,7 +30,6 @@ function getIcon(name: string): LucideIcon {
   return Target;
 }
 
-// ── Combo badge detection ─────────────────────────────────────────────────────
 function isCombo(name: string): boolean {
   const n = name.toLowerCase();
   return (
@@ -45,15 +42,13 @@ function isCombo(name: string): boolean {
   );
 }
 
-// ── Price formatter ───────────────────────────────────────────────────────────
 function formatPrice(price: number): string {
   return price.toLocaleString("sr-RS") + " RSD";
 }
 
-// ── Card ──────────────────────────────────────────────────────────────────────
 interface CardProps {
   service: Service;
-  accent: { bg: string; text: string; badge: string };
+  accent: { bg: string; text: string; badge: string; border: string };
 }
 
 function ServiceCard({ service, accent }: CardProps) {
@@ -61,7 +56,10 @@ function ServiceCard({ service, accent }: CardProps) {
   const combo = isCombo(service.name);
 
   return (
-    <div className="group relative flex flex-col gap-4 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm hover:shadow-lg transition-all duration-300">
+    <div
+      className="group relative flex flex-col gap-4 rounded-2xl bg-white p-6 shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5"
+      style={{ border: `1px solid ${accent.border}` }}
+    >
       {combo && (
         <span
           className="absolute top-4 right-4 rounded-full px-2.5 py-0.5 font-poppins text-[10px] font-semibold tracking-widest"
@@ -71,25 +69,20 @@ function ServiceCard({ service, accent }: CardProps) {
         </span>
       )}
 
-      {/* Icon */}
       <div
         className="inline-flex items-center justify-center w-11 h-11 rounded-xl"
         style={{ background: accent.bg }}
-      // eslint-disable-next-line react/jsx-no-comment-textnodes
       >
-        // eslint-disable-next-line react-hooks/static-components, react-hooks/static-components, react-hooks/static-components, react-hooks/static-components
         <Icon size={20} strokeWidth={1.6} className="text-gray-700" />
       </div>
 
-      {/* Name */}
       <div className="flex-1">
         <h3 className="font-poppins text-sm font-semibold text-gray-800 leading-snug">
           {service.name}
         </h3>
       </div>
 
-      {/* Price */}
-      <div className="pt-3 border-t border-gray-50">
+      <div className="pt-3 border-t border-gray-100">
         <span
           className="font-poppins text-base font-bold"
           style={{ color: accent.text }}
@@ -101,7 +94,6 @@ function ServiceCard({ service, accent }: CardProps) {
   );
 }
 
-// ── Tab toggle ────────────────────────────────────────────────────────────────
 type Tab = "zene" | "muskarci";
 
 interface PricingGridProps {
@@ -109,23 +101,33 @@ interface PricingGridProps {
   muskarci: Service[];
 }
 
-const ZENE_ACCENT    = { bg: "rgba(252,202,226,0.35)", text: "#c0306a", badge: "#FCCAE2" };
-const MUSKARCI_ACCENT = { bg: "rgba(172,230,228,0.35)", text: "#0a7c78", badge: "#ACE6E4" };
+const ZENE_ACCENT = {
+  bg: "rgba(252,202,226,0.4)",
+  text: "#c0306a",
+  badge: "#FCCAE2",
+  border: "rgba(252,202,226,0.6)",
+};
+const MUSKARCI_ACCENT = {
+  bg: "rgba(172,230,228,0.4)",
+  text: "#0a7c78",
+  badge: "#ACE6E4",
+  border: "rgba(172,230,228,0.6)",
+};
 
 export default function PricingGrid({ zene, muskarci }: PricingGridProps) {
   const [tab, setTab] = useState<Tab>("zene");
 
   const services = tab === "zene" ? zene : muskarci;
-  const accent   = tab === "zene" ? ZENE_ACCENT : MUSKARCI_ACCENT;
+  const accent = tab === "zene" ? ZENE_ACCENT : MUSKARCI_ACCENT;
 
   return (
     <div>
       {/* Tab toggle */}
       <div className="flex justify-center mb-12">
-        <div className="inline-flex rounded-full border border-gray-200 bg-gray-50 p-1 gap-1">
+        <div className="inline-flex rounded-full border border-gray-200 bg-gray-100 p-1 gap-1">
           <button
             onClick={() => setTab("zene")}
-            className={`px-6 py-2 rounded-full font-poppins text-sm font-medium transition-all duration-200 cursor-pointer ${
+            className={`px-8 py-2.5 rounded-full font-poppins text-sm font-medium transition-all duration-200 cursor-pointer ${
               tab === "zene"
                 ? "bg-rose text-gray-800 shadow-sm"
                 : "text-gray-500 hover:text-gray-700"
@@ -135,7 +137,7 @@ export default function PricingGrid({ zene, muskarci }: PricingGridProps) {
           </button>
           <button
             onClick={() => setTab("muskarci")}
-            className={`px-6 py-2 rounded-full font-poppins text-sm font-medium transition-all duration-200 cursor-pointer ${
+            className={`px-8 py-2.5 rounded-full font-poppins text-sm font-medium transition-all duration-200 cursor-pointer ${
               tab === "muskarci"
                 ? "bg-teal text-gray-800 shadow-sm"
                 : "text-gray-500 hover:text-gray-700"
@@ -153,7 +155,6 @@ export default function PricingGrid({ zene, muskarci }: PricingGridProps) {
         ))}
       </div>
 
-      {/* Empty state */}
       {services.length === 0 && (
         <p className="text-center font-poppins text-sm text-gray-400 py-16">
           Nema dostupnih usluga.
