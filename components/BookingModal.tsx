@@ -70,11 +70,12 @@ interface DayOption {
 }
 
 /**
- * Build bookable days from the special availability whitelist.
- * Only shows future dates (or today if a slot still fits within the 2-hour buffer).
- * Remove the SPECIAL_AVAILABILITY import/usage to restore full-time scheduling.
+ * Candidate days from the whitelist where the booking duration fits business windows
+ * (ignores existing reservations — use after a reservations query to hide fully booked days).
  */
 function buildDayOptions(totalDuration: number): DayOption[] {
+  if (totalDuration <= 0) return [];
+
   const now = new Date();
   const todayStr = toDateStr(now);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
@@ -92,14 +93,9 @@ function buildDayOptions(totalDuration: number): DayOption[] {
     if (dateStr < todayStr) continue;
 
     const isToday = dateStr === todayStr;
-
-    // For today: only show if at least one slot fits after the 2-hour buffer
-    if (isToday) {
-      const earliestSlot = Math.ceil(minStartToday / SLOT_SIZE) * SLOT_SIZE;
-      const fitsAnyWindow = windows.some(
-        (w) => Math.max(w.start, earliestSlot) + totalDuration <= w.end,
-      );
-      if (!fitsAnyWindow) continue;
+    const minStart = isToday ? minStartToday : undefined;
+    if (getAvailableSlots([], totalDuration, minStart, windows).length === 0) {
+      continue;
     }
 
     const d = new Date(`${dateStr}T00:00:00`);
@@ -240,6 +236,11 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
   const [isReturningCustomer, setIsReturningCustomer] = useState<boolean | null>(null);
   const [checkingReturningEmail, setCheckingReturningEmail] = useState(false);
 
+  /** Step 3: dates that still have ≥1 free slot for the current treatment duration */
+  const [bookableDayOptions, setBookableDayOptions] = useState<DayOption[]>([]);
+  const [loadingBookableDays, setLoadingBookableDays] = useState(false);
+  const bookableDaysFetchIdRef = useRef(0);
+
   // ── Derived ───────────────────────────────────────────────────────────────
   const selectedServices = services.filter((s) => selectedIds.includes(s.id));
   const { effective: effectiveServices, appliedCombos } = applyComboRules(selectedServices, services);
@@ -263,16 +264,14 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
   const finalPrice = ilsPromoActive ? Math.round(baseFirstTreatmentPrice * 0.9) : baseFirstTreatmentPrice;
   const savingsVsList = totalPrice - finalPrice;
 
-  // Day options rebuild whenever slot duration (incl. consultation) changes
-  const dayOptions = useMemo(() => buildDayOptions(slotDuration), [slotDuration]);
-
   // For today: slots must start ≥ now+120min
   const nowMinutes = useMemo(() => {
     const now = new Date();
     return now.getHours() * 60 + now.getMinutes();
   }, []);
 
-  const isToday = dayOptions.find((d) => d.date === selectedDate)?.isToday ?? false;
+  const isToday =
+    bookableDayOptions.find((d) => d.date === selectedDate)?.isToday ?? false;
   const minStart = isToday ? nowMinutes + 120 : undefined;
 
   const windows = selectedDate ? getBusinessWindows(selectedDate) : null;
@@ -339,6 +338,87 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
       .then(({ data }) => { setDaySlots(data ?? []); setLoadingSlots(false); });
   }, [selectedDate]);
 
+  // Step 3: load reservations for all candidate days, hide dates with no free slot
+  useEffect(() => {
+    if (!isOpen || step !== 3 || slotDuration <= 0) {
+      setLoadingBookableDays(false);
+      return;
+    }
+
+    const fetchId = ++bookableDaysFetchIdRef.current;
+    const candidates = buildDayOptions(slotDuration);
+    setLoadingBookableDays(true);
+    setBookableDayOptions([]);
+
+    if (candidates.length === 0) {
+      if (bookableDaysFetchIdRef.current === fetchId) {
+        setBookableDayOptions([]);
+        setLoadingBookableDays(false);
+      }
+      return;
+    }
+
+    const dates = candidates.map((d) => d.date);
+    void (async () => {
+      let rows: { date: string; start_time: string; end_time: string; status: string }[] | null = null;
+      let loadError = false;
+      try {
+        const { data, error } = await supabase
+          .from("reservations")
+          .select("date, start_time, end_time, status")
+          .in("date", dates);
+        if (error) loadError = true;
+        else rows = data ?? [];
+      } catch {
+        loadError = true;
+      }
+
+      if (bookableDaysFetchIdRef.current !== fetchId) return;
+
+      const now = new Date();
+      const todayStr = toDateStr(now);
+      const minStartToday = now.getHours() * 60 + now.getMinutes() + 120;
+
+      const byDate = new Map<string, { start_time: string; end_time: string; status: string }[]>();
+      if (rows) {
+        for (const row of rows) {
+          const list = byDate.get(row.date) ?? [];
+          list.push({
+            start_time: row.start_time,
+            end_time: row.end_time,
+            status: row.status,
+          });
+          byDate.set(row.date, list);
+        }
+      }
+
+      const filtered = loadError
+        ? candidates
+        : candidates.filter((day) => {
+            const windows = getBusinessWindows(day.date);
+            if (!windows) return false;
+            const minStart = day.date === todayStr ? minStartToday : undefined;
+            const res = byDate.get(day.date) ?? [];
+            return getAvailableSlots(res, slotDuration, minStart, windows).length > 0;
+          });
+
+      setBookableDayOptions(filtered);
+      setLoadingBookableDays(false);
+    })();
+
+    return () => {
+      bookableDaysFetchIdRef.current += 1;
+    };
+  }, [isOpen, step, slotDuration]);
+
+  useEffect(() => {
+    if (!selectedDate || bookableDayOptions.length === 0) return;
+    if (!bookableDayOptions.some((d) => d.date === selectedDate)) {
+      setSelectedDate("");
+      setSelectedTime("");
+    }
+  }, [bookableDayOptions, selectedDate]);
+
   // ── Auto-select preselected services when modal opens ─────────────────────
   useEffect(() => {
     if (!isOpen) {
@@ -362,6 +442,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   function resetAll() {
+    bookableDaysFetchIdRef.current += 1;
+    setBookableDayOptions([]);
+    setLoadingBookableDays(false);
     setStep(2); setGender("zene"); setSelectedIds([]);
     setSelectedDate(""); setSelectedTime(""); setDaySlots([]);
     setForm({ name: "", email: "", phone: "" });
@@ -682,14 +765,18 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
           {step === 3 && (
             <div className="flex flex-col gap-4">
               <p className="text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-1">IZABERI DAN</p>
-              {dayOptions.length === 0 ? (
+              {loadingBookableDays ? (
+                <div className="flex justify-center py-6">
+                  <Loader2 size={22} className="animate-spin text-foreground/30" />
+                </div>
+              ) : bookableDayOptions.length === 0 ? (
                 <div className="flex items-center gap-2 p-4 rounded-xl bg-foreground/5 text-foreground/50 text-sm font-poppins">
                   <AlertCircle size={16} />
-                  Nema dostupnih termina u narednih 7 dana.
+                  Nema dana u kalendaru kada se ceo izabrani tretman staje u slobodno vreme studija ili su svi termini zauzeti.
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-2">
-                  {dayOptions.map((day) => {
+                  {bookableDayOptions.map((day) => {
                     const isSelected = selectedDate === day.date;
                     return (
                       <button
