@@ -80,7 +80,7 @@ export default function Footer({ onOpen }: Props) {
           </a>
           {/* Phone */}
           <a
-            href="tel:+38163527325"
+            href="tel:+381653577300"
             aria-label="Pozovi"
             className="w-9 h-9 rounded-full bg-gray-100 hover:bg-pink transition-colors flex items-center justify-center"
             // eslint-disable-next-line @typescript-eslint/no-explicit-any

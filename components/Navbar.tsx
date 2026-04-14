@@ -60,7 +60,7 @@ export default function Navbar() {
 
           <div className="flex items-center gap-3 text-white/60">
             <a
-              href="tel:+38163527325"
+              href="tel:+381653577300"
               aria-label="Pozovi"
               className="p-2 hover:text-white transition-colors duration-500"
             >

@@ -812,7 +812,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                 <label className="block text-xs text-foreground/50 font-poppins mb-1">Telefon</label>
                 <input
                   type="tel"
-                  placeholder="+381 60 123 4567"
+                  placeholder="+381 65 357 7300"
                   value={form.phone}
                   onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
                   className="w-full px-4 py-3 rounded-xl border-2 border-foreground/10 focus:outline-none font-poppins text-sm transition-colors"
