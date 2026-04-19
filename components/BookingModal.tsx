@@ -220,7 +220,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
   const [daySlots, setDaySlots]           = useState<{ start_time: string; end_time: string; status: string }[]>([]);
   const [loadingSlots, setLoadingSlots]   = useState(false);
   const [form, setForm]                   = useState({ name: "", email: "", phone: "" });
-  const [fieldErrors, setFieldErrors]     = useState({ name: false, email: false });
+  const [fieldErrors, setFieldErrors]     = useState({ name: false, email: false, phone: false });
   const [submitting, setSubmitting]       = useState(false);
   const [submitError, setSubmitError]     = useState<string | null>(null);
   const [bookingRef, setBookingRef]       = useState<string | null>(null);
@@ -244,7 +244,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
   // ── Derived ───────────────────────────────────────────────────────────────
   const selectedServices = services.filter((s) => selectedIds.includes(s.id));
   const { effective: effectiveServices, appliedCombos } = applyComboRules(selectedServices, services);
-  /** With 15 min consultation — used for day/slot picking so first-time bookings always fit. */
+  /** With 10 min consultation — used for day/slot picking so first-time bookings always fit. */
   const slotDuration =
     selectedServices.length > 0 ? calcBookingDuration(selectedServices) : 0;
   /** Stored end time & UI after email check: returning clients skip consultation block. */
@@ -448,7 +448,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
     setStep(2); setGender("zene"); setSelectedIds([]);
     setSelectedDate(""); setSelectedTime(""); setDaySlots([]);
     setForm({ name: "", email: "", phone: "" });
-    setFieldErrors({ name: false, email: false });
+    setFieldErrors({ name: false, email: false, phone: false });
     setSubmitError(null); setBookingRef(null);
     setPromoCode(""); setPromoStatus("idle"); setAppliedPromoCode(null);
     emailCheckSeqRef.current += 1;
@@ -521,9 +521,13 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
 
   async function handleSubmit() {
     // Validate – highlight empty required fields instead of blocking silently
-    const errors = { name: !form.name.trim(), email: !form.email.trim() };
+    const errors = {
+      name: !form.name.trim(),
+      email: !form.email.trim(),
+      phone: !form.phone.trim(),
+    };
     setFieldErrors(errors);
-    if (errors.name || errors.email || !selectedDate || !selectedTime) return;
+    if (errors.name || errors.email || errors.phone || !selectedDate || !selectedTime) return;
 
     setSubmitting(true);
     setSubmitError(null);
@@ -896,16 +900,20 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
               </div>
 
               <div>
-                <label className="block text-xs text-foreground/50 font-poppins mb-1">Telefon</label>
+                <label className="block text-xs text-foreground/50 font-poppins mb-1">Telefon *</label>
                 <input
                   type="tel"
                   placeholder="+381 65 357 7300"
                   value={form.phone}
-                  onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
-                  className="w-full px-4 py-3 rounded-xl border-2 border-foreground/10 focus:outline-none font-poppins text-sm transition-colors"
-                  onFocus={(e) => (e.target.style.borderColor = accent.hex)}
-                  onBlur={(e) => (e.target.style.borderColor = "")}
+                  onChange={(e) => {
+                    setForm((p) => ({ ...p, phone: e.target.value }));
+                    setFieldErrors((p) => ({ ...p, phone: false }));
+                  }}
+                  className={`w-full px-4 py-3 rounded-xl border-2 focus:outline-none font-poppins text-sm transition-colors ${fieldErrors.phone ? "border-red-400 bg-red-50" : "border-foreground/10"}`}
+                  onFocus={(e) => { if (!fieldErrors.phone) e.target.style.borderColor = accent.hex; }}
+                  onBlur={(e) => { e.target.style.borderColor = ""; }}
                 />
+                {fieldErrors.phone && <p className="text-xs text-red-500 font-poppins mt-1">Unesite broj telefona.</p>}
               </div>
 
               <div>
@@ -1112,7 +1120,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                 <div className="border-t border-foreground/10 pt-3">
                   <p className="text-xs text-foreground/40 font-poppins mb-1.5">USLUGE</p>
                   {!isReturningCustomer && (
-                    <p className="text-sm font-poppins font-semibold text-foreground/50">Konsultacija (15 min)</p>
+                    <p className="text-sm font-poppins font-semibold text-foreground/50">Konsultacija (10 min)</p>
                   )}
                   {effectiveServices.map((s) => (
                     <p key={s.id} className="text-sm font-poppins font-semibold">{s.name}</p>

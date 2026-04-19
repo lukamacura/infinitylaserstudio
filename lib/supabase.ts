@@ -19,8 +19,9 @@ export const supabase = new Proxy({} as ReturnType<typeof getSupabaseClient>, {
 
 // ── Business logic helpers ──────────────────────────────────────────────────
 
-export const SLOT_SIZE             = 10;      // minutes per slot
-export const CONSULTATION_MINUTES  = 15;      // mandatory pre-treatment consultation
+export const SLOT_SIZE                  = 10; // minutes per slot
+export const CONSULTATION_MINUTES       = 10; // pre-treatment consultation for first-time customers
+export const MULTI_REGION_PAUSE_MINUTES = 5;  // single flat pause added when 2+ regions are selected
 
 // ── Temporary availability whitelist ────────────────────────────────────────
 // Remove this map (and the check below) to restore full-time scheduling.
@@ -43,6 +44,7 @@ export const SPECIAL_AVAILABILITY: Record<string, BusinessWindow[]> = {
   "2026-05-09": [{ start: 10 * 60,        end: 17 * 60      }], // 10:00–17:00
   "2026-05-11": [{ start: 13 * 60,        end: 20 * 60      }], // 13:00–20:00
   "2026-05-15": [{ start: 14 * 60,        end: 20 * 60      }], // 14:00–20:00
+  "2026-05-16": [{ start: 15 * 60,        end: 20 * 60      }], // 15:00–20:00
   "2026-05-29": [{ start: 14 * 60,        end: 20 * 60      }], // 14:00–20:00
   "2026-05-30": [{ start: 10 * 60,        end: 17 * 60      }], // 10:00–17:00
 };
@@ -53,18 +55,23 @@ export function getBusinessWindows(dateStr: string): BusinessWindow[] | null {
   return windows?.length ? windows : null;
 }
 
-/** Total duration (including inter-service pauses, but NOT a trailing pause after the last service), rounded up to slot boundary */
-export function calcTotalDuration(services: { service_duration: number; pause_duration: number }[]): number {
-  const raw = services.reduce((sum, s) => sum + s.service_duration + s.pause_duration, 0)
-            - (services.at(-1)?.pause_duration ?? 0);
-  return Math.ceil(raw / SLOT_SIZE) * SLOT_SIZE;
+/**
+ * Sum of treatment time for the selected regions, plus one flat 5-min pause
+ * when 2+ regions are selected. Per-region `pause_duration` is ignored by design.
+ */
+function sumServiceDurations(services: { service_duration: number }[]): number {
+  const sum = services.reduce((acc, s) => acc + s.service_duration, 0);
+  return services.length >= 2 ? sum + MULTI_REGION_PAUSE_MINUTES : sum;
 }
 
-/** Booking duration = services + inter-service pauses + consultation, rounded up to slot boundary */
-export function calcBookingDuration(services: { service_duration: number; pause_duration: number }[]): number {
-  const raw = services.reduce((sum, s) => sum + s.service_duration + s.pause_duration, 0)
-            - (services.at(-1)?.pause_duration ?? 0);
-  return Math.ceil((raw + CONSULTATION_MINUTES) / SLOT_SIZE) * SLOT_SIZE;
+/** Treatment duration for returning customers (no consultation), rounded up to slot boundary. */
+export function calcTotalDuration(services: { service_duration: number }[]): number {
+  return Math.ceil(sumServiceDurations(services) / SLOT_SIZE) * SLOT_SIZE;
+}
+
+/** Treatment duration for first-time customers — adds a 10-min consultation, rounded up to slot boundary. */
+export function calcBookingDuration(services: { service_duration: number }[]): number {
+  return Math.ceil((sumServiceDurations(services) + CONSULTATION_MINUTES) / SLOT_SIZE) * SLOT_SIZE;
 }
 
 /** Convert "HH:MM:SS" or "HH:MM" to total minutes */

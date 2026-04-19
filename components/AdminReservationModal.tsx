@@ -226,7 +226,7 @@ export default function AdminReservationModal({
   // ── Derived ───────────────────────────────────────────────────────────────
   const selectedServices = services.filter((s) => selectedIds.includes(s.id));
   const { effective: effectiveServices, appliedCombos } = applyComboRules(selectedServices, services);
-  /** With 15 min consultation — used for day/slot picking so first-time bookings always fit. */
+  /** With 10 min consultation — used for day/slot picking so first-time bookings always fit. */
   const slotDuration =
     selectedServices.length > 0 ? calcBookingDuration(selectedServices) : 0;
   /** Stored end time & UI after email check: returning clients skip consultation block. */
@@ -909,7 +909,7 @@ export default function AdminReservationModal({
                 <div className="border-t border-foreground/10 pt-3">
                   <p className="text-xs text-foreground/40 font-poppins mb-1.5">USLUGE</p>
                   {!isReturningCustomer && (
-                    <p className="text-sm font-poppins font-semibold text-foreground/50">Konsultacija (15 min)</p>
+                    <p className="text-sm font-poppins font-semibold text-foreground/50">Konsultacija (10 min)</p>
                   )}
                   {effectiveServices.map((s) => (
                     <p key={s.id} className="text-sm font-poppins font-semibold">{s.name}</p>
