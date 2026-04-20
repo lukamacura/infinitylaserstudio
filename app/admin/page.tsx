@@ -21,9 +21,10 @@ const SR_DAYS_SHORT = ["Pon", "Uto", "Sre", "Čet", "Pet", "Sub", "Ned"];
 const SR_MONTHS     = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "avg", "sep", "okt", "nov", "dec"];
 
 const STATUS_STYLES: Record<ReservationStatus, { bg: string; text: string; border: string; label: string; dot: string }> = {
-  pending:   { bg: "bg-amber-50",  text: "text-amber-800",  border: "border-amber-200", label: "Na čekanju", dot: "bg-amber-400" },
-  confirmed: { bg: "bg-green-50",  text: "text-green-800",  border: "border-green-200", label: "Potvrđeno", dot: "bg-green-500" },
-  cancelled: { bg: "bg-red-50",    text: "text-red-700",    border: "border-red-200",   label: "Otkazano",  dot: "bg-red-500" },
+  pending:   { bg: "bg-amber-50",  text: "text-amber-800",  border: "border-amber-200", label: "Na čekanju",         dot: "bg-amber-400" },
+  confirmed: { bg: "bg-green-50",  text: "text-green-800",  border: "border-green-200", label: "Potvrđeno",          dot: "bg-green-500" },
+  cancelled: { bg: "bg-red-50",    text: "text-red-700",    border: "border-red-200",   label: "Otkazano",           dot: "bg-red-500"   },
+  no_show:   { bg: "bg-slate-100", text: "text-slate-600",  border: "border-slate-300", label: "Nije se pojavila",   dot: "bg-slate-400" },
 };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -184,7 +185,12 @@ export default function AdminPage() {
   async function handleStatusSave() {
     if (!selected) return;
     setSaving(true);
-    await supabase.from("reservations").update({ status: newStatus }).eq("id", selected.id);
+    const { error } = await supabase.from("reservations").update({ status: newStatus }).eq("id", selected.id);
+    if (error) {
+      console.error("Status update failed:", error);
+      setSaving(false);
+      return;
+    }
     setReservations((prev) =>
       prev.map((r) => r.id === selected.id ? { ...r, status: newStatus } : r)
     );
@@ -257,7 +263,7 @@ export default function AdminPage() {
           </div>
           
           <div className="flex items-center gap-4">
-             {(Object.entries(STATUS_STYLES) as [ReservationStatus, typeof STATUS_STYLES[ReservationStatus]][]).map(([key, s]) => (
+             {(Object.entries(STATUS_STYLES) as [ReservationStatus, typeof STATUS_STYLES[ReservationStatus]][]).filter(([key]) => key !== "pending").map(([key, s]) => (
               <div key={key} className="flex items-center gap-2 group">
                 <span className={`w-2.5 h-2.5 rounded-full ${s.dot} shadow-sm transition-transform group-hover:scale-125`} />
                 <span className="hidden lg:inline text-[11px] font-bold font-poppins text-foreground/40 uppercase tracking-wider">{s.label}</span>
@@ -435,7 +441,7 @@ export default function AdminPage() {
               </div>
 
               <div className="space-y-4 pt-4 pb-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-3">
                   {(Object.entries(STATUS_STYLES) as [ReservationStatus, typeof STATUS_STYLES[ReservationStatus]][]).filter(([key]) => key !== "pending").map(([key, s]) => (
                     <button
                       key={key}

@@ -492,6 +492,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
       .from("reservations")
       .select("id")
       .ilike("customer_email", trimmed)
+      .in("status", ["confirmed", "no_show"])
       .limit(1)
       .maybeSingle();
     if (emailCheckSeqRef.current !== seq) return;
@@ -537,6 +538,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
       .from("reservations")
       .select("id")
       .ilike("customer_email", emailTrim)
+      .in("status", ["confirmed", "no_show"])
       .limit(1)
       .maybeSingle();
     const returningSubmit = !!existingReservation;
