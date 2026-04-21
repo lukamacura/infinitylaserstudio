@@ -21,9 +21,10 @@ const SR_DAYS_SHORT = ["Pon", "Uto", "Sre", "Čet", "Pet", "Sub", "Ned"];
 const SR_MONTHS     = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "avg", "sep", "okt", "nov", "dec"];
 
 const STATUS_STYLES: Record<ReservationStatus, { bg: string; text: string; border: string; label: string; dot: string }> = {
-  pending:   { bg: "bg-amber-50",  text: "text-amber-800",  border: "border-amber-200", label: "Na čekanju", dot: "bg-amber-400" },
-  confirmed: { bg: "bg-green-50",  text: "text-green-800",  border: "border-green-200", label: "Potvrđeno", dot: "bg-green-500" },
-  cancelled: { bg: "bg-red-50",    text: "text-red-700",    border: "border-red-200",   label: "Otkazano",  dot: "bg-red-500" },
+  pending:   { bg: "bg-amber-50",  text: "text-amber-800",  border: "border-amber-200", label: "Na čekanju",        dot: "bg-amber-400" },
+  confirmed: { bg: "bg-green-50",  text: "text-green-800",  border: "border-green-200", label: "Potvrđeno",         dot: "bg-green-500" },
+  cancelled: { bg: "bg-red-50",    text: "text-red-700",    border: "border-red-200",   label: "Otkazano",          dot: "bg-red-500"   },
+  no_show:   { bg: "bg-orange-50", text: "text-orange-700", border: "border-orange-200",label: "Nije se pojavila",  dot: "bg-orange-500"},
 };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
