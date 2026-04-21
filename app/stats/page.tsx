@@ -192,15 +192,15 @@ export default function MarketingPage() {
       <style jsx global>{` .animate-promo-in { display: none !important; } `}</style>
 
       {/* Header */}
-      <header className="bg-white border-b border-foreground/5 px-4 md:px-8 py-3 md:py-5 flex items-center justify-between gap-6 shrink-0 z-20 shadow-sm sticky top-0">
-        <div className="flex items-center gap-4 md:gap-6">
-          <div className="border-r border-foreground/10 pr-4 md:pr-6">
-            <h1 className="text-xl font-bold font-playfair tracking-tight">Infinity Laser Studio</h1>
-            <p className="text-[10px] text-foreground/30 font-bold font-poppins uppercase tracking-widest mt-0.5">Admin Panel</p>
+      <header className="bg-white border-b border-foreground/5 px-4 md:px-8 py-3 md:py-5 flex items-center justify-between gap-3 shrink-0 z-20 shadow-sm sticky top-0">
+        <div className="flex items-center gap-3 md:gap-6 min-w-0">
+          <div className="border-r border-foreground/10 pr-3 md:pr-6 shrink-0">
+            <h1 className="text-base md:text-xl font-bold font-playfair tracking-tight whitespace-nowrap">Infinity Laser Studio</h1>
+            <p className="text-[9px] md:text-[10px] text-foreground/30 font-bold font-poppins uppercase tracking-widest mt-0.5">Admin Panel</p>
           </div>
-          <nav className="flex items-center gap-1 bg-foreground/3 rounded-xl p-1">
-            <Link href="/finances" className="px-3 py-1.5 rounded-lg text-xs font-bold font-poppins text-foreground/30 hover:text-foreground/60 uppercase tracking-widest transition-colors">Finansije</Link>
-            <span className="px-3 py-1.5 rounded-lg bg-white shadow-sm text-xs font-bold font-poppins text-foreground uppercase tracking-widest">Statistike</span>
+          <nav className="flex items-center gap-1 bg-foreground/3 rounded-xl p-1 shrink-0">
+            <Link href="/finances" className="px-2.5 md:px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-bold font-poppins text-foreground/30 hover:text-foreground/60 uppercase tracking-widest transition-colors">Finansije</Link>
+            <span className="px-2.5 md:px-3 py-1.5 rounded-lg bg-white shadow-sm text-[10px] md:text-xs font-bold font-poppins text-foreground uppercase tracking-widest">Statistike</span>
           </nav>
         </div>
         <button onClick={handleLogout} className="flex items-center gap-2 px-3 py-2 md:px-5 md:py-2.5 rounded-xl md:rounded-2xl bg-foreground/3 text-foreground/40 hover:text-red-500 hover:bg-red-50 transition-all font-poppins text-xs font-bold cursor-pointer">
@@ -284,7 +284,66 @@ export default function MarketingPage() {
             {loading && <div className="w-5 h-5 border-2 border-teal border-t-transparent rounded-full animate-spin" />}
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Mobile cards */}
+          <div className="sm:hidden divide-y divide-foreground/5">
+            {monthlyStats.every(m => m.confirmed === 0 && m.cancelled === 0) ? (
+              <div className="px-6 py-16 text-center opacity-20">
+                <Target size={40} className="mx-auto mb-2" />
+                <p className="font-poppins text-sm font-medium uppercase tracking-widest">Nema podataka</p>
+              </div>
+            ) : (
+              monthlyStats.map((m) => {
+                const tot = m.confirmed + m.cancelled + m.noShow;
+                const isCurrentMonth = m.month === new Date().getMonth() && m.year === new Date().getFullYear();
+                return (
+                  <div key={`${m.year}-${m.month}`} className={`px-5 py-4 ${isCurrentMonth ? "bg-teal/2" : ""}`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-bold font-poppins text-foreground/80 capitalize">
+                          {SR_MONTHS[m.month]} {m.year}.
+                        </p>
+                        {isCurrentMonth && (
+                          <span className="px-2 py-0.5 rounded-full bg-teal/10 text-teal text-[9px] font-bold font-poppins uppercase tracking-widest">tekući</span>
+                        )}
+                      </div>
+                      {tot > 0 ? (
+                        <span className={`text-sm font-bold font-poppins ${getRateColor(m.showUpRate)}`}>{m.showUpRate}%</span>
+                      ) : (
+                        <span className="text-sm font-poppins text-foreground/20">—</span>
+                      )}
+                    </div>
+                    {tot > 0 && (
+                      <>
+                        <div className="w-full bg-foreground/5 rounded-full h-1.5 mb-3">
+                          <div
+                            className={`h-1.5 rounded-full transition-all ${m.showUpRate >= 80 ? "bg-teal" : m.showUpRate >= 60 ? "bg-amber-500" : "bg-red-400"}`}
+                            style={{ width: `${m.showUpRate}%` }}
+                          />
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="text-center">
+                            <p className="text-[9px] font-bold font-poppins text-foreground/30 uppercase tracking-wider mb-0.5">Dolasci</p>
+                            <p className="text-sm font-bold font-poppins text-teal">{m.confirmed}</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-[9px] font-bold font-poppins text-foreground/30 uppercase tracking-wider mb-0.5">Otkazivanja</p>
+                            <p className="text-sm font-bold font-poppins text-red-400">{m.cancelled}</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-[9px] font-bold font-poppins text-foreground/30 uppercase tracking-wider mb-0.5">Nije došla</p>
+                            <p className="text-sm font-bold font-poppins text-orange-500">{m.noShow > 0 ? m.noShow : <span className="text-foreground/20">—</span>}</p>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-foreground/2">
@@ -355,10 +414,10 @@ export default function MarketingPage() {
             </table>
           </div>
 
-          <div className="px-8 py-4 bg-foreground/2 border-t border-foreground/5 flex justify-between items-center">
-            <p className="text-xs font-bold font-poppins text-foreground/40 uppercase tracking-widest">Sve vreme</p>
-            <p className="text-xs font-bold font-poppins text-foreground/40 uppercase tracking-widest">
-              Show-up rate: <span className={`ml-2 ${getRateColor(showUpRate)}`}>{total > 0 ? `${showUpRate}%` : "—"}</span>
+          <div className="px-5 md:px-8 py-4 bg-foreground/2 border-t border-foreground/5 flex justify-between items-center gap-2">
+            <p className="text-[10px] md:text-xs font-bold font-poppins text-foreground/40 uppercase tracking-widest">Sve vreme</p>
+            <p className="text-[10px] md:text-xs font-bold font-poppins text-foreground/40 uppercase tracking-widest">
+              Show-up rate: <span className={`ml-1 md:ml-2 ${getRateColor(showUpRate)}`}>{total > 0 ? `${showUpRate}%` : "—"}</span>
             </p>
           </div>
         </div>
