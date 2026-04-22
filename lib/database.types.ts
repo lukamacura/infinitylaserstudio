@@ -70,6 +70,8 @@ export type Database = {
       }
       reservations: {
         Row: {
+          call_attempted_at: string | null
+          call_status: string
           created_at: string | null
           customer_email: string
           customer_name: string
@@ -83,6 +85,8 @@ export type Database = {
           total_duration: number
         }
         Insert: {
+          call_attempted_at?: string | null
+          call_status?: string
           created_at?: string | null
           customer_email: string
           customer_name: string
@@ -96,6 +100,8 @@ export type Database = {
           total_duration: number
         }
         Update: {
+          call_attempted_at?: string | null
+          call_status?: string
           created_at?: string | null
           customer_email?: string
           customer_name?: string

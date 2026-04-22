@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, type FormEvent } from "react";
 import {
   ChevronLeft, ChevronRight, LogOut, X,
   Clock, User, Mail, Phone, Calendar, CalendarPlus,
+  PhoneCall, PhoneOff, AlertTriangle,
 } from "lucide-react";
 import { supabase, timeToMinutes } from "@/lib/supabase";
 import AdminReservationModal from "@/components/AdminReservationModal";
@@ -11,10 +12,10 @@ import type { ReservationStatus } from "@/lib/database.types";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const ADMIN_PWD   = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "laser2024";
-const SLOT_PX     = 14;           
-const PX_PER_MIN  = SLOT_PX / 10; 
-const GRID_H      = 54 * SLOT_PX; 
-const BIZ_START   = 10 * 60;      
+const SLOT_PX     = 14;
+const PX_PER_MIN  = SLOT_PX / 10;
+const GRID_H      = 54 * SLOT_PX;
+const BIZ_START   = 10 * 60;
 
 const SR_DAYS_LONG  = ["Ponedeljak", "Utorak", "Sreda", "Četvrtak", "Petak", "Subota", "Nedelja"];
 const SR_DAYS_SHORT = ["Pon", "Uto", "Sre", "Čet", "Pet", "Sub", "Ned"];
@@ -29,6 +30,7 @@ const STATUS_STYLES: Record<ReservationStatus, { bg: string; text: string; borde
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type ServiceRef = { id: string; name: string };
+type CallStatus = "none" | "no_answer" | "answered";
 type ReservationFull = {
   id: string;
   customer_name: string;
@@ -41,6 +43,8 @@ type ReservationFull = {
   status: ReservationStatus;
   notes: string | null;
   created_at: string;
+  call_status: CallStatus;
+  call_attempted_at: string | null;
   reservation_services: { services: ServiceRef | null }[];
 };
 
@@ -87,6 +91,12 @@ const HOUR_LABELS = Array.from({ length: 10 }, (_, i) => {
   return { label: `${String(h).padStart(2, "0")}:00`, top: i * 60 * PX_PER_MIN };
 });
 
+// ── Countdown helper ──────────────────────────────────────────────────────────
+function hoursUntilExpiry(attemptedAt: string): number {
+  const diff = Date.now() - new Date(attemptedAt).getTime();
+  return Math.max(0, 24 - diff / 3_600_000);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Admin Page
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -95,15 +105,20 @@ export default function AdminPage() {
   const [password, setPassword]           = useState("");
   const [pwdError, setPwdError]           = useState(false);
 
+  const [activeTab, setActiveTab]         = useState<"calendar" | "calls">("calendar");
+  const [expandedExpired, setExpandedExpired] = useState<string | null>(null);
+
   const [weekStart, setWeekStart]         = useState<Date>(() => getMonday(new Date()));
   const [selectedDate, setSelectedDate]   = useState<Date>(() => {
     const d = new Date();
     d.setHours(0,0,0,0);
     return d;
   });
-  
+
   const [reservations, setReservations]   = useState<ReservationFull[]>([]);
+  const [callReservations, setCallReservations] = useState<ReservationFull[]>([]);
   const [loading, setLoading]             = useState(false);
+  const [callsLoading, setCallsLoading]   = useState(false);
   const [selected, setSelected]           = useState<ReservationFull | null>(null);
   const [newStatus, setNewStatus]         = useState<ReservationStatus>("pending");
   const [saving, setSaving]               = useState(false);
@@ -118,7 +133,7 @@ export default function AdminPage() {
     setLoading(true);
     const start = toDateStr(monday);
     const end   = toDateStr(addDays(monday, 6));
-    
+
     const { data } = await supabase
       .from("reservations")
       .select(`*, reservation_services(services(id, name))`)
@@ -130,9 +145,27 @@ export default function AdminPage() {
     setLoading(false);
   }, []);
 
+  const fetchPendingCalls = useCallback(async () => {
+    setCallsLoading(true);
+    const { data } = await supabase
+      .from("reservations")
+      .select(`*, reservation_services(services(id, name))`)
+      .eq("status", "confirmed")
+      .neq("call_status", "answered")
+      .gte("date", toDateStr(new Date()))
+      .order("date")
+      .order("start_time");
+    setCallReservations((data as ReservationFull[]) ?? []);
+    setCallsLoading(false);
+  }, []);
+
   useEffect(() => {
     if (authenticated) fetchRange(weekStart);
   }, [authenticated, weekStart, fetchRange]);
+
+  useEffect(() => {
+    if (authenticated) fetchPendingCalls();
+  }, [authenticated, fetchPendingCalls]);
 
   function handleLogin(e: FormEvent) {
     e.preventDefault();
@@ -169,7 +202,7 @@ export default function AdminPage() {
       setWeekStart(d => addDays(d, 7));
     }
   };
-  
+
   const goToday = () => {
     const d = new Date();
     d.setHours(0,0,0,0);
@@ -198,6 +231,39 @@ export default function AdminPage() {
     setSelected(null);
   }
 
+  // ── Call action handlers ───────────────────────────────────────────────────
+  async function handleCallAnswered(reservationId: string) {
+    await supabase
+      .from("reservations")
+      .update({ call_status: "answered" })
+      .eq("id", reservationId);
+    setCallReservations(prev => prev.filter(r => r.id !== reservationId));
+  }
+
+  async function handleCallNoAnswer(reservationId: string) {
+    const now = new Date().toISOString();
+    await supabase
+      .from("reservations")
+      .update({ call_status: "no_answer", call_attempted_at: now })
+      .eq("id", reservationId);
+    setCallReservations(prev =>
+      prev.map(r => r.id === reservationId ? { ...r, call_status: "no_answer", call_attempted_at: now } : r)
+    );
+  }
+
+  async function handleExpiredCancel(reservationId: string) {
+    await supabase
+      .from("reservations")
+      .update({ status: "cancelled" })
+      .eq("id", reservationId);
+    setCallReservations(prev => prev.filter(r => r.id !== reservationId));
+    setExpandedExpired(null);
+  }
+
+  // ── Derived state — confirmed future reservations not yet answered ────────
+  const callQueue = callReservations;
+  const badgeCount = callQueue.length;
+
   const ds        = toDateStr(selectedDate);
   const todayStr  = toDateStr(new Date());
   const dayRsvs   = reservations.filter(r => r.date === ds);
@@ -216,7 +282,7 @@ export default function AdminPage() {
               <Calendar size={32} className="text-white" />
             </div>
           </div>
-          
+
           <div className="text-center mb-10">
             <h1 className="text-2xl font-bold font-playfair mb-2">Admin Panel</h1>
             <p className="text-[10px] text-foreground/30 font-bold font-poppins uppercase tracking-[0.2em]">Infinity Laser Studio</p>
@@ -261,7 +327,7 @@ export default function AdminPage() {
             <h1 className="text-xl font-bold font-playfair tracking-tight">Infinity Laser Studio</h1>
             <p className="text-[10px] text-foreground/30 font-bold font-poppins uppercase tracking-widest mt-0.5">Control Center</p>
           </div>
-          
+
           <div className="flex items-center gap-4">
              {(Object.entries(STATUS_STYLES) as [ReservationStatus, typeof STATUS_STYLES[ReservationStatus]][]).filter(([key]) => key !== "pending").map(([key, s]) => (
               <div key={key} className="flex items-center gap-2 group">
@@ -285,34 +351,73 @@ export default function AdminPage() {
       {/* Navigation */}
       <div className="bg-white border-b border-foreground/5 px-4 md:px-8 py-3 md:py-4 shrink-0 z-10 shadow-xs">
         <div className="max-w-400 mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center justify-between md:justify-start gap-4 flex-1">
-            <div className="flex items-center bg-foreground/3 rounded-2xl p-1 shadow-inner">
-              <button onClick={handlePrev} className="w-10 h-10 md:w-9 md:h-9 flex items-center justify-center rounded-xl hover:bg-white hover:shadow-sm transition-all active:scale-90"><ChevronLeft size={20}/></button>
-              <div className="px-4 md:px-8 text-center min-w-35 md:min-w-55">
-                <p className="text-[10px] font-bold font-poppins uppercase tracking-[0.2em] text-foreground/30 leading-none mb-1 md:hidden">
-                  {SR_DAYS_LONG[selectedDate.getDay() === 0 ? 6 : selectedDate.getDay() - 1]}
-                </p>
-                <p className="hidden md:block text-[10px] font-bold font-poppins uppercase tracking-[0.2em] text-foreground/30 leading-none mb-1">Pregled nedelje</p>
-                <p className="text-sm md:text-base font-bold font-poppins truncate">
-                  <span className="md:hidden">{selectedDate.getDate()}. {SR_MONTHS[selectedDate.getMonth()]}</span>
-                  <span className="hidden md:inline">{fmtShort(weekStart)} – {fmtShort(weekEnd)}</span>
-                </p>
-              </div>
-              <button onClick={handleNext} className="w-10 h-10 md:w-9 md:h-9 flex items-center justify-center rounded-xl hover:bg-white hover:shadow-sm transition-all active:scale-90"><ChevronRight size={20}/></button>
-            </div>
-            <button onClick={goToday} className="hidden md:flex h-11 px-6 items-center justify-center rounded-2xl border-2 border-teal/10 text-teal text-xs font-bold font-poppins hover:bg-teal/5 transition-all shadow-sm">DANAS</button>
-          </div>
 
-          <div className="flex gap-2">
-            <button onClick={goToday} className="md:hidden flex-1 h-12 rounded-2xl border-2 border-teal/10 text-teal text-xs font-bold font-poppins active:bg-teal/5 transition-colors">DANAS</button>
+          {/* Tab Switcher */}
+          <div className="flex items-center bg-foreground/3 rounded-2xl p-1 shadow-inner self-start md:self-auto">
             <button
-              onClick={() => setReservationModalOpen(true)}
-              className="flex-2 md:flex-none h-12 md:h-11 flex items-center justify-center gap-2 px-6 md:px-10 rounded-2xl bg-[#0B8078] text-white text-xs font-bold font-poppins hover:shadow-lg hover:shadow-teal/20 transition-all active:scale-95"
+              onClick={() => setActiveTab("calendar")}
+              className={`h-9 px-5 flex items-center gap-2 rounded-xl text-xs font-bold font-poppins uppercase tracking-widest transition-all ${
+                activeTab === "calendar"
+                  ? "bg-white shadow-sm text-foreground"
+                  : "text-foreground/40 hover:text-foreground/60"
+              }`}
             >
-              <CalendarPlus size={18} />
-              <span className="uppercase tracking-widest">Nova rezervacija</span>
+              <Calendar size={14} />
+              <span className="hidden sm:inline">Kalendar</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("calls")}
+              className={`h-9 px-5 flex items-center gap-2 rounded-xl text-xs font-bold font-poppins uppercase tracking-widest transition-all ${
+                activeTab === "calls"
+                  ? "bg-white shadow-sm text-foreground"
+                  : "text-foreground/40 hover:text-foreground/60"
+              }`}
+            >
+              <Phone size={14} />
+              <span className="hidden sm:inline">Pozivi</span>
+              {badgeCount > 0 && (
+                <span className={`min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold flex items-center justify-center ${
+                  activeTab === "calls" ? "bg-amber-400 text-white" : "bg-amber-400 text-white"
+                }`}>
+                  {badgeCount}
+                </span>
+              )}
             </button>
           </div>
+
+          {/* Calendar nav — only visible in calendar tab */}
+          {activeTab === "calendar" && (
+            <>
+              <div className="flex items-center justify-between md:justify-start gap-4 flex-1">
+                <div className="flex items-center bg-foreground/3 rounded-2xl p-1 shadow-inner">
+                  <button onClick={handlePrev} className="w-10 h-10 md:w-9 md:h-9 flex items-center justify-center rounded-xl hover:bg-white hover:shadow-sm transition-all active:scale-90"><ChevronLeft size={20}/></button>
+                  <div className="px-4 md:px-8 text-center min-w-35 md:min-w-55">
+                    <p className="text-[10px] font-bold font-poppins uppercase tracking-[0.2em] text-foreground/30 leading-none mb-1 md:hidden">
+                      {SR_DAYS_LONG[selectedDate.getDay() === 0 ? 6 : selectedDate.getDay() - 1]}
+                    </p>
+                    <p className="hidden md:block text-[10px] font-bold font-poppins uppercase tracking-[0.2em] text-foreground/30 leading-none mb-1">Pregled nedelje</p>
+                    <p className="text-sm md:text-base font-bold font-poppins truncate">
+                      <span className="md:hidden">{selectedDate.getDate()}. {SR_MONTHS[selectedDate.getMonth()]}</span>
+                      <span className="hidden md:inline">{fmtShort(weekStart)} – {fmtShort(weekEnd)}</span>
+                    </p>
+                  </div>
+                  <button onClick={handleNext} className="w-10 h-10 md:w-9 md:h-9 flex items-center justify-center rounded-xl hover:bg-white hover:shadow-sm transition-all active:scale-90"><ChevronRight size={20}/></button>
+                </div>
+                <button onClick={goToday} className="hidden md:flex h-11 px-6 items-center justify-center rounded-2xl border-2 border-teal/10 text-teal text-xs font-bold font-poppins hover:bg-teal/5 transition-all shadow-sm">DANAS</button>
+              </div>
+
+              <div className="flex gap-2">
+                <button onClick={goToday} className="md:hidden flex-1 h-12 rounded-2xl border-2 border-teal/10 text-teal text-xs font-bold font-poppins active:bg-teal/5 transition-colors">DANAS</button>
+                <button
+                  onClick={() => setReservationModalOpen(true)}
+                  className="flex-2 md:flex-none h-12 md:h-11 flex items-center justify-center gap-2 px-6 md:px-10 rounded-2xl bg-[#0B8078] text-white text-xs font-bold font-poppins hover:shadow-lg hover:shadow-teal/20 transition-all active:scale-95"
+                >
+                  <CalendarPlus size={18} />
+                  <span className="uppercase tracking-widest">Nova rezervacija</span>
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -322,70 +427,214 @@ export default function AdminPage() {
         onSuccess={() => fetchRange(weekStart)}
       />
 
-      {/* Grid */}
-      <div className="flex-1 min-h-0 flex flex-col relative isolate bg-white/50">
-        {loading && (
-          <div className="absolute inset-0 bg-white/70 backdrop-blur-[2px] flex items-center justify-center z-30 transition-opacity">
-            <div className="w-10 h-10 border-3 border-teal border-t-transparent rounded-full animate-spin shadow-lg" />
-          </div>
-        )}
-
+      {/* ── Calls Tab ───────────────────────────────────────────────────────── */}
+      {activeTab === "calls" && (
         <div className="flex-1 min-h-0 overflow-auto overscroll-y-contain custom-scrollbar">
-          <div className="max-w-400 mx-auto min-w-full">
-            
-            {/* Day Headers */}
-            <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-md border-b border-foreground/5 shadow-xs grid grid-cols-[60px_1fr] md:grid-cols-[80px_repeat(7,1fr)]">
-              <div className="flex items-center justify-center border-r border-foreground/3"><Clock size={14} className="text-foreground/20" /></div>
-              
-              {/* Mobile Header */}
-              <div className="md:hidden py-4 text-center">
-                <p className="text-[10px] font-bold font-poppins uppercase tracking-[0.2em] mb-0.5 text-teal">{SR_DAYS_SHORT[selectedDate.getDay() === 0 ? 6 : selectedDate.getDay() - 1]}</p>
-                <p className="text-lg font-bold font-poppins text-teal">{selectedDate.getDate()}</p>
+          <div className="max-w-2xl mx-auto px-4 py-6 space-y-3">
+            {callsLoading && (
+              <div className="flex justify-center py-12">
+                <div className="w-10 h-10 border-3 border-teal border-t-transparent rounded-full animate-spin shadow-lg" />
               </div>
+            )}
 
-              {/* Desktop Headers */}
-              {weekDates.map((d, i) => {
-                const dateStr = toDateStr(d);
-                const isDayToday = dateStr === todayStr;
-                return (
-                  <div key={dateStr} className={`hidden md:block py-4 text-center border-l border-foreground/3 first:border-l-0 ${isDayToday ? "bg-teal/2" : ""}`}>
-                    <p className={`text-[10px] font-bold font-poppins uppercase tracking-[0.2em] mb-0.5 ${isDayToday ? "text-teal" : "text-foreground/30"}`}>{SR_DAYS_SHORT[i]}</p>
-                    <p className={`text-lg font-bold font-poppins ${isDayToday ? "text-teal" : "text-foreground"}`}>{d.getDate()}</p>
+            {!callsLoading && callQueue.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-20 gap-4">
+                <div className="w-16 h-16 rounded-2xl bg-green-50 border border-green-100 flex items-center justify-center">
+                  <PhoneCall size={28} className="text-green-400" />
+                </div>
+                <p className="text-sm font-bold font-poppins text-foreground/40 uppercase tracking-widest">Nema čekajućih poziva</p>
+              </div>
+            )}
+
+            {!callsLoading && callQueue.map(r => {
+              const isExpired = r.call_status === "no_answer" && r.call_attempted_at
+                && (Date.now() - new Date(r.call_attempted_at).getTime()) >= 24 * 3_600_000;
+              const isNoAnswerRecent = r.call_status === "no_answer" && !isExpired;
+              const hoursLeft = (isNoAnswerRecent && r.call_attempted_at)
+                ? hoursUntilExpiry(r.call_attempted_at)
+                : null;
+              const showConfirm = expandedExpired === r.id;
+
+              return (
+                <div
+                  key={r.id}
+                  className={`rounded-2xl border-2 bg-white shadow-sm overflow-hidden transition-all ${
+                    isExpired
+                      ? "border-red-200"
+                      : isNoAnswerRecent
+                      ? "border-amber-200"
+                      : "border-foreground/5"
+                  }`}
+                >
+                  {/* Row */}
+                  <div className="p-4 flex items-start gap-4">
+                    {/* Status icon */}
+                    <div className={`shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${
+                      isExpired ? "bg-red-50" : isNoAnswerRecent ? "bg-amber-50" : "bg-foreground/3"
+                    }`}>
+                      {isExpired
+                        ? <AlertTriangle size={18} className="text-red-500" />
+                        : isNoAnswerRecent
+                        ? <PhoneOff size={18} className="text-amber-500" />
+                        : <Phone size={18} className="text-foreground/30" />
+                      }
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-bold font-poppins text-foreground truncate">{r.customer_name}</p>
+                        {r.call_status === "none" && (
+                          <span className="text-[10px] font-bold font-poppins uppercase tracking-widest text-foreground/40 bg-foreground/5 px-2 py-0.5 rounded-lg border border-foreground/8">
+                            Nije pozvan
+                          </span>
+                        )}
+                        {isExpired && (
+                          <span className="text-[10px] font-bold font-poppins uppercase tracking-widest text-red-500 bg-red-50 px-2 py-0.5 rounded-lg border border-red-100">
+                            Rok istekao
+                          </span>
+                        )}
+                        {isNoAnswerRecent && hoursLeft !== null && (
+                          <span className="text-[10px] font-bold font-poppins text-amber-600 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-100">
+                            Ponovi za {hoursLeft < 1 ? `${Math.ceil(hoursLeft * 60)} min` : `${Math.ceil(hoursLeft)}h`}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[12px] font-medium font-poppins text-foreground/50 mt-0.5">
+                        {r.customer_phone ?? "—"}
+                      </p>
+                      <p className="text-[11px] font-poppins text-foreground/30 mt-1">
+                        {fmtFull(new Date(`${r.date}T00:00:00`))} · {r.start_time.slice(0, 5)} – {r.end_time.slice(0, 5)}
+                      </p>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="shrink-0 flex flex-col gap-2 items-end">
+                      {isExpired ? (
+                        <button
+                          onClick={() => setExpandedExpired(showConfirm ? null : r.id)}
+                          className="h-9 px-4 rounded-xl bg-red-50 text-red-500 text-[11px] font-bold font-poppins border border-red-100 hover:bg-red-100 transition-all active:scale-95"
+                        >
+                          Otkaži?
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => handleCallAnswered(r.id)}
+                            className="h-9 px-4 rounded-xl bg-green-50 text-green-600 text-[11px] font-bold font-poppins border border-green-100 hover:bg-green-100 transition-all active:scale-95 flex items-center gap-1.5"
+                          >
+                            <PhoneCall size={13} />
+                            Javio se
+                          </button>
+                          <button
+                            onClick={() => handleCallNoAnswer(r.id)}
+                            className="h-9 px-4 rounded-xl bg-foreground/3 text-foreground/50 text-[11px] font-bold font-poppins border border-foreground/5 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-100 transition-all active:scale-95 flex items-center gap-1.5"
+                          >
+                            <PhoneOff size={13} />
+                            Nije se javio
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                );
-              })}
+
+                  {/* Inline confirm for expired */}
+                  {showConfirm && (
+                    <div className="px-4 pb-4 pt-0">
+                      <div className="rounded-xl bg-red-50 border border-red-100 p-4 space-y-3">
+                        <p className="text-[12px] font-poppins text-red-700 font-medium">
+                          Rok od 24h je istekao. Da li želite da otkažete rezervaciju?
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleExpiredCancel(r.id)}
+                            className="flex-1 h-10 rounded-xl bg-red-500 text-white text-[11px] font-bold font-poppins hover:bg-red-600 transition-all active:scale-95"
+                          >
+                            Otkaži rezervaciju
+                          </button>
+                          <button
+                            onClick={() => setExpandedExpired(null)}
+                            className="flex-1 h-10 rounded-xl bg-white text-foreground/50 text-[11px] font-bold font-poppins border border-foreground/10 hover:bg-foreground/3 transition-all active:scale-95"
+                          >
+                            Ostavi na čekanju
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Calendar Tab ─────────────────────────────────────────────────────── */}
+      {activeTab === "calendar" && (
+        <div className="flex-1 min-h-0 flex flex-col relative isolate bg-white/50">
+          {loading && (
+            <div className="absolute inset-0 bg-white/70 backdrop-blur-[2px] flex items-center justify-center z-30 transition-opacity">
+              <div className="w-10 h-10 border-3 border-teal border-t-transparent rounded-full animate-spin shadow-lg" />
             </div>
+          )}
 
-            {/* Content Body */}
-            <div className="grid grid-cols-[60px_1fr] md:grid-cols-[80px_repeat(7,1fr)] relative">
-              <div className="relative border-r border-foreground/3 bg-white/50" style={{ height: GRID_H }}>
-                {HOUR_LABELS.map(({ label, top }) => (
-                  <div key={label} className="absolute right-0 left-0 flex items-center justify-end px-3 -translate-y-1/2" style={{ top }}>
-                    <span className="text-[10px] md:text-[11px] font-bold font-poppins text-foreground/20">{label}</span>
-                  </div>
-                ))}
+          <div className="flex-1 min-h-0 overflow-auto overscroll-y-contain custom-scrollbar">
+            <div className="max-w-400 mx-auto min-w-full">
+
+              {/* Day Headers */}
+              <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-md border-b border-foreground/5 shadow-xs grid grid-cols-[60px_1fr] md:grid-cols-[80px_repeat(7,1fr)]">
+                <div className="flex items-center justify-center border-r border-foreground/3"><Clock size={14} className="text-foreground/20" /></div>
+
+                {/* Mobile Header */}
+                <div className="md:hidden py-4 text-center">
+                  <p className="text-[10px] font-bold font-poppins uppercase tracking-[0.2em] mb-0.5 text-teal">{SR_DAYS_SHORT[selectedDate.getDay() === 0 ? 6 : selectedDate.getDay() - 1]}</p>
+                  <p className="text-lg font-bold font-poppins text-teal">{selectedDate.getDate()}</p>
+                </div>
+
+                {/* Desktop Headers */}
+                {weekDates.map((d, i) => {
+                  const dateStr = toDateStr(d);
+                  const isDayToday = dateStr === todayStr;
+                  return (
+                    <div key={dateStr} className={`hidden md:block py-4 text-center border-l border-foreground/3 first:border-l-0 ${isDayToday ? "bg-teal/2" : ""}`}>
+                      <p className={`text-[10px] font-bold font-poppins uppercase tracking-[0.2em] mb-0.5 ${isDayToday ? "text-teal" : "text-foreground/30"}`}>{SR_DAYS_SHORT[i]}</p>
+                      <p className={`text-lg font-bold font-poppins ${isDayToday ? "text-teal" : "text-foreground"}`}>{d.getDate()}</p>
+                    </div>
+                  );
+                })}
               </div>
 
-              {/* Mobile Col */}
-              <div className={`md:hidden relative h-full ${toDateStr(selectedDate) === todayStr ? "bg-teal/2" : ""}`}>
-                {HOUR_LABELS.map(({ top }) => <div key={top} className="absolute left-0 right-0 border-t border-foreground/4" style={{ top }} />)}
-                {dayRsvs.map(r => renderReservation(r, true))}
-              </div>
+              {/* Content Body */}
+              <div className="grid grid-cols-[60px_1fr] md:grid-cols-[80px_repeat(7,1fr)] relative">
+                <div className="relative border-r border-foreground/3 bg-white/50" style={{ height: GRID_H }}>
+                  {HOUR_LABELS.map(({ label, top }) => (
+                    <div key={label} className="absolute right-0 left-0 flex items-center justify-end px-3 -translate-y-1/2" style={{ top }}>
+                      <span className="text-[10px] md:text-[11px] font-bold font-poppins text-foreground/20">{label}</span>
+                    </div>
+                  ))}
+                </div>
 
-              {/* Desktop Cols */}
-              {weekDates.map((d, colIdx) => {
-                const dateStr = toDateStr(d);
-                return (
-                  <div key={dateStr} className={`hidden md:block relative h-full border-l border-foreground/3 first:border-l-0 transition-colors ${dateStr === todayStr ? "bg-teal/2" : "hover:bg-foreground/1"}`}>
-                    {HOUR_LABELS.map(({ top }) => <div key={top} className="absolute left-0 right-0 border-t border-foreground/4" style={{ top }} />)}
-                    {resByDay[colIdx].map(r => renderReservation(r, false))}
-                  </div>
-                );
-              })}
+                {/* Mobile Col */}
+                <div className={`md:hidden relative h-full ${toDateStr(selectedDate) === todayStr ? "bg-teal/2" : ""}`}>
+                  {HOUR_LABELS.map(({ top }) => <div key={top} className="absolute left-0 right-0 border-t border-foreground/4" style={{ top }} />)}
+                  {dayRsvs.map(r => renderReservation(r, true))}
+                </div>
+
+                {/* Desktop Cols */}
+                {weekDates.map((d, colIdx) => {
+                  const dateStr = toDateStr(d);
+                  return (
+                    <div key={dateStr} className={`hidden md:block relative h-full border-l border-foreground/3 first:border-l-0 transition-colors ${dateStr === todayStr ? "bg-teal/2" : "hover:bg-foreground/1"}`}>
+                      {HOUR_LABELS.map(({ top }) => <div key={top} className="absolute left-0 right-0 border-t border-foreground/4" style={{ top }} />)}
+                      {resByDay[colIdx].map(r => renderReservation(r, false))}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Modal */}
       {selected && (
@@ -393,7 +642,7 @@ export default function AdminPage() {
           <div className="absolute inset-0 bg-foreground/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setSelected(null)} />
           <div className="relative z-10 bg-white rounded-t-[2.5rem] sm:rounded-3xl shadow-2xl w-full max-w-xl max-h-[92dvh] overflow-hidden flex flex-col pb-[env(safe-area-inset-bottom)] sm:animate-in sm:zoom-in-95 sm:duration-200">
             <div className="md:hidden w-12 h-1.5 bg-foreground/10 rounded-full mx-auto mt-4 mb-2" />
-            
+
             <div className="flex items-center justify-between px-8 py-6 border-b border-foreground/5">
               <div>
                 <h2 className="text-2xl font-bold font-playfair">Rezervacija</h2>
@@ -455,7 +704,7 @@ export default function AdminPage() {
                     </button>
                   ))}
                 </div>
-                
+
                 <button
                   onClick={handleStatusSave}
                   disabled={saving || newStatus === selected.status}
@@ -476,7 +725,7 @@ export default function AdminPage() {
     const heightPx = toHeight(r.total_duration);
     const s        = STATUS_STYLES[r.status];
     const services = r.reservation_services.map(rs => rs.services?.name).filter(Boolean).join(", ");
-    
+
     return (
       <button
         key={r.id}
