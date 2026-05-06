@@ -63,7 +63,7 @@ const localBusinessSchema = {
     addressCountry: "RS",
   },
   priceRange: "$$",
-  sameAs: ["https://www.instagram.com/infinitystudio021/"],
+  sameAs: ["https://www.instagram.com/infinitylaserstudio/"],
 };
 
 export default function RootLayout({

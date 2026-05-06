@@ -66,7 +66,7 @@ export default function Footer({ onOpen }: Props) {
           </a>
           {/* Instagram */}
           <a
-            href="https://www.instagram.com/infinitystudio021/"
+            href="https://www.instagram.com/infinitylaserstudio/"
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Instagram"
@@ -81,6 +81,20 @@ export default function Footer({ onOpen }: Props) {
           {/* Phone */}
           <a
             href="tel:+381653577300"
+            aria-label="Pozovi"
+            className="w-9 h-9 rounded-full bg-gray-100 hover:bg-pink transition-colors flex items-center justify-center"
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            onClick={() => (window as any).fbq?.("track", "Contact")}
+          >
+            <svg viewBox="0 0 24 24" className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <rect x="7" y="2" width="10" height="20" rx="3" />
+              <circle cx="12" cy="18.5" r="1" fill="currentColor" stroke="none" />
+              <line x1="9.5" y1="5.5" x2="14.5" y2="5.5" strokeLinecap="round" />
+            </svg>
+          </a>
+          {/* Phone 2 */}
+          <a
+            href="tel:+381653503057"
             aria-label="Pozovi"
             className="w-9 h-9 rounded-full bg-gray-100 hover:bg-pink transition-colors flex items-center justify-center"
             // eslint-disable-next-line @typescript-eslint/no-explicit-any

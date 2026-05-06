@@ -120,7 +120,7 @@ export function getAvailableSlots(
   businessWindows: BusinessWindow[],
 ): string[] {
   const active = reservations
-    .filter((r) => r.status !== "cancelled")
+    .filter((r) => r.status !== "cancelled" && r.status !== "no_show")
     .map((r) => ({
       start: timeToMinutes(r.start_time),
       end:   timeToMinutes(r.end_time),

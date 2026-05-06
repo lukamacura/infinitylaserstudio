@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, type FormEvent } from "react";
 import {
   ChevronLeft, ChevronRight, LogOut, X,
   Clock, User, Mail, Phone, Calendar, CalendarPlus,
-  PhoneCall, PhoneOff, AlertTriangle,
+  PhoneCall, PhoneOff, AlertTriangle, StickyNote,
 } from "lucide-react";
 import { supabase, timeToMinutes } from "@/lib/supabase";
 import AdminReservationModal from "@/components/AdminReservationModal";
@@ -25,7 +25,7 @@ const STATUS_STYLES: Record<ReservationStatus, { bg: string; text: string; borde
   pending:   { bg: "bg-amber-50",  text: "text-amber-800",  border: "border-amber-200", label: "Na čekanju",         dot: "bg-amber-400" },
   confirmed: { bg: "bg-green-50",  text: "text-green-800",  border: "border-green-200", label: "Potvrđeno",          dot: "bg-green-500" },
   cancelled: { bg: "bg-red-50",    text: "text-red-700",    border: "border-red-200",   label: "Otkazano",           dot: "bg-red-500"   },
-  no_show:   { bg: "bg-slate-100", text: "text-slate-600",  border: "border-slate-300", label: "Nije se pojavila",   dot: "bg-slate-400" },
+  no_show:   { bg: "bg-slate-100", text: "text-slate-600",  border: "border-slate-300", label: "Nije došla / Neće doći", dot: "bg-slate-400" },
 };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -120,7 +120,9 @@ export default function AdminPage() {
   const [loading, setLoading]             = useState(false);
   const [callsLoading, setCallsLoading]   = useState(false);
   const [selected, setSelected]           = useState<ReservationFull | null>(null);
+  const [selectedIsReturning, setSelectedIsReturning] = useState<boolean | null>(null);
   const [newStatus, setNewStatus]         = useState<ReservationStatus>("pending");
+  const [newNotes, setNewNotes]           = useState<string>("");
   const [saving, setSaving]               = useState(false);
   const [reservationModalOpen, setReservationModalOpen] = useState(false);
 
@@ -210,22 +212,41 @@ export default function AdminPage() {
     setWeekStart(getMonday(d));
   };
 
-  function openModal(r: ReservationFull) {
+  async function openModal(r: ReservationFull) {
     setSelected(r);
     setNewStatus(r.status);
+    setNewNotes(r.notes ?? "");
+    setSelectedIsReturning(null);
+    if (r.customer_email) {
+      const { data } = await supabase
+        .from("reservations")
+        .select("id")
+        .ilike("customer_email", r.customer_email)
+        .in("status", ["confirmed", "no_show"])
+        .neq("id", r.id)
+        .limit(1)
+        .maybeSingle();
+      setSelectedIsReturning(!!data);
+    } else {
+      setSelectedIsReturning(false);
+    }
   }
 
   async function handleStatusSave() {
     if (!selected) return;
     setSaving(true);
-    const { error } = await supabase.from("reservations").update({ status: newStatus }).eq("id", selected.id);
+    const trimmedNotes = newNotes.trim() || null;
+    const { error } = await supabase
+      .from("reservations")
+      .update({ status: newStatus, notes: trimmedNotes })
+      .eq("id", selected.id);
     if (error) {
       console.error("Status update failed:", error);
       setSaving(false);
       return;
     }
     setReservations((prev) =>
-      prev.map((r) => r.id === selected.id ? { ...r, status: newStatus } : r)
+      prev.map((r) => r.id === selected.id ? { ...r, status: newStatus, notes: trimmedNotes } : r)
     );
     setSaving(false);
     setSelected(null);
@@ -254,7 +275,7 @@ export default function AdminPage() {
   async function handleExpiredCancel(reservationId: string) {
     await supabase
       .from("reservations")
-      .update({ status: "cancelled" })
+      .update({ status: "no_show" })
       .eq("id", reservationId);
     setCallReservations(prev => prev.filter(r => r.id !== reservationId));
     setExpandedExpired(null);
@@ -270,6 +291,52 @@ export default function AdminPage() {
   const weekDates = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const weekEnd   = addDays(weekStart, 6);
   const resByDay  = weekDates.map(d => reservations.filter(r => r.date === toDateStr(d)));
+
+  // Layout reservations into columns so overlaps render side-by-side instead of stacked.
+  // Returns each reservation with its assigned column index and the total columns its cluster spans.
+  type LaidOut = ReservationFull & { _col: number; _cols: number };
+  function layoutDay(rs: ReservationFull[]): LaidOut[] {
+    if (rs.length === 0) return [];
+    const sorted = [...rs].sort((a, b) => {
+      const sa = timeToMinutes(a.start_time);
+      const sb = timeToMinutes(b.start_time);
+      if (sa !== sb) return sa - sb;
+      return timeToMinutes(a.end_time) - timeToMinutes(b.end_time);
+    });
+
+    const out: LaidOut[] = [];
+    let cluster: { item: ReservationFull; start: number; end: number; col: number }[] = [];
+    let clusterEnd = -Infinity;
+
+    const flush = () => {
+      const cols = cluster.reduce((m, c) => Math.max(m, c.col + 1), 0);
+      for (const c of cluster) out.push({ ...c.item, _col: c.col, _cols: cols });
+      cluster = [];
+      clusterEnd = -Infinity;
+    };
+
+    for (const r of sorted) {
+      const start = timeToMinutes(r.start_time);
+      const end   = timeToMinutes(r.end_time);
+      if (start >= clusterEnd) flush();
+
+      // pick lowest free column
+      const used = new Set(
+        cluster.filter(c => c.end > start).map(c => c.col)
+      );
+      let col = 0;
+      while (used.has(col)) col++;
+
+      cluster.push({ item: r, start, end, col });
+      clusterEnd = Math.max(clusterEnd, end);
+    }
+    flush();
+
+    return out;
+  }
+
+  const dayLaidOut   = layoutDay(dayRsvs);
+  const resByDayLaid = resByDay.map(layoutDay);
 
   // ── Password screen ─────────────────────────────────────────────────────────
   if (!authenticated) {
@@ -511,12 +578,21 @@ export default function AdminPage() {
                     {/* Actions */}
                     <div className="shrink-0 flex flex-col gap-2 items-end">
                       {isExpired ? (
-                        <button
-                          onClick={() => setExpandedExpired(showConfirm ? null : r.id)}
-                          className="h-9 px-4 rounded-xl bg-red-50 text-red-500 text-[11px] font-bold font-poppins border border-red-100 hover:bg-red-100 transition-all active:scale-95"
-                        >
-                          Otkaži?
-                        </button>
+                        <>
+                          <button
+                            onClick={() => handleCallAnswered(r.id)}
+                            className="h-9 px-4 rounded-xl bg-green-50 text-green-600 text-[11px] font-bold font-poppins border border-green-100 hover:bg-green-100 transition-all active:scale-95 flex items-center gap-1.5"
+                          >
+                            <PhoneCall size={13} />
+                            Javio se
+                          </button>
+                          <button
+                            onClick={() => setExpandedExpired(showConfirm ? null : r.id)}
+                            className="h-9 px-4 rounded-xl bg-red-50 text-red-500 text-[11px] font-bold font-poppins border border-red-100 hover:bg-red-100 transition-all active:scale-95"
+                          >
+                            Otkaži?
+                          </button>
+                        </>
                       ) : (
                         <>
                           <button
@@ -543,14 +619,14 @@ export default function AdminPage() {
                     <div className="px-4 pb-4 pt-0">
                       <div className="rounded-xl bg-red-50 border border-red-100 p-4 space-y-3">
                         <p className="text-[12px] font-poppins text-red-700 font-medium">
-                          Rok od 24h je istekao. Da li želite da otkažete rezervaciju?
+                          Rok od 24h je istekao. Označi kao &quot;Nije došla / Neće doći&quot;?
                         </p>
                         <div className="flex gap-2">
                           <button
                             onClick={() => handleExpiredCancel(r.id)}
                             className="flex-1 h-10 rounded-xl bg-red-500 text-white text-[11px] font-bold font-poppins hover:bg-red-600 transition-all active:scale-95"
                           >
-                            Otkaži rezervaciju
+                            Nije došla / Neće doći
                           </button>
                           <button
                             onClick={() => setExpandedExpired(null)}
@@ -617,7 +693,7 @@ export default function AdminPage() {
                 {/* Mobile Col */}
                 <div className={`md:hidden relative h-full ${toDateStr(selectedDate) === todayStr ? "bg-teal/2" : ""}`}>
                   {HOUR_LABELS.map(({ top }) => <div key={top} className="absolute left-0 right-0 border-t border-foreground/4" style={{ top }} />)}
-                  {dayRsvs.map(r => renderReservation(r, true))}
+                  {dayLaidOut.map(r => renderReservation(r, true))}
                 </div>
 
                 {/* Desktop Cols */}
@@ -626,7 +702,7 @@ export default function AdminPage() {
                   return (
                     <div key={dateStr} className={`hidden md:block relative h-full border-l border-foreground/3 first:border-l-0 transition-colors ${dateStr === todayStr ? "bg-teal/2" : "hover:bg-foreground/1"}`}>
                       {HOUR_LABELS.map(({ top }) => <div key={top} className="absolute left-0 right-0 border-t border-foreground/4" style={{ top }} />)}
-                      {resByDay[colIdx].map(r => renderReservation(r, false))}
+                      {resByDayLaid[colIdx].map(r => renderReservation(r, false))}
                     </div>
                   );
                 })}
@@ -644,11 +720,23 @@ export default function AdminPage() {
             <div className="md:hidden w-12 h-1.5 bg-foreground/10 rounded-full mx-auto mt-4 mb-2" />
 
             <div className="flex items-center justify-between px-8 py-6 border-b border-foreground/5">
-              <div>
-                <h2 className="text-2xl font-bold font-playfair">Rezervacija</h2>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-2xl font-bold font-playfair">Rezervacija</h2>
+                  {selectedIsReturning === true && (
+                    <span className="text-[10px] font-bold font-poppins uppercase tracking-widest text-teal bg-teal/10 px-2.5 py-1 rounded-lg border border-teal/15">
+                      Postojeći klijent
+                    </span>
+                  )}
+                  {selectedIsReturning === false && (
+                    <span className="text-[10px] font-bold font-poppins uppercase tracking-widest text-pink bg-pink/10 px-2.5 py-1 rounded-lg border border-pink/15">
+                      Prvi tretman
+                    </span>
+                  )}
+                </div>
                 <p className="text-[11px] font-bold font-poppins text-foreground/30 uppercase tracking-widest mt-1">Detaljni pregled klijenta</p>
               </div>
-              <button onClick={() => setSelected(null)} className="w-12 h-12 flex items-center justify-center rounded-2xl bg-foreground/3 text-foreground/40 hover:bg-red-50 hover:text-red-500 transition-all cursor-pointer"><X size={24}/></button>
+              <button onClick={() => setSelected(null)} className="w-12 h-12 flex items-center justify-center rounded-2xl bg-foreground/3 text-foreground/40 hover:bg-red-50 hover:text-red-500 transition-all cursor-pointer shrink-0 ml-3"><X size={24}/></button>
             </div>
 
             <div className="flex-1 overflow-y-auto px-8 py-8 space-y-8 custom-scrollbar">
@@ -689,6 +777,20 @@ export default function AdminPage() {
                 </div>
               </div>
 
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 text-[10px] font-bold font-poppins text-foreground/30 uppercase tracking-widest px-1">
+                  <StickyNote size={12} className="text-foreground/30" />
+                  Napomena
+                </label>
+                <textarea
+                  value={newNotes}
+                  onChange={(e) => setNewNotes(e.target.value)}
+                  placeholder="Interna napomena (vidi samo admin)…"
+                  rows={3}
+                  className="w-full px-4 py-3 rounded-2xl bg-foreground/2 border border-foreground/5 font-poppins text-sm text-foreground/80 placeholder:text-foreground/25 focus:outline-none focus:border-teal/40 focus:bg-white transition-all resize-none"
+                />
+              </div>
+
               <div className="space-y-4 pt-4 pb-4">
                 <div className="grid grid-cols-3 gap-3">
                   {(Object.entries(STATUS_STYLES) as [ReservationStatus, typeof STATUS_STYLES[ReservationStatus]][]).filter(([key]) => key !== "pending").map(([key, s]) => (
@@ -707,7 +809,7 @@ export default function AdminPage() {
 
                 <button
                   onClick={handleStatusSave}
-                  disabled={saving || newStatus === selected.status}
+                  disabled={saving || (newStatus === selected.status && (newNotes.trim() || "") === (selected.notes ?? ""))}
                   className="w-full h-16 rounded-2xl bg-teal text-white text-sm font-bold tracking-[0.2em] font-poppins shadow-xl shadow-teal/20 disabled:opacity-40 transition-all active:scale-95 cursor-pointer uppercase"
                 >
                   {saving ? "..." : "Sačuvaj izmene"}
@@ -720,25 +822,35 @@ export default function AdminPage() {
     </main>
   );
 
-  function renderReservation(r: ReservationFull, isMobile: boolean) {
+  function renderReservation(r: LaidOut, isMobile: boolean) {
     const topPx    = toTop(r.start_time);
     const heightPx = toHeight(r.total_duration);
     const s        = STATUS_STYLES[r.status];
     const services = r.reservation_services.map(rs => rs.services?.name).filter(Boolean).join(", ");
 
+    const cols = Math.max(1, r._cols);
+    const col  = r._col;
+    const gapPx = isMobile ? 4 : 3;
+    const padPx = isMobile ? 8 : 6;
+
     return (
       <button
         key={r.id}
         onClick={() => openModal(r)}
-        className={`absolute inset-x-2 md:inset-x-1.5 rounded-2xl md:rounded-xl border-2 md:border-l-4 ${s.bg} ${s.border} ${s.text} p-3 md:p-2.5 text-left overflow-hidden cursor-pointer active:scale-[0.98] transition-all group shadow-sm hover:shadow-md hover:z-10`}
-        style={{ top: topPx, height: Math.max(heightPx, isMobile ? 48 : 35) }}
+        className={`absolute rounded-2xl md:rounded-xl border-2 md:border-l-4 ${s.bg} ${s.border} ${s.text} p-3 md:p-2.5 text-left overflow-hidden cursor-pointer active:scale-[0.98] transition-all group shadow-sm hover:shadow-md hover:z-10`}
+        style={{
+          top: topPx,
+          height: Math.max(heightPx, isMobile ? 48 : 35),
+          left:  `calc(${(col / cols) * 100}% + ${col === 0 ? padPx : gapPx / 2}px)`,
+          width: `calc(${100 / cols}% - ${col === 0 || col === cols - 1 ? padPx + gapPx / 2 : gapPx}px)`,
+        }}
       >
         <div className="flex flex-col h-full justify-center">
           <div className="flex items-center gap-1.5 mb-0.5">
-            {!isMobile && <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />}
+            {!isMobile && <span className={`w-1.5 h-1.5 rounded-full ${s.dot} shrink-0`} />}
             <p className="text-[12px] md:text-[11px] font-bold font-poppins leading-none truncate">{r.customer_name}</p>
           </div>
-          {(heightPx >= 45 || isMobile) && <p className="text-[11px] md:text-[10px] font-medium font-poppins opacity-70 truncate px-0.5">{services}</p>}
+          {(heightPx >= 45 || isMobile) && cols <= 2 && <p className="text-[11px] md:text-[10px] font-medium font-poppins opacity-70 truncate px-0.5">{services}</p>}
         </div>
       </button>
     );

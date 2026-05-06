@@ -71,6 +71,17 @@ export default function Navbar() {
               </svg>
             </a>
             <a
+              href="tel:+381653503057"
+              aria-label="Pozovi"
+              className="p-2 hover:text-white transition-colors duration-500"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <rect x="7" y="2" width="10" height="20" rx="3" stroke="currentColor" strokeWidth="1.8" />
+                <circle cx="12" cy="18.5" r="1" fill="currentColor" />
+                <line x1="9.5" y1="5.5" x2="14.5" y2="5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </a>
+            <a
               href="mailto:ana.infinitystudio@gmail.com"
               aria-label="Email"
               className="p-2 hover:text-white transition-colors duration-500"
@@ -81,7 +92,7 @@ export default function Navbar() {
               </svg>
             </a>
             <a
-              href="https://www.instagram.com/infinitystudio021/"
+              href="https://www.instagram.com/infinitylaserstudio/"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Instagram"
