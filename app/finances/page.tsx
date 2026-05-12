@@ -90,11 +90,20 @@ export default function FinancesPage() {
 
   const fetchMonthData = useCallback(async (date: Date) => {
     setLoading(true);
-    const start = toDateStr(getMonthStart(date));
-    const end   = toDateStr(getMonthEnd(date));
+    const today    = toDateStr(new Date());
+    const monthEnd = toDateStr(getMonthEnd(date));
+    const start    = toDateStr(getMonthStart(date));
+    const end      = monthEnd < today ? monthEnd : today;
 
     const { data: svs } = await supabase.from("services").select("id, name, price");
     setAllServices((svs as ServiceWithPrice[]) ?? []);
+
+    if (start > today) {
+      setReservations([]);
+      setUserHistories([]);
+      setLoading(false);
+      return;
+    }
 
     const { data: rsvs } = await supabase
       .from("reservations")
