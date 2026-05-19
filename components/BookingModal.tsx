@@ -220,6 +220,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
   const [daySlots, setDaySlots]           = useState<{ start_time: string; end_time: string; status: string }[]>([]);
   const [loadingSlots, setLoadingSlots]   = useState(false);
   const [form, setForm]                   = useState({ name: "", email: "", phone: "" });
+  const [customerNote, setCustomerNote]   = useState("");
   const [fieldErrors, setFieldErrors]     = useState({ name: false, email: false, phone: false });
   const [submitting, setSubmitting]       = useState(false);
   const [submitError, setSubmitError]     = useState<string | null>(null);
@@ -448,6 +449,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
     setStep(2); setGender("zene"); setSelectedIds([]);
     setSelectedDate(""); setSelectedTime(""); setDaySlots([]);
     setForm({ name: "", email: "", phone: "" });
+    setCustomerNote("");
     setFieldErrors({ name: false, email: false, phone: false });
     setSubmitError(null); setBookingRef(null);
     setPromoCode(""); setPromoStatus("idle"); setAppliedPromoCode(null);
@@ -558,6 +560,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
         customer_name:  form.name.trim(),
         customer_email: form.email.trim(),
         customer_phone: form.phone.trim() || null,
+        customer_note:  customerNote.trim() || null,
         date:           selectedDate,
         start_time:     `${selectedTime}:00`,
         end_time:       `${endTime}:00`,
@@ -849,6 +852,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                   ))}
                 </div>
               )}
+
             </div>
           )}
 
@@ -916,6 +920,20 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                   onBlur={(e) => { e.target.style.borderColor = ""; }}
                 />
                 {fieldErrors.phone && <p className="text-xs text-red-500 font-poppins mt-1">Unesite broj telefona.</p>}
+              </div>
+
+              <div>
+                <label className="block text-xs text-foreground/50 font-poppins mb-1">Zdravstvena napomena <span className="text-foreground/35">(opcionalno)</span></label>
+                <textarea
+                  value={customerNote}
+                  onChange={(e) => setCustomerNote(e.target.value)}
+                  placeholder="Hronične bolesti, alergije ili lekovi"
+                  rows={2}
+                  maxLength={500}
+                  className="w-full px-4 py-2.5 rounded-xl border-2 border-foreground/10 focus:outline-none font-poppins text-sm transition-colors resize-none"
+                  onFocus={(e) => (e.target.style.borderColor = accent.hex)}
+                  onBlur={(e) => (e.target.style.borderColor = "")}
+                />
               </div>
 
               <div>

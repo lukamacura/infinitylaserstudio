@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, type FormEvent } from "react";
 import {
   ChevronLeft, ChevronRight, LogOut, X,
   Clock, User, Mail, Phone, Calendar, CalendarPlus,
-  PhoneCall, PhoneOff, AlertTriangle, StickyNote,
+  PhoneCall, PhoneOff, AlertTriangle, StickyNote, HeartPulse,
 } from "lucide-react";
 import { supabase, timeToMinutes } from "@/lib/supabase";
 import AdminReservationModal from "@/components/AdminReservationModal";
@@ -42,6 +42,7 @@ type ReservationFull = {
   total_duration: number;
   status: ReservationStatus;
   notes: string | null;
+  customer_note: string | null;
   created_at: string;
   call_status: CallStatus;
   call_attempted_at: string | null;
@@ -157,7 +158,36 @@ export default function AdminPage() {
       .gte("date", toDateStr(new Date()))
       .order("date")
       .order("start_time");
-    setCallReservations((data as ReservationFull[]) ?? []);
+
+    const queue = (data as ReservationFull[]) ?? [];
+
+    // Keep only first-time clients: email must appear exactly once across all
+    // confirmed/no_show reservations. Compared case-insensitively because the
+    // email column has mixed casing.
+    if (queue.length === 0) {
+      setCallReservations([]);
+      setCallsLoading(false);
+      return;
+    }
+
+    const { data: history } = await supabase
+      .from("reservations")
+      .select("customer_email")
+      .in("status", ["confirmed", "no_show"]);
+
+    const counts = new Map<string, number>();
+    for (const row of (history as { customer_email: string | null }[] | null) ?? []) {
+      const key = (row.customer_email ?? "").trim().toLowerCase();
+      if (!key) continue;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+
+    const firstTimers = queue.filter((r) => {
+      const key = (r.customer_email ?? "").trim().toLowerCase();
+      return counts.get(key) === 1;
+    });
+
+    setCallReservations(firstTimers);
     setCallsLoading(false);
   }, []);
 
@@ -776,6 +806,20 @@ export default function AdminPage() {
                   ))}
                 </div>
               </div>
+
+              {selected.customer_note && selected.customer_note.trim() && (
+                <div className="rounded-2xl bg-amber-50 border-2 border-amber-200 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <HeartPulse size={16} className="text-amber-600 shrink-0" />
+                    <span className="text-[10px] font-bold font-poppins text-amber-700 uppercase tracking-widest">
+                      Zdravstvena napomena klijenta
+                    </span>
+                  </div>
+                  <p className="text-sm font-poppins text-amber-900 leading-relaxed whitespace-pre-wrap break-words">
+                    {selected.customer_note}
+                  </p>
+                </div>
+              )}
 
               <div className="space-y-3">
                 <label className="flex items-center gap-2 text-[10px] font-bold font-poppins text-foreground/30 uppercase tracking-widest px-1">
