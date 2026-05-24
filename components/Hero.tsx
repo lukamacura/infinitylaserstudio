@@ -87,7 +87,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
 
         {/* Subtitle */}
         <p className="text-sm text-white font-poppins max-w-xs leading-relaxed" style={{ textShadow: "0 1px 8px rgba(0,0,0,0.8)" }}>
-          Za 8 do 10 tretmana, zauvek se opraštaš od brijača, iritacija i uraslih dlaka.
+          Za 6-8 tretmana, zauvek se opraštaš od brijača, iritacija i uraslih dlaka.
         </p>
 
         {/* Stats */}
@@ -153,7 +153,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
           </div>
 
           <p className="text-lg text-white font-poppins max-w-sm leading-relaxed" style={{ textShadow: "0 1px 10px rgba(0,0,0,0.85)" }}>
-            Za 8 do 10 tretmana, zauvek se opraštaš od brijača, iritacija i uraslih dlaka.
+            Za 6-8 tretmana, zauvek se opraštaš od brijača, iritacija i uraslih dlaka.
           </p>
 
           <div className="flex flex-col gap-2 mt-2">

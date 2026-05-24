@@ -5,7 +5,6 @@ import "./globals.css";
 import Navbar from "@/components/Navbar";
 import FloatingBookingButton from "@/components/FloatingBookingButton";
 import SocialProofToast from "@/components/SocialProofToast";
-import PromoBanner from "@/components/PromoBanner";
 
 const dmSerif = DM_Serif_Display({
   variable: "--font-playfair",
@@ -108,8 +107,7 @@ export default function RootLayout({
       >
         <Navbar />
         <SocialProofToast />
-        <PromoBanner />
-        {children}
+{children}
         <FloatingBookingButton />
       </body>
     </html>
