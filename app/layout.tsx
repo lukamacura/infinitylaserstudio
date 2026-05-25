@@ -54,7 +54,7 @@ const localBusinessSchema = {
   description:
     "Profesionalni studio za lasersku epilaciju u Novom Sadu, osnovan od strane doktora medicine Dr Ane Kasap.",
   url: "https://infinitylaserstudio.rs",
-  telephone: "+38163527325",
+  telephone: "+381653738991",
   email: "ana.infinitystudio@gmail.com",
   address: {
     "@type": "PostalAddress",

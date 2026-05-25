@@ -208,8 +208,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
       : null,
   );
   const [isAnimating, setIsAnimating] = useState(false);
-  const [step, setStep]               = useState<Step>(2);
-  const [gender, setGender]           = useState<Gender | null>("zene");
+  const [step, setStep]               = useState<Step>(1);
+  const [gender, setGender]           = useState<Gender | null>(null);
   const [services, setServices]       = useState<Service[]>([]);
   const [loadingServices, setLoadingServices] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -292,6 +292,15 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
     }
     return () => { document.body.style.overflow = ""; };
   }, [isOpen]);
+
+  // Preselected treatments are women's regions — open straight into her list,
+  // skipping the gender choice. Plain opens start on Step 1 (gender).
+  useEffect(() => {
+    if (isOpen && preselectedNames && preselectedNames.length > 0) {
+      setGender("zene");
+      setStep(2);
+    }
+  }, [isOpen, preselectedNames]);
 
   useEffect(() => {
     if (!gender) return;
@@ -446,7 +455,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
     bookableDaysFetchIdRef.current += 1;
     setBookableDayOptions([]);
     setLoadingBookableDays(false);
-    setStep(2); setGender("zene"); setSelectedIds([]);
+    setStep(1); setGender(null); setSelectedIds([]);
     setSelectedDate(""); setSelectedTime(""); setDaySlots([]);
     setForm({ name: "", email: "", phone: "" });
     setCustomerNote("");
@@ -465,10 +474,18 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
   }
 
   function handleBack() {
-    if (step === 3) { setStep(2); setSelectedDate(""); setSelectedTime(""); }
+    if (step === 2) { setStep(1); setGender(null); setSelectedIds([]); }
+    else if (step === 3) { setStep(2); setSelectedDate(""); setSelectedTime(""); }
     else if (step === 4) { setStep(3); setSelectedTime(""); }
     else if (step === 5) { setStep(4); }
     else if (step === "preparation") { setStep("success"); }
+  }
+
+  function handleGenderSelect(g: Gender) {
+    setGender(g);
+    setSelectedIds([]);
+    setSelectedDate(""); setSelectedTime("");
+    setStep(2);
   }
 
   function toggleService(id: string) {
@@ -694,7 +711,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
           <div className="flex items-center gap-3">
-            {(step === 3 || step === 4 || step === 5 || step === "preparation") && (
+            {(step === 2 || step === 3 || step === 4 || step === 5 || step === "preparation") && (
               <button onClick={handleBack} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-foreground/5 transition-colors cursor-pointer" aria-label="Nazad">
                 <ArrowLeft size={18} />
               </button>
@@ -716,6 +733,37 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
           {/* Scrollable content — primary actions live in sticky footer below */}
           <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-6 pb-2">
 
+
+          {/* ══ STEP 1: Gender ══════════════════════════════════════════════ */}
+          {step === 1 && (
+            <div className="flex flex-col gap-3 py-2">
+              {([
+                { key: "zene",     label: "Žene",      sub: "Tretmani za žene",      Icon: Flower2,         hex: ACCENTS.zene.hex },
+                { key: "muskarci", label: "Muškarci",  sub: "Tretmani za muškarce",  Icon: PersonStanding,  hex: ACCENTS.muskarci.hex },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => handleGenderSelect(opt.key)}
+                  className="flex items-center gap-4 w-full p-5 rounded-2xl border-2 border-foreground/8 hover:border-foreground/20 active:scale-[0.99] transition-all text-left cursor-pointer"
+                >
+                  <div
+                    className="w-14 h-14 rounded-xl flex items-center justify-center shrink-0"
+                    style={{ backgroundColor: `${opt.hex}1A` }}
+                  >
+                    <opt.Icon size={28} style={{ color: opt.hex }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-base font-bold font-poppins">{opt.label}</p>
+                    <p className="text-xs text-foreground/45 font-poppins mt-0.5">{opt.sub}</p>
+                  </div>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={opt.hex} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                    <path d="M9 18l6-6-6-6" />
+                  </svg>
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* ══ STEP 2: Services ════════════════════════════════════════════ */}
           {step === 2 && (
@@ -909,7 +957,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                 <label className="block text-xs text-foreground/50 font-poppins mb-1">Telefon *</label>
                 <input
                   type="tel"
-                  placeholder="+381 65 357 7300"
+                  placeholder="+381 65 373 8991"
                   value={form.phone}
                   onChange={(e) => {
                     setForm((p) => ({ ...p, phone: e.target.value }));
