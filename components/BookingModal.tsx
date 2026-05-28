@@ -829,7 +829,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
               ) : bookableDayOptions.length === 0 ? (
                 <div className="flex items-center gap-2 p-4 rounded-xl bg-foreground/5 text-foreground/50 text-sm font-poppins">
                   <AlertCircle size={16} />
-                  Nema dana u kalendaru kada se ceo izabrani tretman staje u slobodno vreme studija ili su svi termini zauzeti.
+                  Nema dana u kalendaru kada se izabrani tretman uklapa.
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-2">
