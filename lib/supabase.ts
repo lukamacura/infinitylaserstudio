@@ -40,6 +40,10 @@ export const SPECIAL_AVAILABILITY: Record<string, BusinessWindow[]> = {
     { start: 13 * 60,        end: 17 * 60 + 30 }, // 13:00–17:30
     { start: 18 * 60 + 30,  end: 19 * 60 + 30 }, // 18:30–19:30
   ],
+  "2026-06-05": [
+    { start: 10 * 60,        end: 15 * 60      }, // 10:00–15:00
+    { start: 15 * 60,        end: 18 * 60      }, // 15:00–18:00
+  ],
   "2026-05-07": [{ start: 13 * 60,        end: 20 * 60      }], // 13:00–20:00
   "2026-05-09": [{ start: 10 * 60,        end: 17 * 60      }], // 10:00–17:00
   "2026-05-11": [{ start: 13 * 60,        end: 20 * 60      }], // 13:00–20:00
@@ -61,7 +65,6 @@ export const SPECIAL_AVAILABILITY: Record<string, BusinessWindow[]> = {
   "2026-06-02": [{ start: 15 * 60,        end: 20 * 60      }], // 15:00–20:00
   "2026-06-03": [{ start: 15 * 60,        end: 20 * 60      }], // 15:00–20:00
   "2026-06-04": [{ start: 13 * 60,        end: 18 * 60      }], // 13:00–18:00
-  "2026-06-05": [{ start: 10 * 60,        end: 15 * 60      }], // 10:00–15:00
   "2026-06-06": [{ start: 16 * 60,        end: 20 * 60      }], // 16:00–20:00
   "2026-06-08": [{ start: 14 * 60,        end: 19 * 60      }], // 14:00–19:00
   "2026-06-09": [{ start: 15 * 60,        end: 20 * 60      }], // 15:00–20:00
@@ -69,12 +72,63 @@ export const SPECIAL_AVAILABILITY: Record<string, BusinessWindow[]> = {
   "2026-06-11": [{ start: 13 * 60,        end: 18 * 60      }], // 13:00–18:00
   "2026-06-12": [{ start: 10 * 60,        end: 15 * 60      }], // 10:00–15:00
   "2026-06-13": [{ start: 16 * 60,        end: 20 * 60      }], // 16:00–20:00
+  "2026-06-15": [{ start: 13 * 60,        end: 20 * 60      }], // Ponedeljak 13:00–20:00
+  "2026-06-16": [{ start: 15 * 60,        end: 20 * 60      }], // Utorak 15:00–20:00
+  "2026-06-17": [{ start: 15 * 60,        end: 20 * 60      }], // Sreda 15:00–20:00
+  "2026-06-18": [{ start: 13 * 60,        end: 18 * 60      }], // Četvrtak 13:00–18:00
+  "2026-06-19": [{ start: 10 * 60,        end: 15 * 60      }], // Petak 10:00–15:00
+  "2026-06-20": [{ start: 10 * 60,        end: 17 * 60      }], // Subota 10:00–17:00
+  "2026-06-22": [{ start: 15 * 60,        end: 20 * 60      }], // Ponedeljak 15:00–20:00
+  "2026-06-23": [{ start: 15 * 60,        end: 20 * 60      }], // Utorak 15:00–20:00
+  "2026-06-24": [{ start: 15 * 60,        end: 20 * 60      }], // Sreda 15:00–20:00
+  "2026-06-25": [{ start: 13 * 60,        end: 18 * 60      }], // Četvrtak 13:00–18:00
+  "2026-06-26": [{ start: 10 * 60,        end: 15 * 60      }], // Petak 10:00–15:00
+  "2026-06-27": [{ start: 10 * 60,        end: 17 * 60      }], // Subota 10:00–17:00
+  "2026-06-29": [{ start: 15 * 60,        end: 20 * 60      }], // Ponedeljak 15:00–20:00
+  "2026-06-30": [{ start: 15 * 60,        end: 20 * 60      }], // Utorak 15:00–20:00
+  "2026-07-01": [{ start: 15 * 60,        end: 20 * 60      }], // Sreda 15:00–20:00
+  "2026-07-02": [{ start: 13 * 60,        end: 18 * 60      }], // Četvrtak 13:00–18:00
+  "2026-07-03": [{ start: 10 * 60,        end: 15 * 60      }], // Petak 10:00–15:00
+  "2026-07-04": [{ start: 10 * 60,        end: 17 * 60      }], // Subota 10:00–17:00
+  "2026-07-06": [{ start: 15 * 60,        end: 20 * 60      }], // Ponedeljak 15:00–20:00
+  "2026-07-07": [{ start: 15 * 60,        end: 20 * 60      }], // Utorak 15:00–20:00
+  "2026-07-08": [{ start: 15 * 60,        end: 20 * 60      }], // Sreda 15:00–20:00
+  "2026-07-09": [{ start: 13 * 60,        end: 18 * 60      }], // Četvrtak 13:00–18:00
+  "2026-07-10": [{ start: 10 * 60,        end: 15 * 60      }], // Petak 10:00–15:00
+  "2026-07-11": [{ start: 10 * 60,        end: 17 * 60      }], // Subota 10:00–17:00
+  "2026-07-13": [{ start: 15 * 60,        end: 20 * 60      }], // Ponedeljak 15:00–20:00
+  "2026-07-14": [{ start: 15 * 60,        end: 20 * 60      }], // Utorak 15:00–20:00
+  "2026-07-15": [{ start: 15 * 60,        end: 20 * 60      }], // Sreda 15:00–20:00
+  "2026-07-16": [{ start: 13 * 60,        end: 18 * 60      }], // Četvrtak 13:00–18:00
+  "2026-07-17": [{ start: 10 * 60,        end: 15 * 60      }], // Petak 10:00–15:00
+  "2026-07-18": [{ start: 10 * 60,        end: 17 * 60      }], // Subota 10:00–17:00
 };
 
 /** Returns bookable time windows (minutes since midnight) for a date, or null if closed. */
 export function getBusinessWindows(dateStr: string): BusinessWindow[] | null {
   const windows = SPECIAL_AVAILABILITY[dateStr];
   return windows?.length ? windows : null;
+}
+
+// ── Admin weekly schedule ────────────────────────────────────────────────────
+// Fixed recurring working hours the Admin reservation modal offers, by weekday.
+// Index 0 = Monday … 6 = Sunday. `null` = closed that day.
+const ADMIN_WEEKLY_SCHEDULE: (BusinessWindow | null)[] = [
+  { start: 15 * 60, end: 20 * 60 }, // Ponedeljak 15:00–20:00
+  { start: 15 * 60, end: 20 * 60 }, // Utorak     15:00–20:00
+  { start: 15 * 60, end: 20 * 60 }, // Sreda      15:00–20:00
+  { start: 13 * 60, end: 18 * 60 }, // Četvrtak   13:00–18:00
+  { start: 10 * 60, end: 15 * 60 }, // Petak      10:00–15:00
+  { start: 10 * 60, end: 17 * 60 }, // Subota     10:00–17:00
+  null,                             // Nedelja    — zatvoreno
+];
+
+/** Admin working windows for a date from the fixed weekly schedule, or null if closed. */
+export function getAdminBusinessWindows(dateStr: string): BusinessWindow[] | null {
+  const d = new Date(`${dateStr}T00:00:00`);
+  const idx = (d.getDay() + 6) % 7; // 0 = Monday
+  const window = ADMIN_WEEKLY_SCHEDULE[idx];
+  return window ? [window] : null;
 }
 
 /**

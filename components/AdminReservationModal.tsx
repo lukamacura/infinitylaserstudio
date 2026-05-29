@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
-  supabase, calcBookingDuration, calcTotalDuration, getAvailableSlots, getBusinessWindows,
+  supabase, calcBookingDuration, calcTotalDuration, getAvailableSlots, getAdminBusinessWindows,
   minutesToTime, timeToMinutes, SLOT_SIZE,
 } from "@/lib/supabase";
 import type { Service } from "@/lib/database.types";
@@ -71,8 +71,8 @@ interface DayOption {
 }
 
 /**
- * Build bookable days for Admin. Shows next 90 days.
- * Admins are not restricted by SPECIAL_AVAILABILITY whitelist.
+ * Build bookable days for Admin. Shows next 90 days that fall on a working
+ * weekday per the fixed weekly schedule (Sundays and off days are skipped).
  */
 function buildAdminDayOptions(totalDuration: number): DayOption[] {
   const now = new Date();
@@ -83,7 +83,8 @@ function buildAdminDayOptions(totalDuration: number): DayOption[] {
     d.setDate(d.getDate() + i);
     const dateStr = toDateStr(d);
 
-    const windows = getBusinessWindows(dateStr) || [{ start: 8 * 60, end: 21 * 60 }];
+    const windows = getAdminBusinessWindows(dateStr);
+    if (!windows) continue; // closed day (e.g. Sunday)
     const isToday = i === 0;
 
     if (isToday) {
@@ -258,7 +259,7 @@ export default function AdminReservationModal({
   // For Admin: no 2-hour buffer
   const minStart = isToday ? nowMinutes : undefined;
 
-  const windows = selectedDate ? (getBusinessWindows(selectedDate) || [{ start: 8 * 60, end: 21 * 60 }]) : null;
+  const windows = selectedDate ? getAdminBusinessWindows(selectedDate) : null;
   const availableSlots = windows?.length
     ? getAvailableSlots(daySlots, slotDuration, minStart, windows)
     : [];
