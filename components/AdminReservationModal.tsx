@@ -240,12 +240,9 @@ export default function AdminReservationModal({
   const totalPrice       = effectiveServices.reduce((sum, s) => sum + s.price, 0);
   const accent           = ACCENTS[gender ?? "zene"];
 
-  const firstTreatmentEligible = isReturningCustomer !== true;
-  const baseFirstTreatmentPrice = firstTreatmentEligible ? Math.round(totalPrice * 0.5) : totalPrice;
   const ilsPromoActive =
     promoStatus === "valid" && appliedPromoCode != null && isIlsPromoCode(appliedPromoCode);
-  const finalPrice = ilsPromoActive ? Math.round(baseFirstTreatmentPrice * 0.9) : baseFirstTreatmentPrice;
-  const savingsVsList = totalPrice - finalPrice;
+  const finalPrice = ilsPromoActive ? Math.round(totalPrice * 0.9) : totalPrice;
 
   // Day options rebuild whenever slot duration (incl. consultation) changes
   const dayOptions = useMemo(() => buildAdminDayOptions(slotDuration), [slotDuration]);
@@ -437,10 +434,9 @@ export default function AdminReservationModal({
       .limit(1)
       .maybeSingle();
     const returningSubmit = !!existingReservation;
-    const baseForSubmit = returningSubmit ? totalPrice : Math.round(totalPrice * 0.5);
     const ilsAppliedSubmit =
       promoStatus === "valid" && appliedPromoCode != null && isIlsPromoCode(appliedPromoCode);
-    const finalForSubmit = ilsAppliedSubmit ? Math.round(baseForSubmit * 0.9) : baseForSubmit;
+    const finalForSubmit = ilsAppliedSubmit ? Math.round(totalPrice * 0.9) : totalPrice;
 
     const durationForReservation = returningSubmit
       ? calcTotalDuration(selectedServices)
@@ -492,7 +488,7 @@ export default function AdminReservationModal({
         total_duration:   durationForReservation,
         total_price:      totalPrice,
         discounted_price: finalForSubmit,
-        promo_code:       ilsAppliedSubmit ? appliedPromoCode! : returningSubmit ? "redovna cena" : "50% promo",
+        promo_code:       ilsAppliedSubmit ? appliedPromoCode! : "redovna cena",
         booking_ref:      bookingRefValue,
       }),
     }).catch(() => {});
@@ -825,38 +821,17 @@ export default function AdminReservationModal({
                     ))}
                   </div>
                   <div className="border-t border-foreground/10 pt-2.5">
-                    {firstTreatmentEligible ? (
-                      <>
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm font-poppins text-foreground/50">Redovna cena</span>
-                          <span className="text-sm font-poppins font-semibold text-foreground/40 line-through">{formatPrice(totalPrice)} RSD</span>
-                        </div>
-                        <div className="flex justify-between items-center mt-1.5">
-                          <span className="text-sm font-poppins text-green-700 font-semibold">Cena za 1. tretman (−50%)</span>
-                          <span className="text-sm font-poppins font-bold text-green-700">{formatPrice(baseFirstTreatmentPrice)} RSD</span>
-                        </div>
-                        {ilsPromoActive && (
-                          <div className="flex justify-between items-center mt-1.5">
-                            <span className="text-sm font-poppins text-green-800 font-semibold">Sa promo kodom (−10%)</span>
-                            <span className="text-sm font-poppins font-bold text-green-800">{formatPrice(finalPrice)} RSD</span>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm font-poppins text-foreground/50">Redovna cena</span>
-                          <span className={`text-sm font-poppins font-semibold ${ilsPromoActive ? "text-foreground/40 line-through" : "font-bold text-foreground"}`}>
-                            {formatPrice(totalPrice)} RSD
-                          </span>
-                        </div>
-                        {ilsPromoActive && (
-                          <div className="flex justify-between items-center mt-1.5">
-                            <span className="text-sm font-poppins text-green-800 font-semibold">Sa promo kodom (−10%)</span>
-                            <span className="text-sm font-poppins font-bold text-green-800">{formatPrice(finalPrice)} RSD</span>
-                          </div>
-                        )}
-                      </>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-poppins text-foreground/50">Redovna cena</span>
+                      <span className={`text-sm font-poppins font-semibold ${ilsPromoActive ? "text-foreground/40 line-through" : "font-bold text-foreground"}`}>
+                        {formatPrice(totalPrice)} RSD
+                      </span>
+                    </div>
+                    {ilsPromoActive && (
+                      <div className="flex justify-between items-center mt-1.5">
+                        <span className="text-sm font-poppins text-green-800 font-semibold">Sa promo kodom (−10%)</span>
+                        <span className="text-sm font-poppins font-bold text-green-800">{formatPrice(finalPrice)} RSD</span>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -964,12 +939,9 @@ export default function AdminReservationModal({
                     {selectedIds.length > 0 ? (
                       <>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs text-foreground/35 font-poppins line-through">{formatPrice(totalPrice)} RSD</span>
-                          <span className="text-base font-bold font-poppins leading-none" style={{ color: accent.hex }}>{formatPrice(Math.round(totalPrice * 0.5))} RSD</span>
+                          <span className="text-base font-bold font-poppins leading-none" style={{ color: accent.hex }}>{formatPrice(totalPrice)} RSD</span>
+                          <span className="text-[10px] text-foreground/40 font-poppins">· {slotDuration} min</span>
                         </div>
-                        <span className="text-[10px] text-green-700 font-poppins font-semibold mt-0.5">
-                           Ušteda {formatPrice(Math.round(totalPrice * 0.5))} RSD · {slotDuration} min
-                        </span>
                       </>
                     ) : (
                       <p className="text-xs text-foreground/45 font-poppins pr-2">Odaberite usluge.</p>

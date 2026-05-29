@@ -67,17 +67,6 @@ export default function HomeClient() {
         preselectedNames={preselectedNames}
       />
 
-      {/* Promo banner — fixed top-right */}
-      <div className="fixed top-4 right-4 z-40 pointer-events-none select-none">
-        <div
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white text-[11px] font-semibold font-poppins tracking-wide shadow-lg"
-          style={{ backgroundColor: "#E85D8A" }}
-        >
-          <span className="text-xs leading-none">🏷</span>
-          50% popusta na 1. tretman
-        </div>
-      </div>
-
     </main>
   );
 }

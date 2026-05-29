@@ -258,11 +258,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
   const totalPrice       = effectiveServices.reduce((sum, s) => sum + s.price, 0);
   const accent           = ACCENTS[gender ?? "zene"];
 
-  const firstTreatmentEligible = isReturningCustomer !== true;
-  const baseFirstTreatmentPrice = firstTreatmentEligible ? Math.round(totalPrice * 0.5) : totalPrice;
   const ilsPromoActive =
     promoStatus === "valid" && appliedPromoCode != null && isIlsPromoCode(appliedPromoCode);
-  const finalPrice = ilsPromoActive ? Math.round(baseFirstTreatmentPrice * 0.9) : baseFirstTreatmentPrice;
+  const finalPrice = ilsPromoActive ? Math.round(totalPrice * 0.9) : totalPrice;
   const savingsVsList = totalPrice - finalPrice;
 
   // For today: slots must start ≥ now+120min
@@ -561,10 +559,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
       .limit(1)
       .maybeSingle();
     const returningSubmit = !!existingReservation;
-    const baseForSubmit = returningSubmit ? totalPrice : Math.round(totalPrice * 0.5);
     const ilsAppliedSubmit =
       promoStatus === "valid" && appliedPromoCode != null && isIlsPromoCode(appliedPromoCode);
-    const finalForSubmit = ilsAppliedSubmit ? Math.round(baseForSubmit * 0.9) : baseForSubmit;
+    const finalForSubmit = ilsAppliedSubmit ? Math.round(totalPrice * 0.9) : totalPrice;
 
     const durationForReservation = returningSubmit
       ? calcTotalDuration(selectedServices)
@@ -616,7 +613,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
         total_duration:   durationForReservation,
         total_price:      totalPrice,
         discounted_price: finalForSubmit,
-        promo_code:       ilsAppliedSubmit ? appliedPromoCode! : returningSubmit ? "redovna cena" : "50% promo",
+        promo_code:       ilsAppliedSubmit ? appliedPromoCode! : "redovna cena",
         booking_ref:      bookingRefValue,
       }),
     }).catch(() => {});
@@ -1011,12 +1008,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                     Primeni
                   </button>
                 </div>
-                {promoStatus === "valid" && ilsPromoActive && firstTreatmentEligible && (
-                  <p className="text-xs text-green-600 font-poppins mt-2">
-                    Kod primenjen — dodatnih 10% na cenu sa popustom za 1. tretman.
-                  </p>
-                )}
-                {promoStatus === "valid" && ilsPromoActive && isReturningCustomer === true && (
+                {promoStatus === "valid" && ilsPromoActive && (
                   <p className="text-xs text-green-600 font-poppins mt-2">
                     Kod primenjen — −10% na redovnu cenu.
                   </p>
@@ -1042,51 +1034,23 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                     ))}
                   </div>
                   <div className="border-t border-foreground/10 pt-2.5">
-                    {firstTreatmentEligible ? (
-                      <>
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm font-poppins text-foreground/50">Redovna cena</span>
-                          <span className="text-sm font-poppins font-semibold text-foreground/40 line-through">{formatPrice(totalPrice)} RSD</span>
-                        </div>
-                        <div className="flex justify-between items-center mt-1.5">
-                          <span className="text-sm font-poppins text-green-700 font-semibold">Cena sa popustom za 1. tretman (−50%)</span>
-                          <span className="text-sm font-poppins font-bold text-green-700">{formatPrice(baseFirstTreatmentPrice)} RSD</span>
-                        </div>
-                        {ilsPromoActive && (
-                          <div className="flex justify-between items-center mt-1.5">
-                            <span className="text-sm font-poppins text-green-800 font-semibold">Sa promo kodom (−10%)</span>
-                            <span className="text-sm font-poppins font-bold text-green-800">{formatPrice(finalPrice)} RSD</span>
-                          </div>
-                        )}
-                        <div className="flex justify-between items-center mt-1 pt-2 border-t border-foreground/8">
-                          <span className="text-xs font-poppins text-foreground/40">Ušteda za 1. tretman</span>
-                          <span className="text-xs font-poppins font-semibold" style={{ color: "#E85D8A" }}>{formatPrice(savingsVsList)} RSD</span>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm font-poppins text-foreground/50">Redovna cena</span>
-                          <span className={`text-sm font-poppins font-semibold ${ilsPromoActive ? "text-foreground/40 line-through" : "font-bold text-foreground"}`}>
-                            {formatPrice(totalPrice)} RSD
-                          </span>
-                        </div>
-                        {ilsPromoActive && (
-                          <div className="flex justify-between items-center mt-1.5">
-                            <span className="text-sm font-poppins text-green-800 font-semibold">Sa promo kodom (−10%)</span>
-                            <span className="text-sm font-poppins font-bold text-green-800">{formatPrice(finalPrice)} RSD</span>
-                          </div>
-                        )}
-                        {!ilsPromoActive && (
-                          <p className="text-xs text-foreground/45 font-poppins mt-1">Bez popusta za prvi tretman (već ste kod nas zakazivali).</p>
-                        )}
-                        {(ilsPromoActive || savingsVsList > 0) && (
-                          <div className="flex justify-between items-center mt-1 pt-2 border-t border-foreground/8">
-                            <span className="text-xs font-poppins text-foreground/40">Ušteda</span>
-                            <span className="text-xs font-poppins font-semibold" style={{ color: "#E85D8A" }}>{formatPrice(savingsVsList)} RSD</span>
-                          </div>
-                        )}
-                      </>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-poppins text-foreground/50">Redovna cena</span>
+                      <span className={`text-sm font-poppins font-semibold ${ilsPromoActive ? "text-foreground/40 line-through" : "font-bold text-foreground"}`}>
+                        {formatPrice(totalPrice)} RSD
+                      </span>
+                    </div>
+                    {ilsPromoActive && (
+                      <div className="flex justify-between items-center mt-1.5">
+                        <span className="text-sm font-poppins text-green-800 font-semibold">Sa promo kodom (−10%)</span>
+                        <span className="text-sm font-poppins font-bold text-green-800">{formatPrice(finalPrice)} RSD</span>
+                      </div>
+                    )}
+                    {savingsVsList > 0 && (
+                      <div className="flex justify-between items-center mt-1 pt-2 border-t border-foreground/8">
+                        <span className="text-xs font-poppins text-foreground/40">Ušteda</span>
+                        <span className="text-xs font-poppins font-semibold" style={{ color: "#E85D8A" }}>{formatPrice(savingsVsList)} RSD</span>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1126,32 +1090,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                 >
                   <p className="text-[10px] font-semibold tracking-widest text-foreground/40 font-poppins mb-1">CENA</p>
 
-                  {isReturningCustomer ? (
-                    ilsPromoActive ? (
-                      <>
-                        <p className="text-xs text-foreground/35 font-poppins line-through leading-none mb-0.5">
-                          {formatPrice(totalPrice)} RSD
-                        </p>
-                        <p className="text-3xl font-bold font-poppins leading-none tabular-nums" style={{ color: accent.hex }}>
-                          {formatPrice(displayedPrice)}
-                        </p>
-                        <p className="text-xs font-semibold font-poppins mt-1" style={{ color: accent.hex }}>RSD</p>
-                        <span className="mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold font-poppins text-white bg-green-500">
-                          −10% PROMO
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-3xl font-bold font-poppins leading-none tabular-nums" style={{ color: accent.hex }}>
-                          {formatPrice(displayedPrice)}
-                        </p>
-                        <p className="text-xs font-semibold font-poppins mt-1" style={{ color: accent.hex }}>RSD</p>
-                        <span className="mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold font-poppins text-foreground/70 bg-foreground/10">
-                          Redovna cena
-                        </span>
-                      </>
-                    )
-                  ) : (
+                  {ilsPromoActive ? (
                     <>
                       <p className="text-xs text-foreground/35 font-poppins line-through leading-none mb-0.5">
                         {formatPrice(totalPrice)} RSD
@@ -1161,7 +1100,17 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                       </p>
                       <p className="text-xs font-semibold font-poppins mt-1" style={{ color: accent.hex }}>RSD</p>
                       <span className="mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold font-poppins text-white bg-green-500">
-                        {ilsPromoActive ? "−50% + DODATNIH 10%" : "−50% POPUST"}
+                        −10% PROMO
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-3xl font-bold font-poppins leading-none tabular-nums" style={{ color: accent.hex }}>
+                        {formatPrice(displayedPrice)}
+                      </p>
+                      <p className="text-xs font-semibold font-poppins mt-1" style={{ color: accent.hex }}>RSD</p>
+                      <span className="mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold font-poppins text-foreground/70 bg-foreground/10">
+                        Redovna cena
                       </span>
                     </>
                   )}
@@ -1181,8 +1130,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                 ))}
                 {promoStatus === "valid" && appliedPromoCode && isIlsPromoCode(appliedPromoCode) && (
                   <p className="text-xs text-green-600 font-poppins text-right">
-                    Promo kod {appliedPromoCode} primenjen (
-                    {isReturningCustomer ? "−10% na redovnu cenu" : "−10% na cenu sa popustom"})
+                    Promo kod {appliedPromoCode} primenjen (−10% na redovnu cenu)
                   </p>
                 )}
                 <div className="border-t border-foreground/10 pt-3">
@@ -1237,12 +1185,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                     {selectedIds.length > 0 ? (
                       <>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs text-foreground/35 font-poppins line-through">{formatPrice(totalPrice)} RSD</span>
-                          <span className="text-base font-bold font-poppins leading-none" style={{ color: accent.hex }}>{formatPrice(Math.round(totalPrice * 0.5))} RSD</span>
+                          <span className="text-base font-bold font-poppins leading-none" style={{ color: accent.hex }}>{formatPrice(totalPrice)} RSD</span>
+                          <span className="text-[10px] text-foreground/40 font-poppins">· {slotDuration} min</span>
                         </div>
-                        <span className="text-[10px] text-green-700 font-poppins font-semibold mt-0.5">
-                          Uštediš {formatPrice(Math.round(totalPrice * 0.5))} RSD · {slotDuration} min
-                        </span>
                         {appliedCombos.length > 0 && (
                           <div className="flex items-center gap-1 mt-1">
                             <span className="px-1.5 py-0.5 rounded text-[9px] font-bold font-poppins text-white" style={{ backgroundColor: accent.hex }}>COMBO</span>
