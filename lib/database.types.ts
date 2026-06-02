@@ -38,6 +38,24 @@ export type Database = {
         }
         Relationships: []
       }
+      marketing_spend: {
+        Row: {
+          amount: number
+          month: string
+          updated_at: string
+        }
+        Insert: {
+          amount?: number
+          month: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          month?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       reservation_services: {
         Row: {
           reservation_id: string

@@ -13,7 +13,7 @@ import type { ReservationStatus } from "@/lib/database.types";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const ADMIN_PWD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "laser2024";
-const MARKETING_FEE = 176025;
+const MARKETING_FEE = 311110;
 
 const SR_MONTHS = ["januar", "februar", "mart", "april", "maj", "jun", "jul", "avgust", "septembar", "oktobar", "novembar", "decembar"];
 const SR_MONTHS_SHORT = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "avg", "sep", "okt", "nov", "dec"];
@@ -83,22 +83,49 @@ export default function FinancesPage() {
   const [allServices, setAllServices]     = useState<ServiceWithPrice[]>([]);
   const [userHistories, setUserHistories] = useState<UserHistory[]>([]);
   const [loading, setLoading]             = useState(false);
+  const [projected, setProjected]         = useState(false);
+  const [adSpend, setAdSpend]             = useState(0);
 
   useEffect(() => {
     if (sessionStorage.getItem("ils_admin") === "1") setAuthenticated(true);
   }, []);
 
-  const fetchMonthData = useCallback(async (date: Date) => {
+  // Per-month ad spend, persisted in Supabase (marketing_spend, key 'YYYY-MM').
+  const adSpendKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`;
+  useEffect(() => {
+    if (!authenticated) return;
+    let active = true;
+    (async () => {
+      const { data } = await supabase
+        .from("marketing_spend")
+        .select("amount")
+        .eq("month", adSpendKey)
+        .maybeSingle();
+      if (active) setAdSpend(data?.amount ?? 0);
+    })();
+    return () => { active = false; };
+  }, [authenticated, adSpendKey]);
+
+  async function handleAdSpendChange(value: number) {
+    setAdSpend(value);
+    await supabase
+      .from("marketing_spend")
+      .upsert({ month: adSpendKey, amount: value, updated_at: new Date().toISOString() }, { onConflict: "month" });
+  }
+
+  const fetchMonthData = useCallback(async (date: Date, projectFuture: boolean) => {
     setLoading(true);
     const today    = toDateStr(new Date());
     const monthEnd = toDateStr(getMonthEnd(date));
     const start    = toDateStr(getMonthStart(date));
-    const end      = monthEnd < today ? monthEnd : today;
+    // Projected: include the whole month (future confirmed appointments).
+    // Realized: cap at today so only elapsed appointments count.
+    const end      = projectFuture ? monthEnd : (monthEnd < today ? monthEnd : today);
 
     const { data: svs } = await supabase.from("services").select("id, name, price");
     setAllServices((svs as ServiceWithPrice[]) ?? []);
 
-    if (start > today) {
+    if (!projectFuture && start > today) {
       setReservations([]);
       setUserHistories([]);
       setLoading(false);
@@ -131,8 +158,8 @@ export default function FinancesPage() {
   }, []);
 
   useEffect(() => {
-    if (authenticated) fetchMonthData(currentDate);
-  }, [authenticated, currentDate, fetchMonthData]);
+    if (authenticated) fetchMonthData(currentDate, projected);
+  }, [authenticated, currentDate, projected, fetchMonthData]);
 
   function handleLogin(e: FormEvent) {
     e.preventDefault();
@@ -166,6 +193,7 @@ export default function FinancesPage() {
   const prihod          = calculated.reduce((s, r) => s + r.calc.finalPrice, 0);
   const troskovi        = calculated.reduce((s, r) => s + Math.round(r.calc.totalPrice * 0.25), 0);
   const zarada          = prihod - troskovi;
+  const totalMarketing  = MARKETING_FEE + adSpend;
   const totalBookings   = reservations.length;
   const uniqueKlijenti  = new Set(reservations.map(r => r.customer_email)).size;
 
@@ -236,7 +264,21 @@ export default function FinancesPage() {
             </div>
             <button onClick={handleNext} className="w-10 h-10 md:w-9 md:h-9 flex items-center justify-center rounded-xl hover:bg-white hover:shadow-sm transition-all active:scale-90"><ChevronRight size={20}/></button>
           </div>
-          <button onClick={goToday} className="hidden md:flex h-11 px-6 items-center justify-center rounded-2xl border-2 border-teal/10 text-teal text-xs font-bold font-poppins hover:bg-teal/5 transition-all shadow-sm">OVAJ MESEC</button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setProjected(p => !p)}
+              role="switch" aria-checked={projected}
+              className={`flex items-center gap-3 h-11 pl-4 pr-2 rounded-2xl border-2 transition-all shadow-sm font-poppins text-xs font-bold ${
+                projected ? "border-teal/30 bg-teal/5 text-teal" : "border-foreground/10 bg-foreground/2 text-foreground/40"
+              }`}
+            >
+              <span className="uppercase tracking-widest">Projektovane finansije</span>
+              <span className={`relative w-10 h-6 rounded-full transition-colors shrink-0 ${projected ? "bg-teal" : "bg-foreground/15"}`}>
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${projected ? "translate-x-4" : ""}`} />
+              </span>
+            </button>
+            <button onClick={goToday} className="hidden md:flex h-11 px-6 items-center justify-center rounded-2xl border-2 border-teal/10 text-teal text-xs font-bold font-poppins hover:bg-teal/5 transition-all shadow-sm">OVAJ MESEC</button>
+          </div>
         </div>
       </div>
 
@@ -276,21 +318,40 @@ export default function FinancesPage() {
         </div>
 
         {/* Marketing investicija */}
-        <div className="bg-white rounded-3xl border border-foreground/5 shadow-sm px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="bg-white rounded-3xl border border-foreground/5 shadow-sm px-6 py-4 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
           <div>
             <p className="text-[10px] font-bold font-poppins text-foreground/30 uppercase tracking-widest mb-0.5">Investicija u marketing</p>
-            <p className="text-sm font-bold font-poppins text-foreground/60">Jednokratno plaćeno · praćenje povrata</p>
+            <p className="text-sm font-bold font-poppins text-foreground/60">Jednokratno + oglasi (mesečno) · praćenje povrata</p>
           </div>
-          <div className="flex items-center gap-6 shrink-0">
-            <div className="text-right">
-              <p className="text-[10px] font-bold font-poppins text-foreground/30 uppercase tracking-widest mb-0.5">Iznos</p>
-              <p className="text-base font-bold font-poppins text-foreground/70">{MARKETING_FEE.toLocaleString("sr-RS")} RSD</p>
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-4 shrink-0">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-4">
+                <p className="text-[10px] font-bold font-poppins text-foreground/30 uppercase tracking-widest">Marketing fee</p>
+                <p className="text-sm font-bold font-poppins text-foreground/70">{MARKETING_FEE.toLocaleString("sr-RS")} RSD</p>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <p className="text-[10px] font-bold font-poppins text-foreground/30 uppercase tracking-widest">Oglasi (Ad spend)</p>
+                <div className="flex items-center gap-1.5 rounded-xl border-2 border-foreground/10 focus-within:border-teal/40 bg-foreground/2 px-3 py-1 transition-colors">
+                  <input
+                    type="text" inputMode="numeric"
+                    value={adSpend ? adSpend.toLocaleString("sr-RS") : ""}
+                    onChange={e => handleAdSpendChange(Number(e.target.value.replace(/\D/g, "")) || 0)}
+                    placeholder="0"
+                    className="w-24 bg-transparent text-sm font-bold font-poppins text-foreground/70 focus:outline-none text-right"
+                  />
+                  <span className="text-[11px] font-bold font-poppins text-foreground/30">RSD</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-4 border-t border-foreground/10 pt-2">
+                <p className="text-[10px] font-bold font-poppins text-foreground/40 uppercase tracking-widest">Ukupno</p>
+                <p className="text-base font-bold font-poppins text-teal">{totalMarketing.toLocaleString("sr-RS")} RSD</p>
+              </div>
             </div>
-            <div className="w-px h-8 bg-foreground/10" />
+            <div className="w-px h-16 bg-foreground/10 hidden sm:block" />
             <div className="text-right">
               <p className="text-[10px] font-bold font-poppins text-foreground/30 uppercase tracking-widest mb-0.5">Zarada ovog meseca pokriva</p>
               <p className={`text-base font-bold font-poppins ${zarada > 0 ? "text-teal" : "text-foreground/30"}`}>
-                {zarada > 0 ? `${Math.round((zarada / MARKETING_FEE) * 100)}%` : "—"}
+                {zarada > 0 ? `${Math.round((zarada / totalMarketing) * 100)}%` : "—"}
               </p>
             </div>
           </div>
@@ -301,7 +362,7 @@ export default function FinancesPage() {
           <div className="px-8 py-6 border-b border-foreground/5 flex items-center justify-between">
             <div>
               <h2 className="text-xl font-bold font-playfair">Termini</h2>
-              <p className="text-[11px] font-bold font-poppins text-foreground/30 uppercase tracking-widest mt-1">Sve potvrđene rezervacije za ovaj period</p>
+              <p className="text-[11px] font-bold font-poppins text-foreground/30 uppercase tracking-widest mt-1">{projected ? "Sve potvrđene rezervacije — uključujući buduće" : "Sve potvrđene rezervacije za ovaj period"}</p>
             </div>
             {loading && <div className="w-5 h-5 border-2 border-teal border-t-transparent rounded-full animate-spin" />}
           </div>
