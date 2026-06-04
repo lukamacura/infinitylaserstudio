@@ -580,6 +580,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
         end_time:       `${endTime}:00`,
         total_duration: durationForReservation,
         status:         "confirmed",
+        promo_code:     ilsAppliedSubmit ? appliedPromoCode : null,
       })
       .select()
       .single();

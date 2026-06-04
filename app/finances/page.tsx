@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import type { ReservationStatus } from "@/lib/database.types";
+import { computeReservationPrice } from "@/lib/pricing";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const ADMIN_PWD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "laser2024";
@@ -38,6 +39,7 @@ type ReservationFull = {
   status: ReservationStatus;
   notes: string | null;
   created_at: string;
+  promo_code: string | null;
   reservation_services: { services: ServiceWithPrice | null }[];
 };
 type UserHistory = {
@@ -184,9 +186,15 @@ export default function FinancesPage() {
     const userAll = userHistories.filter(h => h.customer_email.toLowerCase() === r.customer_email.toLowerCase());
     const sorted  = [...userAll].sort((a, b) => a.date !== b.date ? a.date.localeCompare(b.date) : a.start_time.localeCompare(b.start_time));
     const isFirst = sorted[0]?.date === r.date && sorted[0]?.start_time === r.start_time;
-    const finalPrice = isFirst ? Math.round(totalPrice * 0.5) : totalPrice;
 
-    return { totalPrice, finalPrice, isFirst, effectiveServices };
+    const price = computeReservationPrice({
+      listPrice: totalPrice,
+      isFirstTreatment: isFirst,
+      createdAt: r.created_at,
+      promoCode: r.promo_code,
+    });
+
+    return { totalPrice, effectiveServices, ...price };
   };
 
   const calculated      = reservations.map(r => ({ ...r, calc: calculateReservationPrice(r) }));
@@ -382,8 +390,9 @@ export default function FinancesPage() {
                   <tr><td colSpan={4} className="px-8 py-20 text-center opacity-20"><Wallet size={48} className="mx-auto mb-2"/><p className="font-poppins text-sm font-medium uppercase tracking-widest">Nema podataka</p></td></tr>
                 ) : (
                   calculated.map(r => {
-                    const { finalPrice, isFirst, effectiveServices } = r.calc;
+                    const { finalPrice, effectiveServices, fiftyOff, promoOff, promoCode, listPrice } = r.calc;
                     const services = effectiveServices.map(s => s.name).join(", ");
+                    const hasDiscount = finalPrice !== listPrice;
                     const d = new Date(r.date);
                     return (
                       <tr key={r.id} className="hover:bg-foreground/1 transition-colors">
@@ -403,16 +412,23 @@ export default function FinancesPage() {
                         <td className="px-8 py-5">
                           <div className="flex flex-col gap-1">
                             <p className="text-sm font-medium font-poppins text-foreground/60 line-clamp-1 max-w-xs">{services}</p>
-                            {isFirst && (
-                              <div className="flex items-center gap-1 text-[9px] font-bold text-pink uppercase tracking-widest">
-                                <Tag size={10} /> 50% popusta (prvi put)
-                              </div>
-                            )}
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {fiftyOff && (
+                                <div className="flex items-center gap-1 text-[9px] font-bold text-pink uppercase tracking-widest">
+                                  <Tag size={10} /> −50% (prvi put)
+                                </div>
+                              )}
+                              {promoOff && (
+                                <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 uppercase tracking-widest">
+                                  <Tag size={10} /> −10% promo{promoCode ? ` · ${promoCode}` : ""}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td className="px-8 py-5 text-right">
                           <p className="text-sm font-bold font-poppins text-teal">{finalPrice.toLocaleString("sr-RS")} RSD</p>
-                          {isFirst && <p className="text-[10px] font-medium font-poppins text-foreground/20 line-through">{(finalPrice * 2).toLocaleString("sr-RS")} RSD</p>}
+                          {hasDiscount && <p className="text-[10px] font-medium font-poppins text-foreground/20 line-through">{listPrice.toLocaleString("sr-RS")} RSD</p>}
                         </td>
                       </tr>
                     );

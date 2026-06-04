@@ -99,6 +99,7 @@ export type Database = {
           end_time: string
           id: string
           notes: string | null
+          promo_code: string | null
           start_time: string
           status: string
           total_duration: number
@@ -115,6 +116,7 @@ export type Database = {
           end_time: string
           id?: string
           notes?: string | null
+          promo_code?: string | null
           start_time: string
           status?: string
           total_duration: number
@@ -131,6 +133,7 @@ export type Database = {
           end_time?: string
           id?: string
           notes?: string | null
+          promo_code?: string | null
           start_time?: string
           status?: string
           total_duration?: number

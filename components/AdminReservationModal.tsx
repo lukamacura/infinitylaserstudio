@@ -455,6 +455,7 @@ export default function AdminReservationModal({
         total_duration: durationForReservation,
         status:         "confirmed",
         notes:          form.notes.trim() || null,
+        promo_code:     ilsAppliedSubmit ? appliedPromoCode : null,
       })
       .select()
       .single();

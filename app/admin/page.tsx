@@ -4,11 +4,12 @@ import { useState, useEffect, useCallback, type FormEvent } from "react";
 import {
   ChevronLeft, ChevronRight, LogOut, X,
   Clock, User, Mail, Phone, Calendar, CalendarPlus,
-  PhoneCall, PhoneOff, AlertTriangle, StickyNote, HeartPulse,
+  PhoneCall, PhoneOff, AlertTriangle, StickyNote, HeartPulse, Tag,
 } from "lucide-react";
 import { supabase, timeToMinutes } from "@/lib/supabase";
 import AdminReservationModal from "@/components/AdminReservationModal";
 import type { ReservationStatus } from "@/lib/database.types";
+import { computeReservationPrice, type PriceResult } from "@/lib/pricing";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const ADMIN_PWD   = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "laser2024";
@@ -28,8 +29,29 @@ const STATUS_STYLES: Record<ReservationStatus, { bg: string; text: string; borde
   no_show:   { bg: "bg-slate-100", text: "text-slate-600",  border: "border-slate-300", label: "Nije došla / Neće doći", dot: "bg-slate-400" },
 };
 
+// ── Combo packages — replace component services with their combo price ─────────
+const COMBO_RULES = [
+  { parts: ["nausnice", "brada"],  comboKey: "nausnice i brada" },
+  { parts: ["noge", "intima"],     comboKey: "noge + intima" },
+  { parts: ["stomak", "grudi"],    comboKey: "stomak + grudi" },
+];
+
+function applyComboRules(selected: ServiceRef[], all: ServiceRef[]): ServiceRef[] {
+  let effective = [...selected];
+  for (const rule of COMBO_RULES) {
+    const matched = rule.parts
+      .map(part => effective.find(s => s.name.toLowerCase().includes(part)))
+      .filter((s): s is ServiceRef => s !== undefined);
+    if (matched.length === rule.parts.length) {
+      const combo = all.find(s => s.name.toLowerCase().includes(rule.comboKey));
+      if (combo) { effective = effective.filter(s => !matched.includes(s)); effective.push(combo); }
+    }
+  }
+  return effective;
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
-type ServiceRef = { id: string; name: string };
+type ServiceRef = { id: string; name: string; price: number };
 type CallStatus = "none" | "no_answer" | "answered";
 type ReservationFull = {
   id: string;
@@ -44,6 +66,7 @@ type ReservationFull = {
   notes: string | null;
   customer_note: string | null;
   created_at: string;
+  promo_code: string | null;
   call_status: CallStatus;
   call_attempted_at: string | null;
   reservation_services: { services: ServiceRef | null }[];
@@ -118,10 +141,12 @@ export default function AdminPage() {
 
   const [reservations, setReservations]   = useState<ReservationFull[]>([]);
   const [callReservations, setCallReservations] = useState<ReservationFull[]>([]);
+  const [allServices, setAllServices]     = useState<ServiceRef[]>([]);
   const [loading, setLoading]             = useState(false);
   const [callsLoading, setCallsLoading]   = useState(false);
   const [selected, setSelected]           = useState<ReservationFull | null>(null);
   const [selectedIsReturning, setSelectedIsReturning] = useState<boolean | null>(null);
+  const [selectedPrice, setSelectedPrice] = useState<PriceResult | null>(null);
   const [newStatus, setNewStatus]         = useState<ReservationStatus>("pending");
   const [newNotes, setNewNotes]           = useState<string>("");
   const [saving, setSaving]               = useState(false);
@@ -139,7 +164,7 @@ export default function AdminPage() {
 
     const { data } = await supabase
       .from("reservations")
-      .select(`*, reservation_services(services(id, name))`)
+      .select(`*, reservation_services(services(id, name, price))`)
       .gte("date", start)
       .lte("date", end)
       .order("date")
@@ -148,11 +173,18 @@ export default function AdminPage() {
     setLoading(false);
   }, []);
 
+  // All services (for combo-package pricing in the detail modal)
+  useEffect(() => {
+    if (!authenticated) return;
+    supabase.from("services").select("id, name, price")
+      .then(({ data }) => setAllServices((data as ServiceRef[]) ?? []));
+  }, [authenticated]);
+
   const fetchPendingCalls = useCallback(async () => {
     setCallsLoading(true);
     const { data } = await supabase
       .from("reservations")
-      .select(`*, reservation_services(services(id, name))`)
+      .select(`*, reservation_services(services(id, name, price))`)
       .eq("status", "confirmed")
       .neq("call_status", "answered")
       .gte("date", toDateStr(new Date()))
@@ -242,21 +274,39 @@ export default function AdminPage() {
     setWeekStart(getMonday(d));
   };
 
+  function priceFor(r: ReservationFull, isFirstTreatment: boolean): PriceResult {
+    const base = r.reservation_services.map(rs => rs.services).filter((s): s is ServiceRef => s !== null);
+    const effective = applyComboRules(base, allServices);
+    const listPrice = effective.reduce((sum, s) => sum + s.price, 0);
+    return computeReservationPrice({
+      listPrice,
+      isFirstTreatment,
+      createdAt: r.created_at,
+      promoCode: r.promo_code,
+    });
+  }
+
   async function openModal(r: ReservationFull) {
     setSelected(r);
     setNewStatus(r.status);
     setNewNotes(r.notes ?? "");
     setSelectedIsReturning(null);
+    // Show a price immediately (assume first treatment); refine once history loads.
+    setSelectedPrice(priceFor(r, true));
     if (r.customer_email) {
       const { data } = await supabase
         .from("reservations")
-        .select("id")
+        .select("id, date, start_time")
         .ilike("customer_email", r.customer_email)
-        .in("status", ["confirmed", "no_show"])
-        .neq("id", r.id)
-        .limit(1)
-        .maybeSingle();
-      setSelectedIsReturning(!!data);
+        .in("status", ["confirmed", "no_show"]);
+      const rows = (data as { id: string; date: string; start_time: string }[] | null) ?? [];
+      const others = rows.filter(h => h.id !== r.id);
+      setSelectedIsReturning(others.length > 0);
+      // First treatment = this reservation is the client's earliest confirmed/no_show one.
+      const sorted = [...rows].sort((a, b) =>
+        a.date !== b.date ? a.date.localeCompare(b.date) : a.start_time.localeCompare(b.start_time));
+      const isFirst = rows.length === 0 ? true : sorted[0]?.id === r.id;
+      setSelectedPrice(priceFor(r, isFirst));
     } else {
       setSelectedIsReturning(false);
     }
@@ -806,6 +856,37 @@ export default function AdminPage() {
                   ))}
                 </div>
               </div>
+
+              {/* Cena i popust */}
+              {selectedPrice && (
+                <div className="p-4 rounded-2xl bg-foreground/2 border border-foreground/3">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Tag size={14} className="text-foreground/20" />
+                    <span className="text-[10px] font-bold font-poppins text-foreground/30 uppercase tracking-wider">Cena i popust</span>
+                  </div>
+                  <div className="flex items-end justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {selectedPrice.fiftyOff && (
+                        <span className="text-[10px] font-bold font-poppins uppercase tracking-widest text-pink bg-pink/10 px-2.5 py-1 rounded-lg border border-pink/15">−50% prvi tretman</span>
+                      )}
+                      {selectedPrice.promoOff && (
+                        <span className="text-[10px] font-bold font-poppins uppercase tracking-widest text-green-700 bg-green-50 px-2.5 py-1 rounded-lg border border-green-100">
+                          −10% promo{selectedPrice.promoCode ? ` · ${selectedPrice.promoCode}` : ""}
+                        </span>
+                      )}
+                      {selectedPrice.kind === "none" && (
+                        <span className="text-[10px] font-bold font-poppins uppercase tracking-widest text-foreground/40 bg-foreground/5 px-2.5 py-1 rounded-lg border border-foreground/8">Bez popusta</span>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      {selectedPrice.finalPrice !== selectedPrice.listPrice && (
+                        <p className="text-[11px] font-medium font-poppins text-foreground/30 line-through leading-none">{selectedPrice.listPrice.toLocaleString("sr-RS")} RSD</p>
+                      )}
+                      <p className="text-lg font-bold font-poppins text-teal leading-tight mt-0.5">{selectedPrice.finalPrice.toLocaleString("sr-RS")} RSD</p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {selected.customer_note && selected.customer_note.trim() && (
                 <div className="rounded-2xl bg-amber-50 border-2 border-amber-200 p-4">
