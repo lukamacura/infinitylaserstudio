@@ -9,7 +9,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import {
   supabase, calcBookingDuration, calcTotalDuration, getAvailableSlots, getBusinessWindows,
-  minutesToTime, timeToMinutes, SLOT_SIZE, SPECIAL_AVAILABILITY,
+  minutesToTime, timeToMinutes, SPECIAL_AVAILABILITY,
 } from "@/lib/supabase";
 import type { Service } from "@/lib/database.types";
 
@@ -332,7 +332,6 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
 
     animFrameRef.current = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(animFrameRef.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, finalPrice, totalPrice]);
 
   useEffect(() => {
@@ -815,7 +814,6 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
               })}
             </div>
           )}
-
           {/* ══ STEP 3: Date only ══════════════════════════════════════════════ */}
           {step === 3 && (
             <div className="flex flex-col gap-4">
