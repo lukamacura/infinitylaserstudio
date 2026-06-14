@@ -69,7 +69,7 @@ export default function FeaturedServices({ onOpen, onOpenService }: Props) {
           </div>
         </div>
         <p className="text-center font-poppins text-gray-500 text-base mb-14">
-          Popularni paketi. Jedno trajno rešenje.
+          Popularne kombinacije tretmana. Jedno trajno rešenje.
         </p>
 
         {/* Cards */}

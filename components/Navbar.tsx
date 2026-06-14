@@ -9,6 +9,7 @@ const navLinks = [
   { label: "Usluge",   href: "/#usluge"   },
   { label: "Cenovnik", href: "/cenovnik" },
   { label: "Tehnologija",  href: "/#tech"  },
+  { label: "Paketi",  href: "/#paketi"  },
 ] as const;
 
 export default function Navbar() {

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import BookingModal from "@/components/BookingModal";
 import Hero from "@/components/Hero";
 import FeaturedServices from "@/components/FeaturedServices";
+import BundleBuilderSection from "@/components/BundleBuilderSection";
 import BrandStory from "@/components/BrandStory";
 import ServiceHighlights from "@/components/ServiceHighlights";
 import StatsSection from "@/components/StatsSection";
@@ -19,13 +20,16 @@ import WistiaVideo from "@/components/WistiaVideo";
 export default function HomeClient() {
   const [bookingOpen, setBookingOpen] = useState(false);
   const [preselectedNames, setPreselectedNames] = useState<string[]>([]);
+  const [preselectedBundle, setPreselectedBundle] = useState<number | undefined>(undefined);
   function open() {
     setPreselectedNames([]);
+    setPreselectedBundle(undefined);
     setBookingOpen(true);
   }
 
-  function openWithPreselect(keywords: string[]) {
+  function openWithPreselect(keywords: string[], bundleSize?: number) {
     setPreselectedNames(keywords);
+    setPreselectedBundle(bundleSize);
     setBookingOpen(true);
   }
 
@@ -50,6 +54,7 @@ export default function HomeClient() {
     <main>
       <Hero onOpen={open} />
       <FeaturedServices onOpen={open} onOpenService={openWithPreselect} />
+      <BundleBuilderSection onOpen={open} onOpenBundle={openWithPreselect} />
       <BrandStory />
       <WistiaVideo />
       <ServiceHighlights />
@@ -63,8 +68,9 @@ export default function HomeClient() {
       <Footer onOpen={open} />
       <BookingModal
         isOpen={bookingOpen}
-        onClose={() => { setBookingOpen(false); setPreselectedNames([]); }}
+        onClose={() => { setBookingOpen(false); setPreselectedNames([]); setPreselectedBundle(undefined); }}
         preselectedNames={preselectedNames}
+        preselectedBundle={preselectedBundle}
       />
 
     </main>

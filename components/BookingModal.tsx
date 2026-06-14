@@ -12,14 +12,21 @@ import {
   minutesToTime, timeToMinutes, SLOT_SIZE, SPECIAL_AVAILABILITY,
 } from "@/lib/supabase";
 import type { Service } from "@/lib/database.types";
+import {
+  eligibleBundleSizes, computeBundle, parseBundlePromo,
+  bundlePurchaseCode, bundleRedeemCode, type BundleResult,
+} from "@/lib/bundles";
 
 interface BookingModalProps {
   isOpen: boolean;
   onClose: () => void;
   preselectedNames?: string[];
+  /** Pre-select a bundle size when the modal opens (used by landing-page examples). */
+  preselectedBundle?: number;
 }
 
-type Step = 1 | 2 | 3 | 4 | 5 | "success" | "preparation";
+type Step = 1 | 2 | "plan" | 3 | 4 | 5 | "success" | "preparation";
+type BookingMode = "single" | "bundle";
 type Gender = "zene" | "muskarci";
 
 // ── Icon mapping ──────────────────────────────────────────────────────────────
@@ -191,17 +198,21 @@ const ACCENTS = {
 } as const;
 
 const STEP_LABELS: Record<Step, [string, string]> = {
-  1: ["KORAK 1 OD 4", "Za koga zakazuješ?"],
-  2: ["KORAK 1 OD 4", "Odaberi regije za tretman"],
-  3: ["KORAK 2 OD 4", "Izaberi datum"],
-  4: ["KORAK 3 OD 4", "Izaberi vreme"],
-  5: ["KORAK 4 OD 4", "Vaši podaci"],
+  1: ["KORAK 1 OD 5", "Za koga zakazuješ?"],
+  2: ["KORAK 1 OD 5", "Odaberi regije za tretman"],
+  plan: ["KORAK 2 OD 5", "Pojedinačno ili paket sa popustom?"],
+  3: ["KORAK 3 OD 5", "Izaberi datum"],
+  4: ["KORAK 4 OD 5", "Izaberi vreme"],
+  5: ["KORAK 5 OD 5", "Vaši podaci"],
   success: ["POTVRĐENO", "Termin je uspešno zakazan"],
   preparation: ["PRE TRETMANA", "Šta treba da uradiš?"],
 };
 
+const PAYMENT_TERMS =
+  "Plati ceo iznos paketa na prvom tretmanu i rezerviši sve preostale termine uz zagarantovanu dostupnost.";
+
 // ═════════════════════════════════════════════════════════════════════════════
-export default function BookingModal({ isOpen, onClose, preselectedNames }: BookingModalProps) {
+export default function BookingModal({ isOpen, onClose, preselectedNames, preselectedBundle }: BookingModalProps) {
   const fbclidRef = useRef(
     typeof window !== "undefined"
       ? new URLSearchParams(window.location.search).get("fbclid")
@@ -228,6 +239,13 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
   const [promoCode, setPromoCode]               = useState("");
   const [promoStatus, setPromoStatus]           = useState<"idle" | "valid" | "invalid">("idle");
   const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null);
+  /** "ils" = −10% promo, "bundle_redeem" = pre-paid bundle session (price 0). */
+  const [promoKind, setPromoKind]               = useState<"none" | "ils" | "bundle_redeem">("none");
+  const [checkingPromo, setCheckingPromo]       = useState(false);
+
+  // Step "plan" state
+  const [bookingMode, setBookingMode] = useState<BookingMode>("single");
+  const [bundleSize, setBundleSize]   = useState<number | null>(null);
   const [displayedPrice, setDisplayedPrice]   = useState(0);
   const animFrameRef = useRef<number>(0);
   const appliedPreselect = useRef(false);
@@ -258,10 +276,31 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
   const totalPrice       = effectiveServices.reduce((sum, s) => sum + s.price, 0);
   const accent           = ACCENTS[gender ?? "zene"];
 
+  // ── Bundle ("Napravi svoj paket") ───────────────────────────────────────────
+  const eligibleSizes = eligibleBundleSizes(effectiveServices);
+  const bundleResult: BundleResult | null =
+    bundleSize != null && eligibleSizes.includes(bundleSize) && effectiveServices.length > 0
+      ? computeBundle(effectiveServices, bundleSize)
+      : null;
+  const bundleActive = bookingMode === "bundle" && bundleResult != null;
+
+  // ── Discounts (mutually exclusive: bundle > redeem > ils) ────────────────────
   const ilsPromoActive =
-    promoStatus === "valid" && appliedPromoCode != null && isIlsPromoCode(appliedPromoCode);
-  const finalPrice = ilsPromoActive ? Math.round(totalPrice * 0.9) : totalPrice;
-  const savingsVsList = totalPrice - finalPrice;
+    !bundleActive && promoKind === "ils" && promoStatus === "valid" &&
+    appliedPromoCode != null && isIlsPromoCode(appliedPromoCode);
+  const redeemActive =
+    !bundleActive && promoKind === "bundle_redeem" && promoStatus === "valid" &&
+    appliedPromoCode != null;
+
+  const listTotal = bundleActive ? bundleResult!.originalTotal : totalPrice;
+  const finalPrice = bundleActive
+    ? bundleResult!.finalTotal
+    : redeemActive
+      ? 0
+      : ilsPromoActive
+        ? Math.round(totalPrice * 0.9)
+        : totalPrice;
+  const savingsVsList = listTotal - finalPrice;
 
   // For today: slots must start ≥ now+120min
   const nowMinutes = useMemo(() => {
@@ -315,7 +354,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
   useEffect(() => {
     if (step !== "success") return;
     const target = finalPrice;
-    const from   = totalPrice;
+    const from   = listTotal;
 
     if (from === target) { setDisplayedPrice(target); return; }
 
@@ -332,8 +371,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
 
     animFrameRef.current = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(animFrameRef.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, finalPrice, totalPrice]);
+  }, [step, finalPrice, listTotal]);
 
   useEffect(() => {
     if (!selectedDate) return;
@@ -443,10 +481,23 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
       .filter((s) => !isComboService(s.name))
       .filter((s) => preselectedNames.some((kw) => s.name.toLowerCase().includes(kw)))
       .map((s) => s.id);
-    if (matchedIds.length > 0) setSelectedIds(matchedIds);
+    if (matchedIds.length > 0) {
+      setSelectedIds(matchedIds);
+      // Landing-page examples jump straight into the bundle on the plan step.
+      if (preselectedBundle != null) {
+        setBookingMode("bundle");
+        setBundleSize(preselectedBundle);
+        setStep("plan");
+      }
+    }
     appliedPreselect.current = true;
-   
-  }, [isOpen, preselectedNames, services]);
+
+  }, [isOpen, preselectedNames, preselectedBundle, services]);
+
+  // Note: if the region selection changes so the chosen bundle size is no longer
+  // eligible (e.g. an all-face basket gains a body region, dropping the 10-pack),
+  // `bundleResult` becomes null and `bundleActive` is false — the flow falls back
+  // to single-session pricing automatically, no state reset needed.
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   function resetAll() {
@@ -460,6 +511,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
     setFieldErrors({ name: false, email: false, phone: false });
     setSubmitError(null); setBookingRef(null);
     setPromoCode(""); setPromoStatus("idle"); setAppliedPromoCode(null);
+    setPromoKind("none"); setCheckingPromo(false);
+    setBookingMode("single"); setBundleSize(null);
     emailCheckSeqRef.current += 1;
     setIsReturningCustomer(null);
     setCheckingReturningEmail(false);
@@ -473,7 +526,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
 
   function handleBack() {
     if (step === 2) { setStep(1); setGender(null); setSelectedIds([]); }
-    else if (step === 3) { setStep(2); setSelectedDate(""); setSelectedTime(""); }
+    else if (step === "plan") { setStep(2); }
+    else if (step === 3) { setStep("plan"); setSelectedDate(""); setSelectedTime(""); }
     else if (step === 4) { setStep(3); setSelectedTime(""); }
     else if (step === 5) { setStep(4); }
     else if (step === "preparation") { setStep("success"); }
@@ -521,20 +575,59 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
     setIsReturningCustomer(!!data);
   }
 
-  function handleApplyPromo() {
+  async function handleApplyPromo() {
     const raw = promoCode.trim();
     if (!raw) {
       setPromoStatus("idle");
       setAppliedPromoCode(null);
+      setPromoKind("none");
       return;
     }
+
+    // −10% ils- promo
     if (isIlsPromoCode(raw)) {
       setPromoStatus("valid");
       setAppliedPromoCode(raw);
-    } else {
-      setPromoStatus("invalid");
-      setAppliedPromoCode(null);
+      setPromoKind("ils");
+      return;
     }
+
+    // Bundle code — redeeming a pre-paid follow-up session (price 0).
+    const bundle = parseBundlePromo(raw);
+    if (bundle && !bundle.redeem) {
+      const email = form.email.trim();
+      if (!EMAIL_REGEX.test(email)) {
+        setPromoStatus("invalid");
+        setAppliedPromoCode(null);
+        setPromoKind("none");
+        return;
+      }
+      setCheckingPromo(true);
+      // Verify a matching bundle purchase exists for this email before granting it.
+      const { data, error } = await supabase
+        .from("reservations")
+        .select("id")
+        .ilike("customer_email", email)
+        .eq("promo_code", raw)
+        .in("status", ["confirmed", "no_show"])
+        .limit(1)
+        .maybeSingle();
+      setCheckingPromo(false);
+      if (!error && data) {
+        setPromoStatus("valid");
+        setAppliedPromoCode(raw);
+        setPromoKind("bundle_redeem");
+      } else {
+        setPromoStatus("invalid");
+        setAppliedPromoCode(null);
+        setPromoKind("none");
+      }
+      return;
+    }
+
+    setPromoStatus("invalid");
+    setAppliedPromoCode(null);
+    setPromoKind("none");
   }
 
   async function handleSubmit() {
@@ -559,9 +652,23 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
       .limit(1)
       .maybeSingle();
     const returningSubmit = !!existingReservation;
-    const ilsAppliedSubmit =
-      promoStatus === "valid" && appliedPromoCode != null && isIlsPromoCode(appliedPromoCode);
-    const finalForSubmit = ilsAppliedSubmit ? Math.round(totalPrice * 0.9) : totalPrice;
+
+    // Resolve the recorded promo code, prices and admin note for this booking.
+    let promoForRecord: string | null = null;
+    let notesForRecord: string | null = null;
+    if (bundleActive) {
+      promoForRecord = bundlePurchaseCode(bundleSize!, bundleResult!.finalTotal);
+      notesForRecord =
+        `Paket ${bundleSize}× — ukupno ${formatPrice(bundleResult!.finalTotal)} RSD ` +
+        `(ušteda ${formatPrice(bundleResult!.savings)} RSD)`;
+    } else if (redeemActive) {
+      promoForRecord = bundleRedeemCode(appliedPromoCode!);
+      notesForRecord = `Iskorišćen tretman iz paketa ${appliedPromoCode}`;
+    } else if (ilsPromoActive) {
+      promoForRecord = appliedPromoCode;
+    }
+    const listForSubmit  = listTotal;
+    const finalForSubmit = finalPrice;
 
     const durationForReservation = returningSubmit
       ? calcTotalDuration(selectedServices)
@@ -575,12 +682,13 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
         customer_email: form.email.trim(),
         customer_phone: form.phone.trim() || null,
         customer_note:  customerNote.trim() || null,
+        notes:          notesForRecord,
         date:           selectedDate,
         start_time:     `${selectedTime}:00`,
         end_time:       `${endTime}:00`,
         total_duration: durationForReservation,
         status:         "confirmed",
-        promo_code:     ilsAppliedSubmit ? appliedPromoCode : null,
+        promo_code:     promoForRecord,
       })
       .select()
       .single();
@@ -612,9 +720,11 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
         end_time:         endTime,
         services:         effectiveServices.map((s) => ({ name: s.name, price: s.price })),
         total_duration:   durationForReservation,
-        total_price:      totalPrice,
+        total_price:      listForSubmit,
         discounted_price: finalForSubmit,
-        promo_code:       ilsAppliedSubmit ? appliedPromoCode! : "redovna cena",
+        promo_code:       promoForRecord ?? "redovna cena",
+        bundle_sessions:  bundleActive ? bundleSize : null,
+        bundle_code:      bundleActive ? promoForRecord : null,
         booking_ref:      bookingRefValue,
       }),
     }).catch(() => {});
@@ -664,7 +774,23 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
         fbclid: fbclidRef.current || undefined,
       }),
     }).catch(() => {});
+    setStep("plan");
+  }
+
+  function handlePlanContinue() {
     setStep(3);
+  }
+
+  function handleSelectSingle() {
+    setBookingMode("single");
+    setBundleSize(null);
+  }
+
+  function handleSelectBundle(size: number) {
+    setBookingMode("bundle");
+    setBundleSize(size);
+    // A bundle is paid in full upfront — drop any single-session promo.
+    setPromoCode(""); setPromoStatus("idle"); setAppliedPromoCode(null); setPromoKind("none");
   }
 
   function handleInitiateCheckout() {
@@ -816,6 +942,100 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
             </div>
           )}
 
+          {/* ══ STEP "plan": Single vs Bundle ═══════════════════════════════ */}
+          {step === "plan" && (
+            <div className="flex flex-col gap-3 py-1">
+              <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-pink-100 border border-pink/15">
+                <span className="text-[#E85D8A] text-base leading-none shrink-0 mt-0.5">★</span>
+                <p className="text-xs font-poppins text-foreground/65 font-medium leading-snug">
+                  Za potpune rezultate telu treba 6–8, a licu 10 tretmana. Uzmi paket i uštedi — plaćaš jednom, dolaziš koliko ti treba.
+                </p>
+              </div>
+
+              {/* Single session */}
+              <button
+                type="button"
+                onClick={handleSelectSingle}
+                className={`flex items-center gap-3 w-full p-4 rounded-2xl border-2 text-left cursor-pointer transition-all ${
+                  !bundleActive
+                    ? `${accent.border} ${accent.bgLight}`
+                    : "border-foreground/8 hover:border-foreground/20"
+                }`}
+                style={
+                  !bundleActive
+                    ? { boxShadow: `0 0 0 2px ${accent.hex}33, 0 4px 16px ${accent.hex}22` }
+                    : undefined
+                }
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold font-poppins">1 tretman</p>
+                  <p className="text-xs text-foreground/45 font-poppins mt-0.5">Zakaži jedan tretman, kao i do sada</p>
+                </div>
+                <span className="text-base font-bold font-poppins shrink-0" style={{ color: accent.hex }}>
+                  {formatPrice(totalPrice)} RSD
+                </span>
+              </button>
+
+              {/* Bundle options */}
+              {eligibleSizes.map((size, idx) => {
+                const b = computeBundle(effectiveServices, size);
+                const isSelected = bundleActive && bundleSize === size;
+                const isBest = idx === eligibleSizes.length - 1;
+                return (
+                  <button
+                    key={size}
+                    type="button"
+                    onClick={() => handleSelectBundle(size)}
+                    className={`relative flex flex-col w-full p-4 rounded-2xl border-2 text-left cursor-pointer transition-all ${
+                      isSelected
+                        ? `${accent.border} ${accent.bgLight}`
+                        : "border-foreground/8 hover:border-foreground/20"
+                    }`}
+                  >
+                    {isBest && (
+                      <span
+                        className="absolute -top-2.5 left-4 px-2 py-0.5 rounded-full text-[9px] font-bold font-poppins tracking-widest text-white"
+                        style={{ backgroundColor: accent.hex }}
+                      >
+                        NAJBOLJA VREDNOST
+                      </span>
+                    )}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex flex-col gap-1.5 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-bold font-poppins">Paket {size} tretmana</p>
+                          <span
+                            className="px-1.5 py-0.5 rounded-md text-[10px] font-bold font-poppins text-white"
+                            style={{ backgroundColor: accent.hex }}
+                          >
+                            −{b.blendedPct}%
+                          </span>
+                        </div>
+                        <span className="self-start px-2 py-0.5 rounded-full text-[10px] font-bold font-poppins text-green-700 bg-green-50 border border-green-100">
+                          Ušteda {formatPrice(b.savings)} RSD
+                        </span>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-[11px] text-foreground/35 font-poppins line-through leading-none">
+                          {formatPrice(b.originalTotal)}
+                        </p>
+                        <p className="text-base font-bold font-poppins leading-tight" style={{ color: accent.hex }}>
+                          {formatPrice(b.finalTotal)} RSD
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+
+              {bundleActive && (
+                <p className="text-xs font-poppins text-foreground/50 leading-snug px-1 mt-1">
+                  {PAYMENT_TERMS}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* ══ STEP 3: Date only ══════════════════════════════════════════════ */}
           {step === 3 && (
             <div className="flex flex-col gap-4">
@@ -955,7 +1175,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                 <label className="block text-xs text-foreground/50 font-poppins mb-1">Telefon *</label>
                 <input
                   type="tel"
-                  placeholder="+381 65 373 8991"
+                  placeholder="065 373 8991"
                   value={form.phone}
                   onChange={(e) => {
                     setForm((p) => ({ ...p, phone: e.target.value }));
@@ -982,44 +1202,53 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                 />
               </div>
 
-              <div>
-                <p className="text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-2">PROMO KOD</p>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="npr. promokod"
-                    value={promoCode}
-                    onChange={(e) => {
-                      setPromoCode(e.target.value);
-                      setPromoStatus("idle");
-                      setAppliedPromoCode(null);
-                    }}
-                    disabled={checkingReturningEmail}
-                    className="flex-1 min-w-0 px-4 py-3 rounded-xl border-2 border-foreground/10 focus:outline-none font-poppins text-sm transition-colors disabled:opacity-60"
-                    onFocus={(e) => (e.target.style.borderColor = accent.hex)}
-                    onBlur={(e) => (e.target.style.borderColor = "")}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleApplyPromo}
-                    disabled={!promoCode.trim() || checkingReturningEmail}
-                    className="shrink-0 px-4 py-3 rounded-xl text-sm font-semibold tracking-wide font-poppins text-white transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{ backgroundColor: accent.hex }}
-                  >
-                    Primeni
-                  </button>
+              {/* Promo / bundle code — hidden while buying a bundle (mutually exclusive) */}
+              {!bundleActive && (
+                <div>
+                  <p className="text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-2">PROMO ILI KOD PAKETA</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Unesi kod"
+                      value={promoCode}
+                      onChange={(e) => {
+                        setPromoCode(e.target.value);
+                        setPromoStatus("idle");
+                        setAppliedPromoCode(null);
+                        setPromoKind("none");
+                      }}
+                      disabled={checkingReturningEmail || checkingPromo}
+                      className="flex-1 min-w-0 px-4 py-3 rounded-xl border-2 border-foreground/10 focus:outline-none font-poppins text-sm transition-colors disabled:opacity-60"
+                      onFocus={(e) => (e.target.style.borderColor = accent.hex)}
+                      onBlur={(e) => (e.target.style.borderColor = "")}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleApplyPromo}
+                      disabled={!promoCode.trim() || checkingReturningEmail || checkingPromo}
+                      className="shrink-0 px-4 py-3 rounded-xl text-sm font-semibold tracking-wide font-poppins text-white transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{ backgroundColor: accent.hex }}
+                    >
+                      {checkingPromo ? "…" : "Primeni"}
+                    </button>
+                  </div>
+                  {promoStatus === "valid" && ilsPromoActive && (
+                    <p className="text-xs text-green-600 font-poppins mt-2">
+                      Kod primenjen — −10% na redovnu cenu.
+                    </p>
+                  )}
+                  {promoStatus === "valid" && redeemActive && (
+                    <p className="text-xs text-green-600 font-poppins mt-2">
+                      Paket potvrđen — ovaj tretman je već plaćen. Cena: 0 RSD.
+                    </p>
+                  )}
+                  {promoStatus === "invalid" && (
+                    <p className="text-xs text-red-500 font-poppins mt-2">
+                      Nevažeći kod. Unesite promo kod ili tačan kod paketa uz email kojim je paket plaćen.
+                    </p>
+                  )}
                 </div>
-                {promoStatus === "valid" && ilsPromoActive && (
-                  <p className="text-xs text-green-600 font-poppins mt-2">
-                    Kod primenjen — −10% na redovnu cenu.
-                  </p>
-                )}
-                {promoStatus === "invalid" && (
-                  <p className="text-xs text-red-500 font-poppins mt-2">
-                    Unesite kod u formatu ils- i nastavak (npr. ils-leyla).
-                  </p>
-                )}
-              </div>
+              )}
 
               {/* Price summary with savings */}
               {selectedIds.length > 0 && (
@@ -1033,12 +1262,20 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                         <span className="text-xs font-poppins text-foreground/40">{formatPrice(s.price)} RSD</span>
                       </div>
                     ))}
+                    {bundleActive && (
+                      <div className="flex justify-between items-center py-0.5 mt-1">
+                        <span className="text-xs font-poppins text-foreground/60 font-semibold">Paket — {bundleSize} tretmana</span>
+                        <span className="text-xs font-poppins text-foreground/40">× {bundleSize}</span>
+                      </div>
+                    )}
                   </div>
                   <div className="border-t border-foreground/10 pt-2.5">
                     <div className="flex justify-between items-center">
-                      <span className="text-sm font-poppins text-foreground/50">Redovna cena</span>
-                      <span className={`text-sm font-poppins font-semibold ${ilsPromoActive ? "text-foreground/40 line-through" : "font-bold text-foreground"}`}>
-                        {formatPrice(totalPrice)} RSD
+                      <span className="text-sm font-poppins text-foreground/50">
+                        {bundleActive ? `Redovna cena (${bundleSize}×)` : "Redovna cena"}
+                      </span>
+                      <span className={`text-sm font-poppins font-semibold ${ilsPromoActive || bundleActive || redeemActive ? "text-foreground/40 line-through" : "font-bold text-foreground"}`}>
+                        {formatPrice(listTotal)} RSD
                       </span>
                     </div>
                     {ilsPromoActive && (
@@ -1047,11 +1284,28 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                         <span className="text-sm font-poppins font-bold text-green-800">{formatPrice(finalPrice)} RSD</span>
                       </div>
                     )}
+                    {bundleActive && (
+                      <div className="flex justify-between items-center mt-1.5">
+                        <span className="text-sm font-poppins text-green-800 font-semibold">Cena paketa (−{bundleResult!.blendedPct}%)</span>
+                        <span className="text-sm font-poppins font-bold text-green-800">{formatPrice(finalPrice)} RSD</span>
+                      </div>
+                    )}
+                    {redeemActive && (
+                      <div className="flex justify-between items-center mt-1.5">
+                        <span className="text-sm font-poppins text-green-800 font-semibold">Plaćeno u paketu</span>
+                        <span className="text-sm font-poppins font-bold text-green-800">0 RSD</span>
+                      </div>
+                    )}
                     {savingsVsList > 0 && (
                       <div className="flex justify-between items-center mt-1 pt-2 border-t border-foreground/8">
                         <span className="text-xs font-poppins text-foreground/40">Ušteda</span>
                         <span className="text-xs font-poppins font-semibold" style={{ color: "#E85D8A" }}>{formatPrice(savingsVsList)} RSD</span>
                       </div>
+                    )}
+                    {bundleActive && (
+                      <p className="text-[11px] font-poppins text-foreground/45 leading-snug mt-2.5 pt-2.5 border-t border-foreground/8">
+                        {PAYMENT_TERMS}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -1091,29 +1345,31 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                 >
                   <p className="text-[10px] font-semibold tracking-widest text-foreground/40 font-poppins mb-1">CENA</p>
 
-                  {ilsPromoActive ? (
-                    <>
-                      <p className="text-xs text-foreground/35 font-poppins line-through leading-none mb-0.5">
-                        {formatPrice(totalPrice)} RSD
-                      </p>
-                      <p className="text-3xl font-bold font-poppins leading-none tabular-nums" style={{ color: accent.hex }}>
-                        {formatPrice(displayedPrice)}
-                      </p>
-                      <p className="text-xs font-semibold font-poppins mt-1" style={{ color: accent.hex }}>RSD</p>
-                      <span className="mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold font-poppins text-white bg-green-500">
-                        −10% PROMO
-                      </span>
-                    </>
+                  {(ilsPromoActive || bundleActive || redeemActive) && (
+                    <p className="text-xs text-foreground/35 font-poppins line-through leading-none mb-0.5">
+                      {formatPrice(listTotal)} RSD
+                    </p>
+                  )}
+                  <p className="text-3xl font-bold font-poppins leading-none tabular-nums" style={{ color: accent.hex }}>
+                    {formatPrice(displayedPrice)}
+                  </p>
+                  <p className="text-xs font-semibold font-poppins mt-1" style={{ color: accent.hex }}>RSD</p>
+                  {bundleActive ? (
+                    <span className="mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold font-poppins text-white bg-green-500">
+                      PAKET {bundleSize}× · −{bundleResult!.blendedPct}%
+                    </span>
+                  ) : redeemActive ? (
+                    <span className="mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold font-poppins text-white bg-green-500">
+                      PLAĆENO U PAKETU
+                    </span>
+                  ) : ilsPromoActive ? (
+                    <span className="mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold font-poppins text-white bg-green-500">
+                      −10% PROMO
+                    </span>
                   ) : (
-                    <>
-                      <p className="text-3xl font-bold font-poppins leading-none tabular-nums" style={{ color: accent.hex }}>
-                        {formatPrice(displayedPrice)}
-                      </p>
-                      <p className="text-xs font-semibold font-poppins mt-1" style={{ color: accent.hex }}>RSD</p>
-                      <span className="mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold font-poppins text-foreground/70 bg-foreground/10">
-                        Redovna cena
-                      </span>
-                    </>
+                    <span className="mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold font-poppins text-foreground/70 bg-foreground/10">
+                      Redovna cena
+                    </span>
                   )}
                 </div>
               </div>
@@ -1152,6 +1408,16 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
                   </div>
                 )}
               </div>
+
+              {/* Bundle — remaining pre-paid sessions; the code is handed over in person at the first treatment */}
+              {bundleActive && bundleResult && (
+                <div className="w-full mt-4 rounded-2xl p-4 text-left border-2" style={{ borderColor: `${accent.hex}33`, backgroundColor: `${accent.hex}0A` }}>
+                  <p className="text-[10px] font-semibold tracking-widest text-foreground/40 font-poppins mb-1">PAKET OD {bundleSize} TRETMANA</p>
+                  <p className="text-xs font-poppins text-foreground/55 leading-snug">
+                    Na prvom tretmanu dobićete kod paketa kojim ćete zakazati preostalih {bundleSize! - 1} {bundleSize! - 1 === 1 ? "tretman" : "tretmana"} — ti termini su već plaćeni.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
@@ -1178,8 +1444,40 @@ export default function BookingModal({ isOpen, onClose, preselectedNames }: Book
           </div>
 
           {/* ── Sticky footer: primary CTA always visible while scrolling ───────── */}
-          {(step === 2 || step === 3 || step === 4 || step === 5 || step === "success" || step === "preparation") && (
+          {(step === 2 || step === "plan" || step === 3 || step === 4 || step === 5 || step === "success" || step === "preparation") && (
             <div className="shrink-0 border-t border-foreground/10 bg-white px-4 pt-3 pb-3 shadow-[0_-8px_24px_-4px_rgba(0,0,0,0.08)]">
+              {step === "plan" && (
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-col min-w-0">
+                    {bundleActive ? (
+                      <>
+                        <span className="text-base font-bold font-poppins leading-none" style={{ color: accent.hex }}>
+                          {formatPrice(finalPrice)} RSD
+                        </span>
+                        <span className="text-[10px] text-foreground/40 font-poppins mt-1">
+                          Paket {bundleSize}× · ušteda {formatPrice(savingsVsList)} RSD
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-base font-bold font-poppins leading-none" style={{ color: accent.hex }}>
+                          {formatPrice(totalPrice)} RSD
+                        </span>
+                        <span className="text-[10px] text-foreground/40 font-poppins mt-1">Pojedinačni tretman</span>
+                      </>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handlePlanContinue}
+                    className="shrink-0 px-5 py-3 rounded-full text-sm font-semibold tracking-widest font-poppins text-white active:scale-95 transition-transform cursor-pointer"
+                    style={{ backgroundColor: accent.hex, animation: "nastaviGlow 2s ease-in-out infinite" }}
+                  >
+                    NASTAVI
+                  </button>
+                </div>
+              )}
+
               {step === 2 && (
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex flex-col min-w-0">

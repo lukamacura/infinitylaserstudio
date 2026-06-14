@@ -4,12 +4,13 @@ import { useState, useEffect, useCallback, type FormEvent } from "react";
 import {
   ChevronLeft, ChevronRight, LogOut, X,
   Clock, User, Mail, Phone, Calendar, CalendarPlus,
-  PhoneCall, PhoneOff, AlertTriangle, StickyNote, HeartPulse, Tag,
+  PhoneCall, PhoneOff, AlertTriangle, StickyNote, HeartPulse, Tag, Package,
 } from "lucide-react";
 import { supabase, timeToMinutes } from "@/lib/supabase";
 import AdminReservationModal from "@/components/AdminReservationModal";
 import type { ReservationStatus } from "@/lib/database.types";
 import { computeReservationPrice, type PriceResult } from "@/lib/pricing";
+import { parseBundlePromo } from "@/lib/bundles";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const ADMIN_PWD   = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "laser2024";
@@ -874,14 +875,30 @@ export default function AdminPage() {
                           −10% promo{selectedPrice.promoCode ? ` · ${selectedPrice.promoCode}` : ""}
                         </span>
                       )}
+                      {selectedPrice.kind === "bundle" && (
+                        <span className="text-[10px] font-bold font-poppins uppercase tracking-widest text-teal bg-teal/10 px-2.5 py-1 rounded-lg border border-teal/15">
+                          Paket{selectedPrice.bundleSessions ? ` ${selectedPrice.bundleSessions}×` : ""} · pun iznos
+                        </span>
+                      )}
+                      {selectedPrice.kind === "bundle_redeem" && (
+                        <span className="text-[10px] font-bold font-poppins uppercase tracking-widest text-foreground/50 bg-foreground/5 px-2.5 py-1 rounded-lg border border-foreground/8">
+                          Paket{selectedPrice.bundleSessions ? ` ${selectedPrice.bundleSessions}×` : ""} · iskorišćen tretman
+                        </span>
+                      )}
                       {selectedPrice.kind === "none" && (
                         <span className="text-[10px] font-bold font-poppins uppercase tracking-widest text-foreground/40 bg-foreground/5 px-2.5 py-1 rounded-lg border border-foreground/8">Bez popusta</span>
                       )}
                     </div>
                     <div className="text-right shrink-0">
-                      {selectedPrice.finalPrice !== selectedPrice.listPrice && (
-                        <p className="text-[11px] font-medium font-poppins text-foreground/30 line-through leading-none">{selectedPrice.listPrice.toLocaleString("sr-RS")} RSD</p>
-                      )}
+                      {(() => {
+                        const crossed =
+                          selectedPrice.bundleSessions != null
+                            ? selectedPrice.listPrice * selectedPrice.bundleSessions
+                            : selectedPrice.listPrice;
+                        return selectedPrice.finalPrice !== crossed ? (
+                          <p className="text-[11px] font-medium font-poppins text-foreground/30 line-through leading-none">{crossed.toLocaleString("sr-RS")} RSD</p>
+                        ) : null;
+                      })()}
                       <p className="text-lg font-bold font-poppins text-teal leading-tight mt-0.5">{selectedPrice.finalPrice.toLocaleString("sr-RS")} RSD</p>
                     </div>
                   </div>
@@ -952,6 +969,7 @@ export default function AdminPage() {
     const heightPx = toHeight(r.total_duration);
     const s        = STATUS_STYLES[r.status];
     const services = r.reservation_services.map(rs => rs.services?.name).filter(Boolean).join(", ");
+    const bundle   = parseBundlePromo(r.promo_code);
 
     const cols = Math.max(1, r._cols);
     const col  = r._col;
@@ -973,6 +991,15 @@ export default function AdminPage() {
         <div className="flex flex-col h-full justify-center">
           <div className="flex items-center gap-1.5 mb-0.5">
             {!isMobile && <span className={`w-1.5 h-1.5 rounded-full ${s.dot} shrink-0`} />}
+            {bundle && (
+              <span
+                title={bundle.redeem ? `Paket ${bundle.sessions}× · iskorišćen tretman` : `Paket ${bundle.sessions}× · pun iznos`}
+                className={`inline-flex items-center justify-center rounded-md shrink-0 ${bundle.redeem ? "text-teal/60 bg-teal/10" : "text-white bg-teal"}`}
+                style={{ width: 16, height: 16 }}
+              >
+                <Package size={11} strokeWidth={2.5} />
+              </span>
+            )}
             <p className="text-[12px] md:text-[11px] font-bold font-poppins leading-none truncate">{r.customer_name}</p>
           </div>
           {(heightPx >= 45 || isMobile) && cols <= 2 && <p className="text-[11px] md:text-[10px] font-medium font-poppins opacity-70 truncate px-0.5">{services}</p>}

@@ -2,6 +2,8 @@
 // Used by the finances dashboard and the admin calendar so both compute the exact
 // same final price and discount labels for every reservation.
 
+import { parseBundlePromo } from "./bundles";
+
 /**
  * The automatic 50% "first treatment" discount was removed on 29.05.2026.
  * Any reservation BOOKED (created_at) on or after this moment never gets the 50%
@@ -15,7 +17,13 @@ export function isIlsPromoCode(raw: string | null | undefined): boolean {
   return !!raw && /^ils-.+$/i.test(raw.trim());
 }
 
-export type DiscountKind = "fifty" | "promo" | "fifty_promo" | "none";
+export type DiscountKind =
+  | "fifty"
+  | "promo"
+  | "fifty_promo"
+  | "bundle"
+  | "bundle_redeem"
+  | "none";
 
 export interface PriceResult {
   /** Full list price (after combo packages), before any discount. */
@@ -28,6 +36,8 @@ export interface PriceResult {
   promoOff: boolean;
   /** The applied promo code (only when promoOff). */
   promoCode: string | null;
+  /** Number of treatments in the bundle (only when kind is a bundle). */
+  bundleSessions: number | null;
   kind: DiscountKind;
 }
 
@@ -45,6 +55,22 @@ export function computeReservationPrice(opts: {
   promoCode: string | null;
 }): PriceResult {
   const { listPrice, isFirstTreatment, createdAt, promoCode } = opts;
+
+  // Bundles ("Napravi svoj paket") are paid in full upfront on the first session
+  // and never stack with the 50%/ils discounts. The full bundle total is encoded
+  // in the promo code; redemption sessions (2…N) are already paid, so they're 0.
+  const bundle = parseBundlePromo(promoCode);
+  if (bundle) {
+    return {
+      listPrice,
+      finalPrice: bundle.redeem ? 0 : bundle.total,
+      fiftyOff: false,
+      promoOff: false,
+      promoCode: promoCode!.trim(),
+      bundleSessions: bundle.sessions,
+      kind: bundle.redeem ? "bundle_redeem" : "bundle",
+    };
+  }
 
   const bookedBeforeCutoff =
     createdAt != null && new Date(createdAt) < FIRST_TREATMENT_50_END;
@@ -64,6 +90,7 @@ export function computeReservationPrice(opts: {
     fiftyOff,
     promoOff,
     promoCode: promoOff ? promoCode!.trim() : null,
+    bundleSessions: null,
     kind,
   };
 }
