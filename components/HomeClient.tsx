@@ -17,6 +17,23 @@ import MapSection from "@/components/MapSection";
 import Footer from "@/components/Footer";
 import WistiaVideo from "@/components/WistiaVideo";
 
+// Region slug → service-name keywords (matched as substrings in BookingModal).
+// Combos map to their component parts, just like the FeaturedServices cards.
+const REGION_SLUGS: Record<string, string[]> = {
+  "nausnice": ["nausnice"],
+  "brada": ["brada"],
+  "nausnice-brada": ["nausnice", "brada"],
+  "celo-lice": ["celo lice"],
+  "pazuh": ["pazuh"],
+  "ruke": ["ruke"],
+  "pola-ruku": ["1/2 ruku"],
+  "noge": ["noge"],
+  "pola-nogu": ["1/2 nogu"],
+  "intima": ["intima"],
+  "noge-intima": ["noge", "intima"],
+  "celo-telo": ["celo telo"],
+};
+
 export default function HomeClient() {
   const [bookingOpen, setBookingOpen] = useState(false);
   const [preselectedNames, setPreselectedNames] = useState<string[]>([]);
@@ -32,6 +49,16 @@ export default function HomeClient() {
     setPreselectedBundle(bundleSize);
     setBookingOpen(true);
   }
+
+  // Open the modal preselected to Žene + a region from a ?regija= link.
+  // Runs once on mount (after hydration) to read the URL — an external system.
+  useEffect(() => {
+    const regija = new URLSearchParams(window.location.search).get("regija");
+    if (!regija) return;
+    const keywords = REGION_SLUGS[regija.toLowerCase()];
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (keywords) openWithPreselect(keywords);
+  }, []);
 
   useEffect(() => {
     let depth50Fired = false;

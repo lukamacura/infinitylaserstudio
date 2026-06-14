@@ -9,7 +9,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import {
   supabase, calcBookingDuration, calcTotalDuration, getAvailableSlots, getBusinessWindows,
-  minutesToTime, timeToMinutes, SLOT_SIZE, SPECIAL_AVAILABILITY,
+  minutesToTime, timeToMinutes, SPECIAL_AVAILABILITY,
 } from "@/lib/supabase";
 import type { Service } from "@/lib/database.types";
 import {
