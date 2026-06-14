@@ -371,6 +371,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
     animFrameRef.current = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(animFrameRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, finalPrice, listTotal]);
 
   useEffect(() => {

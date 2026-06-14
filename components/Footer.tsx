@@ -13,7 +13,7 @@ interface Props { onOpen: () => void; }
 
 export default function Footer({ onOpen }: Props) {
   return (
-    <footer id="kontakt" className="bg-white border-t border-gray-100 py-14 px-6">
+    <footer id="kontakt" className="bg-white border-t border-gray-100 py-28 px-6">
       <motion.div
         className="max-w-6xl mx-auto flex flex-col items-center gap-8"
         initial={{ opacity: 0, y: 32 }}
@@ -115,9 +115,9 @@ export default function Footer({ onOpen }: Props) {
           </p>
           <p className="font-poppins text-xs text-gray-400">
             Designed and developed by{" "}
-            <a href="https://www.instagram.com/macura.fullstack" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600 transition-colors">Luka Macura</a>
+            <a href="https://www.instagram.com/luka_macura" target="_blank" rel="noopener noreferrer" className="font-bold hover:text-gray-600 transition-colors">Luka Macura</a>
             {" & "}
-            <a href="https://www.instagram.com/_kasapb" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600 transition-colors">Branka Kasap</a>
+            <a href="https://www.instagram.com/_kasapb" target="_blank" rel="noopener noreferrer" className="font-bold hover:text-gray-600 transition-colors">Branka Kasap</a>
           </p>
           <p className="font-poppins text-xs text-gray-400">
             Politika privatnosti · Uslovi korišćenja
