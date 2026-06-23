@@ -12,6 +12,7 @@ import {
   minutesToTime, timeToMinutes, SLOT_SIZE,
 } from "@/lib/supabase";
 import type { Service } from "@/lib/database.types";
+import { parseBundlePromo, bundleRedeemCode } from "@/lib/bundles";
 
 interface AdminReservationModalProps {
   isOpen: boolean;
@@ -215,6 +216,8 @@ export default function AdminReservationModal({
   const [promoCode, setPromoCode]               = useState("");
   const [promoStatus, setPromoStatus]           = useState<"idle" | "valid" | "invalid">("idle");
   const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null);
+  const [promoKind, setPromoKind]               = useState<"none" | "ils" | "bundle_redeem">("none");
+  const [checkingPromo, setCheckingPromo]       = useState(false);
   const [displayedPrice, setDisplayedPrice]   = useState(0);
   const animFrameRef = useRef<number>(0);
   const appliedPreselect = useRef(false);
@@ -240,9 +243,17 @@ export default function AdminReservationModal({
   const totalPrice       = effectiveServices.reduce((sum, s) => sum + s.price, 0);
   const accent           = ACCENTS[gender ?? "zene"];
 
+  // Discounts are mutually exclusive: bundle redemption > ils promo.
+  const redeemActive =
+    promoKind === "bundle_redeem" && promoStatus === "valid" && appliedPromoCode != null;
   const ilsPromoActive =
-    promoStatus === "valid" && appliedPromoCode != null && isIlsPromoCode(appliedPromoCode);
-  const finalPrice = ilsPromoActive ? Math.round(totalPrice * 0.9) : totalPrice;
+    promoKind === "ils" && promoStatus === "valid" &&
+    appliedPromoCode != null && isIlsPromoCode(appliedPromoCode);
+  const finalPrice = redeemActive
+    ? 0
+    : ilsPromoActive
+      ? Math.round(totalPrice * 0.9)
+      : totalPrice;
 
   // Day options rebuild whenever slot duration (incl. consultation) changes
   const dayOptions = useMemo(() => buildAdminDayOptions(slotDuration), [slotDuration]);
@@ -348,6 +359,7 @@ export default function AdminReservationModal({
     setFieldErrors({ name: false, email: false });
     setSubmitError(null); setBookingRef(null);
     setPromoCode(""); setPromoStatus("idle"); setAppliedPromoCode(null);
+    setPromoKind("none"); setCheckingPromo(false);
     emailCheckSeqRef.current += 1;
     setIsReturningCustomer(null);
     setCheckingReturningEmail(false);
@@ -401,20 +413,60 @@ export default function AdminReservationModal({
     setIsReturningCustomer(!!data);
   }
 
-  function handleApplyPromo() {
+  async function handleApplyPromo() {
     const raw = promoCode.trim();
     if (!raw) {
       setPromoStatus("idle");
       setAppliedPromoCode(null);
+      setPromoKind("none");
       return;
     }
+
+    // −10% ils- promo
     if (isIlsPromoCode(raw)) {
       setPromoStatus("valid");
       setAppliedPromoCode(raw);
-    } else {
-      setPromoStatus("invalid");
-      setAppliedPromoCode(null);
+      setPromoKind("ils");
+      return;
     }
+
+    // Bundle code — redeeming a pre-paid follow-up session (price 0).
+    // The client enters their original purchase code (no `-r`); we verify a
+    // matching bundle purchase exists for this email before granting it.
+    const bundle = parseBundlePromo(raw);
+    if (bundle && !bundle.redeem) {
+      const email = form.email.trim();
+      if (!EMAIL_REGEX.test(email)) {
+        setPromoStatus("invalid");
+        setAppliedPromoCode(null);
+        setPromoKind("none");
+        return;
+      }
+      setCheckingPromo(true);
+      const { data, error } = await supabase
+        .from("reservations")
+        .select("id")
+        .ilike("customer_email", email)
+        .eq("promo_code", raw)
+        .in("status", ["confirmed", "no_show"])
+        .limit(1)
+        .maybeSingle();
+      setCheckingPromo(false);
+      if (!error && data) {
+        setPromoStatus("valid");
+        setAppliedPromoCode(raw);
+        setPromoKind("bundle_redeem");
+      } else {
+        setPromoStatus("invalid");
+        setAppliedPromoCode(null);
+        setPromoKind("none");
+      }
+      return;
+    }
+
+    setPromoStatus("invalid");
+    setAppliedPromoCode(null);
+    setPromoKind("none");
   }
 
   async function handleSubmit() {
@@ -434,9 +486,33 @@ export default function AdminReservationModal({
       .limit(1)
       .maybeSingle();
     const returningSubmit = !!existingReservation;
+
+    // Resolve the recorded promo code + final price for this booking.
+    // Mutually exclusive: bundle redemption (pre-paid follow-up, price 0) > ils −10%.
+    const redeemSubmit =
+      promoKind === "bundle_redeem" && promoStatus === "valid" && appliedPromoCode != null;
     const ilsAppliedSubmit =
-      promoStatus === "valid" && appliedPromoCode != null && isIlsPromoCode(appliedPromoCode);
-    const finalForSubmit = ilsAppliedSubmit ? Math.round(totalPrice * 0.9) : totalPrice;
+      !redeemSubmit && promoKind === "ils" && promoStatus === "valid" &&
+      appliedPromoCode != null && isIlsPromoCode(appliedPromoCode);
+
+    let promoForRecord: string | null = null;
+    let notesFromPromo: string | null = null;
+    if (redeemSubmit) {
+      promoForRecord = bundleRedeemCode(appliedPromoCode!);
+      notesFromPromo = `Iskorišćen tretman iz paketa ${appliedPromoCode}`;
+    } else if (ilsAppliedSubmit) {
+      promoForRecord = appliedPromoCode;
+    }
+    const finalForSubmit = redeemSubmit
+      ? 0
+      : ilsAppliedSubmit
+        ? Math.round(totalPrice * 0.9)
+        : totalPrice;
+
+    // Append the bundle redemption note to any admin note already entered.
+    const adminNote = form.notes.trim();
+    const notesForRecord =
+      [adminNote || null, notesFromPromo].filter(Boolean).join(" · ") || null;
 
     const durationForReservation = returningSubmit
       ? calcTotalDuration(selectedServices)
@@ -454,8 +530,8 @@ export default function AdminReservationModal({
         end_time:       `${endTime}:00`,
         total_duration: durationForReservation,
         status:         "confirmed",
-        notes:          form.notes.trim() || null,
-        promo_code:     ilsAppliedSubmit ? appliedPromoCode : null,
+        notes:          notesForRecord,
+        promo_code:     promoForRecord,
       })
       .select()
       .single();
@@ -489,7 +565,7 @@ export default function AdminReservationModal({
         total_duration:   durationForReservation,
         total_price:      totalPrice,
         discounted_price: finalForSubmit,
-        promo_code:       ilsAppliedSubmit ? appliedPromoCode! : "redovna cena",
+        promo_code:       promoForRecord ?? "redovna cena",
         booking_ref:      bookingRefValue,
       }),
     }).catch(() => {});
@@ -775,14 +851,15 @@ export default function AdminReservationModal({
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    placeholder="npr. promokod"
+                    placeholder="npr. promokod ili paket kod"
                     value={promoCode}
                     onChange={(e) => {
                       setPromoCode(e.target.value);
                       setPromoStatus("idle");
                       setAppliedPromoCode(null);
+                      setPromoKind("none");
                     }}
-                    disabled={checkingReturningEmail}
+                    disabled={checkingReturningEmail || checkingPromo}
                     className="flex-1 min-w-0 px-4 py-3 rounded-xl border-2 border-foreground/10 focus:outline-none font-poppins text-sm transition-colors disabled:opacity-60"
                     onFocus={(e) => (e.target.style.borderColor = accent.hex)}
                     onBlur={(e) => (e.target.style.borderColor = "")}
@@ -790,16 +867,21 @@ export default function AdminReservationModal({
                   <button
                     type="button"
                     onClick={handleApplyPromo}
-                    disabled={!promoCode.trim() || checkingReturningEmail}
+                    disabled={!promoCode.trim() || checkingReturningEmail || checkingPromo}
                     className="shrink-0 px-4 py-3 rounded-xl text-sm font-semibold tracking-wide font-poppins text-white transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{ backgroundColor: accent.hex }}
                   >
-                    Primeni
+                    {checkingPromo ? <Loader2 size={16} className="animate-spin" /> : "Primeni"}
                   </button>
                 </div>
                 {promoStatus === "valid" && ilsPromoActive && (
                   <p className="text-xs text-green-600 font-poppins mt-2">
                     Kod primenjen — −10% popusta.
+                  </p>
+                )}
+                {promoStatus === "valid" && redeemActive && (
+                  <p className="text-xs text-green-600 font-poppins mt-2">
+                    Paket kod primenjen — tretman iz paketa (već plaćen).
                   </p>
                 )}
                 {promoStatus === "invalid" && (
@@ -824,7 +906,7 @@ export default function AdminReservationModal({
                   <div className="border-t border-foreground/10 pt-2.5">
                     <div className="flex justify-between items-center">
                       <span className="text-sm font-poppins text-foreground/50">Redovna cena</span>
-                      <span className={`text-sm font-poppins font-semibold ${ilsPromoActive ? "text-foreground/40 line-through" : "font-bold text-foreground"}`}>
+                      <span className={`text-sm font-poppins font-semibold ${ilsPromoActive || redeemActive ? "text-foreground/40 line-through" : "font-bold text-foreground"}`}>
                         {formatPrice(totalPrice)} RSD
                       </span>
                     </div>
@@ -832,6 +914,12 @@ export default function AdminReservationModal({
                       <div className="flex justify-between items-center mt-1.5">
                         <span className="text-sm font-poppins text-green-800 font-semibold">Sa promo kodom (−10%)</span>
                         <span className="text-sm font-poppins font-bold text-green-800">{formatPrice(finalPrice)} RSD</span>
+                      </div>
+                    )}
+                    {redeemActive && (
+                      <div className="flex justify-between items-center mt-1.5">
+                        <span className="text-sm font-poppins text-green-800 font-semibold">Tretman iz paketa (već plaćen)</span>
+                        <span className="text-sm font-poppins font-bold text-green-800">0 RSD</span>
                       </div>
                     )}
                   </div>

@@ -40,7 +40,7 @@ export default function BundleBuilderSection({ onOpen, onOpenBundle }: BundleBui
             Uzmi više tretmana — plati znatno manje
           </h2>
           <p className="font-poppins text-sm md:text-base text-foreground/55 mt-4 leading-relaxed">
-            Trajni rezultat dolazi sa serijom tretmana. Zato smo napravili pakete: što više tretmana uzmeš, to je veći popust — do <span className="font-semibold text-foreground/80">21%</span>. Posle početne serije, održavanje je potrebno samo 1–2 puta godišnje.
+            Trajni rezultat dolazi sa serijom tretmana. Zato smo napravili pakete: što više tretmana uzmeš, to je veći popust — do <span className="font-semibold text-foreground/80">21%</span>
           </p>
         </div>
 
