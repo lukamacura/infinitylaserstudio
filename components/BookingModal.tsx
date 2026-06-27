@@ -148,6 +148,22 @@ function isComboService(name: string): boolean {
   return COMBO_RULES.some((r) => n.includes(r.comboKey));
 }
 
+// ── "Celo telo" exclusivity ─────────────────────────────────────────────────
+// When the whole body is selected, only earrings, chin and whole face may be
+// added alongside it — every other region is already covered by "Celo telo".
+const FULL_BODY_KEY = "celo telo";
+const FULL_BODY_ALLOWED = ["nausnice", "brada", "celo lice"];
+
+function isFullBody(name: string): boolean {
+  return name.toLowerCase().includes(FULL_BODY_KEY);
+}
+
+/** Services that may stay selectable when "Celo telo" is chosen. */
+function isAllowedWithFullBody(name: string): boolean {
+  const n = name.toLowerCase();
+  return isFullBody(name) || FULL_BODY_ALLOWED.some((k) => n.includes(k));
+}
+
 /**
  * Given the currently selected services and all loaded services,
  * returns the effective list for price/duration calculation:
@@ -262,6 +278,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const selectedServices = services.filter((s) => selectedIds.includes(s.id));
+  /** Whole body is selected — lock out every region except earrings, chin & whole face. */
+  const fullBodySelected = selectedServices.some((s) => isFullBody(s.name));
   const { effective: effectiveServices, appliedCombos } = applyComboRules(selectedServices, services);
   /** With 10 min consultation — used for day/slot picking so first-time bookings always fit. */
   const slotDuration =
@@ -542,6 +560,11 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   }
 
   function toggleService(id: string) {
+    const svc = services.find((s) => s.id === id);
+    // Block adding regions that are already covered by a selected "Celo telo".
+    if (svc && fullBodySelected && !selectedIds.includes(id) && !isAllowedWithFullBody(svc.name)) {
+      return;
+    }
     setSelectedIds((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
   }
 
@@ -910,15 +933,19 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                 </div>
               ) : services.filter((s) => !isComboService(s.name)).map((service) => {
                 const isSelected = selectedIds.includes(service.id);
+                const isBlocked = fullBodySelected && !isSelected && !isAllowedWithFullBody(service.name);
                 const Icon = getIcon(service.name);
                 return (
                   <button
                     key={service.id}
                     onClick={() => toggleService(service.id)}
-                    className={`flex items-center gap-3 w-full p-3.5 rounded-xl border-2 transition-all text-left cursor-pointer ${
-                      isSelected
-                        ? `${accent.border} ${accent.bgLight}`
-                        : "border-foreground/8 hover:border-foreground/20"
+                    disabled={isBlocked}
+                    className={`flex items-center gap-3 w-full p-3.5 rounded-xl border-2 transition-all text-left ${
+                      isBlocked
+                        ? "border-foreground/8 opacity-40 cursor-not-allowed"
+                        : isSelected
+                          ? `${accent.border} ${accent.bgLight} cursor-pointer`
+                          : "border-foreground/8 hover:border-foreground/20 cursor-pointer"
                     }`}
                   >
                     <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 transition-colors ${isSelected ? accent.bgMed : "bg-foreground/5"}`}>
