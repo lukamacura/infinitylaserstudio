@@ -143,8 +143,14 @@ const ADMIN_WEEKLY_SCHEDULE: (BusinessWindow | null)[] = [
   null,                             // Nedelja    — zatvoreno
 ];
 
-/** Admin working windows for a date from the fixed weekly schedule, or null if closed. */
+/**
+ * Admin working windows for a date. A per-date entry in SPECIAL_AVAILABILITY wins
+ * (so Admin mirrors the public site's schedule); otherwise falls back to the fixed
+ * weekly schedule. Returns null if closed.
+ */
 export function getAdminBusinessWindows(dateStr: string): BusinessWindow[] | null {
+  const special = SPECIAL_AVAILABILITY[dateStr];
+  if (special?.length) return special;
   const d = new Date(`${dateStr}T00:00:00`);
   const idx = (d.getDay() + 6) % 7; // 0 = Monday
   const window = ADMIN_WEEKLY_SCHEDULE[idx];
