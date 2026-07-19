@@ -427,7 +427,7 @@ export default function AdminReservationModal({
       .from("reservations")
       .select("id")
       .ilike("customer_email", trimmed)
-      .in("status", ["confirmed", "no_show"])
+      .eq("status", "confirmed")
       .limit(1)
       .maybeSingle();
     if (emailCheckSeqRef.current !== seq) return;
@@ -474,7 +474,7 @@ export default function AdminReservationModal({
         .select("id")
         .ilike("customer_email", email)
         .eq("promo_code", raw)
-        .in("status", ["confirmed", "no_show"])
+        .eq("status", "confirmed")
         .limit(1)
         .maybeSingle();
       setCheckingPromo(false);
@@ -508,7 +508,7 @@ export default function AdminReservationModal({
       .from("reservations")
       .select("id")
       .ilike("customer_email", emailTrim)
-      .in("status", ["confirmed", "no_show"])
+      .eq("status", "confirmed")
       .limit(1)
       .maybeSingle();
     const returningSubmit = !!existingReservation;

@@ -9,7 +9,7 @@ import {
 import { supabase } from "@/lib/supabase";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const ADMIN_PWD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "laser2024";
+const ADMIN_PWD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "anails";
 
 const SR_MONTHS = [
   "januar", "februar", "mart", "april", "maj", "jun",
@@ -19,7 +19,7 @@ const SR_MONTHS = [
 // ── Types ─────────────────────────────────────────────────────────────────────
 type AppointmentRow = {
   date: string;
-  status: "confirmed" | "cancelled" | "no_show";
+  status: "confirmed" | "cancelled" | "blacklisted";
 };
 
 type MonthStat = {
@@ -27,7 +27,7 @@ type MonthStat = {
   month: number;
   confirmed: number;
   cancelled: number;
-  noShow: number;
+  blacklisted: number;
   showUpRate: number;
 };
 
@@ -74,7 +74,7 @@ export default function MarketingPage() {
       .from("reservations")
       .select("date, status")
       .lte("date", today)
-      .in("status", ["confirmed", "cancelled", "no_show"])
+      .in("status", ["confirmed", "cancelled", "blacklisted"])
       .order("date", { ascending: false });
 
     setAppointments((data as AppointmentRow[]) ?? []);
@@ -104,21 +104,21 @@ export default function MarketingPage() {
   // ── Calculations ─────────────────────────────────────────────────────────────
   const confirmed  = appointments.filter(a => a.status === "confirmed").length;
   const cancelled  = appointments.filter(a => a.status === "cancelled").length;
-  const noShow     = appointments.filter(a => a.status === "no_show").length;
-  const total      = confirmed + cancelled + noShow;
+  const blacklisted = appointments.filter(a => a.status === "blacklisted").length;
+  const total       = confirmed + cancelled + blacklisted;
   const showUpRate = total > 0 ? Math.round((confirmed / total) * 100) : 0;
 
   // Monthly breakdown — last 12 months
   const monthlyStats: MonthStat[] = (() => {
-    const map = new Map<string, { confirmed: number; cancelled: number; noShow: number }>();
+    const map = new Map<string, { confirmed: number; cancelled: number; blacklisted: number }>();
 
     for (const a of appointments) {
       const d = new Date(a.date);
       const key = `${d.getFullYear()}-${d.getMonth()}`;
-      const existing = map.get(key) ?? { confirmed: 0, cancelled: 0, noShow: 0 };
+      const existing = map.get(key) ?? { confirmed: 0, cancelled: 0, blacklisted: 0 };
       if (a.status === "confirmed") existing.confirmed++;
       else if (a.status === "cancelled") existing.cancelled++;
-      else existing.noShow++;
+      else existing.blacklisted++;
       map.set(key, existing);
     }
 
@@ -128,14 +128,14 @@ export default function MarketingPage() {
     for (let i = 0; i < 12; i++) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${d.getMonth()}`;
-      const stats = map.get(key) ?? { confirmed: 0, cancelled: 0, noShow: 0 };
-      const tot = stats.confirmed + stats.cancelled + stats.noShow;
+      const stats = map.get(key) ?? { confirmed: 0, cancelled: 0, blacklisted: 0 };
+      const tot = stats.confirmed + stats.cancelled + stats.blacklisted;
       results.push({
         year: d.getFullYear(),
         month: d.getMonth(),
         confirmed: stats.confirmed,
         cancelled: stats.cancelled,
-        noShow: stats.noShow,
+        blacklisted: stats.blacklisted,
         showUpRate: tot > 0 ? Math.round((stats.confirmed / tot) * 100) : 0,
       });
     }
@@ -267,8 +267,8 @@ export default function MarketingPage() {
           <div className="sm:col-start-2 lg:col-start-auto bg-white p-6 rounded-4xl border border-foreground/5 shadow-sm relative overflow-hidden group">
             <div className="relative z-10">
               <div className="w-12 h-12 rounded-2xl bg-orange-500/10 flex items-center justify-center mb-4"><AlertCircle className="text-orange-500" size={24} /></div>
-              <p className="text-[10px] font-bold font-poppins text-foreground/30 uppercase tracking-[0.2em] mb-1">Nije se pojavila</p>
-              <h3 className="text-3xl font-bold font-playfair text-orange-500">{noShow}</h3>
+              <p className="text-[10px] font-bold font-poppins text-foreground/30 uppercase tracking-[0.2em] mb-1">Crna lista</p>
+              <h3 className="text-3xl font-bold font-playfair text-orange-500">{blacklisted}</h3>
             </div>
             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><AlertCircle size={80} /></div>
           </div>
@@ -293,7 +293,7 @@ export default function MarketingPage() {
               </div>
             ) : (
               monthlyStats.map((m) => {
-                const tot = m.confirmed + m.cancelled + m.noShow;
+                const tot = m.confirmed + m.cancelled + m.blacklisted;
                 const isCurrentMonth = m.month === new Date().getMonth() && m.year === new Date().getFullYear();
                 return (
                   <div key={`${m.year}-${m.month}`} className={`px-5 py-4 ${isCurrentMonth ? "bg-teal/2" : ""}`}>
@@ -330,8 +330,8 @@ export default function MarketingPage() {
                             <p className="text-sm font-bold font-poppins text-red-400">{m.cancelled}</p>
                           </div>
                           <div className="text-center">
-                            <p className="text-[9px] font-bold font-poppins text-foreground/30 uppercase tracking-wider mb-0.5">Nije došla</p>
-                            <p className="text-sm font-bold font-poppins text-orange-500">{m.noShow > 0 ? m.noShow : <span className="text-foreground/20">—</span>}</p>
+                            <p className="text-[9px] font-bold font-poppins text-foreground/30 uppercase tracking-wider mb-0.5">Crna lista</p>
+                            <p className="text-sm font-bold font-poppins text-orange-500">{m.blacklisted > 0 ? m.blacklisted : <span className="text-foreground/20">—</span>}</p>
                           </div>
                         </div>
                       </>
@@ -350,7 +350,7 @@ export default function MarketingPage() {
                   <th className="px-8 py-4 text-[10px] font-bold font-poppins text-foreground/30 uppercase tracking-widest">Mesec</th>
                   <th className="px-8 py-4 text-[10px] font-bold font-poppins text-foreground/30 uppercase tracking-widest text-center">Dolasci</th>
                   <th className="px-8 py-4 text-[10px] font-bold font-poppins text-foreground/30 uppercase tracking-widest text-center">Otkazivanja</th>
-                  <th className="px-8 py-4 text-[10px] font-bold font-poppins text-foreground/30 uppercase tracking-widest text-center">Nije se pojavila</th>
+                  <th className="px-8 py-4 text-[10px] font-bold font-poppins text-foreground/30 uppercase tracking-widest text-center">Crna lista</th>
                   <th className="px-8 py-4 text-[10px] font-bold font-poppins text-foreground/30 uppercase tracking-widest text-center">Ukupno</th>
                   <th className="px-8 py-4 text-[10px] font-bold font-poppins text-foreground/30 uppercase tracking-widest">Stopa dolazaka</th>
                 </tr>
@@ -365,7 +365,7 @@ export default function MarketingPage() {
                   </tr>
                 ) : (
                   monthlyStats.map((m) => {
-                    const tot = m.confirmed + m.cancelled + m.noShow;
+                    const tot = m.confirmed + m.cancelled + m.blacklisted;
                     const isCurrentMonth = m.month === new Date().getMonth() && m.year === new Date().getFullYear();
                     return (
                       <tr key={`${m.year}-${m.month}`} className={`hover:bg-foreground/1 transition-colors ${isCurrentMonth ? "bg-teal/2" : ""}`}>
@@ -386,7 +386,7 @@ export default function MarketingPage() {
                           <span className="text-sm font-bold font-poppins text-red-400">{m.cancelled}</span>
                         </td>
                         <td className="px-8 py-5 text-center">
-                          <span className="text-sm font-bold font-poppins text-orange-500">{m.noShow > 0 ? m.noShow : <span className="text-foreground/20">—</span>}</span>
+                          <span className="text-sm font-bold font-poppins text-orange-500">{m.blacklisted > 0 ? m.blacklisted : <span className="text-foreground/20">—</span>}</span>
                         </td>
                         <td className="px-8 py-5 text-center">
                           <span className="text-sm font-medium font-poppins text-foreground/50">{tot}</span>

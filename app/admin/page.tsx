@@ -5,7 +5,7 @@ import {
   ChevronLeft, ChevronRight, LogOut, X,
   Clock, User, Mail, Phone, Calendar, CalendarPlus,
   PhoneCall, PhoneOff, AlertTriangle, StickyNote, HeartPulse, Tag, Package,
-  Plus, RotateCcw,
+  Plus, RotateCcw, Ban, Search,
 } from "lucide-react";
 import { supabase, timeToMinutes, type BusinessWindow } from "@/lib/supabase";
 import AdminReservationModal from "@/components/AdminReservationModal";
@@ -17,7 +17,7 @@ import { computeReservationPrice, type PriceResult } from "@/lib/pricing";
 import { parseBundlePromo } from "@/lib/bundles";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const ADMIN_PWD   = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "laser2024";
+const ADMIN_PWD   = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "anails";
 const SLOT_PX     = 14;
 const PX_PER_MIN  = SLOT_PX / 10;
 const BIZ_START   = 8 * 60;   // calendar grid spans 08:00 …
@@ -32,7 +32,14 @@ const STATUS_STYLES: Record<ReservationStatus, { bg: string; text: string; borde
   pending:   { bg: "bg-amber-50",  text: "text-amber-800",  border: "border-amber-200", label: "Na čekanju",         dot: "bg-amber-400" },
   confirmed: { bg: "bg-green-50",  text: "text-green-800",  border: "border-green-200", label: "Potvrđeno",          dot: "bg-green-500" },
   cancelled: { bg: "bg-red-50",    text: "text-red-700",    border: "border-red-200",   label: "Otkazano",           dot: "bg-red-500"   },
-  no_show:   { bg: "bg-slate-100", text: "text-slate-600",  border: "border-slate-300", label: "Nije došla / Neće doći", dot: "bg-slate-400" },
+  blacklisted: { bg: "bg-slate-800/10", text: "text-slate-800", border: "border-slate-400", label: "Crna lista", dot: "bg-slate-800" },
+};
+
+/** Fallback for rows whose status predates the current set (e.g. legacy "no_show"),
+ *  so an unmigrated value renders greyed out instead of crashing the calendar. */
+const UNKNOWN_STATUS_STYLE = {
+  bg: "bg-foreground/5", text: "text-foreground/40", border: "border-foreground/10",
+  label: "Nepoznat status", dot: "bg-foreground/30",
 };
 
 // ── Combo packages — replace component services with their combo price ─────────
@@ -77,6 +84,58 @@ type ReservationFull = {
   call_attempted_at: string | null;
   reservation_services: { services: ServiceRef | null }[];
 };
+
+/** Serbian plural: 1 dolazak · 2–4 dolaska · 5+ dolazaka (11–14 take the last form). */
+function srPlural(n: number, one: string, few: string, many: string) {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+  return many;
+}
+
+/** One person's whole history, keyed by lower-cased email. */
+type ClientGroup = {
+  email: string;
+  name: string;              // name from the most recent booking
+  phone: string | null;
+  reservations: ReservationFull[];  // newest first
+  visits: number;            // confirmed appointments — times she actually came
+  cancelled: number;
+  blacklisted: boolean;
+  lastVisit: string | null;  // date of the newest confirmed appointment
+};
+
+/** Collapse a flat reservation list into one entry per person, newest first. */
+function groupByClient(rows: ReservationFull[]): ClientGroup[] {
+  const map = new Map<string, ReservationFull[]>();
+  for (const r of rows) {
+    const key = (r.customer_email ?? "").trim().toLowerCase();
+    if (!key) continue;
+    const list = map.get(key);
+    if (list) list.push(r); else map.set(key, [r]);
+  }
+
+  const groups: ClientGroup[] = [];
+  for (const [email, list] of map) {
+    const sorted = [...list].sort((a, b) =>
+      a.date !== b.date ? b.date.localeCompare(a.date) : b.start_time.localeCompare(a.start_time));
+    const confirmed = sorted.filter(r => r.status === "confirmed");
+    groups.push({
+      email,
+      name: sorted[0].customer_name,
+      phone: sorted.find(r => r.customer_phone)?.customer_phone ?? null,
+      reservations: sorted,
+      visits: confirmed.length,
+      cancelled: sorted.filter(r => r.status === "cancelled").length,
+      blacklisted: sorted.some(r => r.status === "blacklisted"),
+      lastVisit: confirmed[0]?.date ?? null,
+    });
+  }
+
+  // Most recent activity first, so the person you just dealt with is on top.
+  return groups.sort((a, b) => b.reservations[0].date.localeCompare(a.reservations[0].date));
+}
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 function getMonday(d: Date) {
@@ -254,8 +313,15 @@ export default function AdminPage() {
   const [password, setPassword]           = useState("");
   const [pwdError, setPwdError]           = useState(false);
 
-  const [activeTab, setActiveTab]         = useState<"calendar" | "calls" | "hours">("calendar");
+  const [activeTab, setActiveTab]         = useState<"calendar" | "calls" | "clients" | "hours">("calendar");
   const [expandedExpired, setExpandedExpired] = useState<string | null>(null);
+
+  // Client search
+  const [clientQuery, setClientQuery]     = useState("");
+  const [clientGroups, setClientGroups]   = useState<ClientGroup[]>([]);
+  const [clientsLoading, setClientsLoading] = useState(false);
+  const [clientsSearched, setClientsSearched] = useState(false);
+  const [expandedClient, setExpandedClient] = useState<string | null>(null);
 
   // Working-hours schedule (weekly template + per-date overrides)
   const [availability, setAvailability]   = useState<AvailabilityData>(EMPTY_AVAILABILITY);
@@ -276,6 +342,7 @@ export default function AdminPage() {
   const [callsLoading, setCallsLoading]   = useState(false);
   const [selected, setSelected]           = useState<ReservationFull | null>(null);
   const [selectedIsReturning, setSelectedIsReturning] = useState<boolean | null>(null);
+  const [selectedIsBlacklisted, setSelectedIsBlacklisted] = useState(false);
   const [selectedPrice, setSelectedPrice] = useState<PriceResult | null>(null);
   const [newStatus, setNewStatus]         = useState<ReservationStatus>("pending");
   const [newNotes, setNewNotes]           = useState<string>("");
@@ -324,7 +391,8 @@ export default function AdminPage() {
     const queue = (data as ReservationFull[]) ?? [];
 
     // Keep only first-time clients: email must appear exactly once across all
-    // confirmed/no_show reservations. Compared case-insensitively because the
+    // confirmed reservations. Cancelled and blacklisted bookings do not count —
+    // the client never actually came. Compared case-insensitively because the
     // email column has mixed casing.
     if (queue.length === 0) {
       setCallReservations([]);
@@ -335,7 +403,7 @@ export default function AdminPage() {
     const { data: history } = await supabase
       .from("reservations")
       .select("customer_email")
-      .in("status", ["confirmed", "no_show"]);
+      .eq("status", "confirmed");
 
     const counts = new Map<string, number>();
     for (const row of (history as { customer_email: string | null }[] | null) ?? []) {
@@ -352,6 +420,34 @@ export default function AdminPage() {
     setCallReservations(firstTimers);
     setCallsLoading(false);
   }, []);
+
+  // ── Client search — debounced, matches name / email / phone ───────────────
+  const searchClients = useCallback(async (raw: string) => {
+    // Commas and parentheses are PostgREST `or=` syntax; strip them so a stray
+    // character can't turn into a broken filter.
+    const q = raw.trim().replace(/[,()]/g, "");
+    if (q.length < 2) {
+      setClientGroups([]);
+      setClientsSearched(false);
+      return;
+    }
+    setClientsLoading(true);
+    const { data } = await supabase
+      .from("reservations")
+      .select(`*, reservation_services(services(id, name, price))`)
+      .or(`customer_name.ilike.%${q}%,customer_email.ilike.%${q}%,customer_phone.ilike.%${q}%`)
+      .order("date", { ascending: false })
+      .limit(300);
+    setClientGroups(groupByClient((data as ReservationFull[]) ?? []));
+    setClientsSearched(true);
+    setClientsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (!authenticated || activeTab !== "clients") return;
+    const t = setTimeout(() => { void searchClients(clientQuery); }, 300);
+    return () => clearTimeout(t);
+  }, [authenticated, activeTab, clientQuery, searchClients]);
 
   useEffect(() => {
     if (authenticated) fetchRange(weekStart);
@@ -467,6 +563,7 @@ export default function AdminPage() {
     setNewStatus(r.status);
     setNewNotes(r.notes ?? "");
     setSelectedIsReturning(null);
+    setSelectedIsBlacklisted(false);
     // Show a price immediately (assume first treatment); refine once history loads.
     setSelectedPrice(priceFor(r, true));
     if (r.customer_email) {
@@ -474,15 +571,26 @@ export default function AdminPage() {
         .from("reservations")
         .select("id, date, start_time")
         .ilike("customer_email", r.customer_email)
-        .in("status", ["confirmed", "no_show"]);
+        .eq("status", "confirmed");
       const rows = (data as { id: string; date: string; start_time: string }[] | null) ?? [];
       const others = rows.filter(h => h.id !== r.id);
       setSelectedIsReturning(others.length > 0);
-      // First treatment = this reservation is the client's earliest confirmed/no_show one.
+      // First treatment = this reservation is the client's earliest confirmed one.
       const sorted = [...rows].sort((a, b) =>
         a.date !== b.date ? a.date.localeCompare(b.date) : a.start_time.localeCompare(b.start_time));
       const isFirst = rows.length === 0 ? true : sorted[0]?.id === r.id;
       setSelectedPrice(priceFor(r, isFirst));
+
+      // The blacklist marks a person, not a single booking: flag the client if
+      // ANY of their other reservations was blacklisted.
+      const { data: blacklistRows } = await supabase
+        .from("reservations")
+        .select("id")
+        .ilike("customer_email", r.customer_email)
+        .eq("status", "blacklisted");
+      setSelectedIsBlacklisted(
+        ((blacklistRows as { id: string }[] | null) ?? []).some(h => h.id !== r.id),
+      );
     } else {
       setSelectedIsReturning(false);
     }
@@ -504,6 +612,18 @@ export default function AdminPage() {
     setReservations((prev) =>
       prev.map((r) => r.id === selected.id ? { ...r, status: newStatus, notes: trimmedNotes } : r)
     );
+    // The client search holds its own copy of the same rows — re-group it so a
+    // status changed from the search results is reflected there too (badges,
+    // visit counts and the blacklist flag are all derived from status).
+    setClientGroups((prev) => {
+      if (prev.length === 0) return prev;
+      const touched = prev.some(g => g.reservations.some(r => r.id === selected.id));
+      if (!touched) return prev;
+      return groupByClient(
+        prev.flatMap(g => g.reservations).map(r =>
+          r.id === selected.id ? { ...r, status: newStatus, notes: trimmedNotes } : r),
+      );
+    });
     setSaving(false);
     setSelected(null);
   }
@@ -531,7 +651,7 @@ export default function AdminPage() {
   async function handleExpiredCancel(reservationId: string) {
     await supabase
       .from("reservations")
-      .update({ status: "no_show" })
+      .update({ status: "cancelled" })
       .eq("id", reservationId);
     setCallReservations(prev => prev.filter(r => r.id !== reservationId));
     setExpandedExpired(null);
@@ -705,6 +825,17 @@ export default function AdminPage() {
                   {badgeCount}
                 </span>
               )}
+            </button>
+            <button
+              onClick={() => setActiveTab("clients")}
+              className={`h-9 px-5 flex items-center gap-2 rounded-xl text-xs font-bold font-poppins uppercase tracking-widest transition-all ${
+                activeTab === "clients"
+                  ? "bg-white shadow-sm text-foreground"
+                  : "text-foreground/40 hover:text-foreground/60"
+              }`}
+            >
+              <Search size={14} />
+              <span className="hidden sm:inline">Klijenti</span>
             </button>
             <button
               onClick={() => setActiveTab("hours")}
@@ -886,14 +1017,14 @@ export default function AdminPage() {
                     <div className="px-4 pb-4 pt-0">
                       <div className="rounded-xl bg-red-50 border border-red-100 p-4 space-y-3">
                         <p className="text-[12px] font-poppins text-red-700 font-medium">
-                          Rok od 24h je istekao. Označi kao &quot;Nije došla / Neće doći&quot;?
+                          Rok od 24h je istekao. Otkazati ovaj termin?
                         </p>
                         <div className="flex gap-2">
                           <button
                             onClick={() => handleExpiredCancel(r.id)}
                             className="flex-1 h-10 rounded-xl bg-red-500 text-white text-[11px] font-bold font-poppins hover:bg-red-600 transition-all active:scale-95"
                           >
-                            Nije došla / Neće doći
+                            Otkaži termin
                           </button>
                           <button
                             onClick={() => setExpandedExpired(null)}
@@ -908,6 +1039,163 @@ export default function AdminPage() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Clients Tab ─────────────────────────────────────────────────────── */}
+      {activeTab === "clients" && (
+        <div className="flex-1 min-h-0 overflow-auto overscroll-y-contain custom-scrollbar">
+          <div className="max-w-3xl mx-auto px-4 py-6">
+
+            {/* Search field */}
+            <div className="relative mb-5">
+              <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-foreground/25 pointer-events-none" />
+              <input
+                value={clientQuery}
+                onChange={(e) => setClientQuery(e.target.value)}
+                placeholder="Ime, email ili telefon…"
+                autoFocus
+                className="w-full h-13 pl-12 pr-11 rounded-2xl border-2 border-foreground/10 bg-white font-poppins text-sm focus:outline-none focus:border-teal/40 transition-colors shadow-sm"
+              />
+              {clientQuery && (
+                <button
+                  type="button"
+                  onClick={() => setClientQuery("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center rounded-lg text-foreground/30 hover:bg-foreground/5 hover:text-foreground/60 transition-colors cursor-pointer"
+                  aria-label="Očisti pretragu"
+                >
+                  <X size={15} />
+                </button>
+              )}
+            </div>
+
+            {clientsLoading && (
+              <div className="flex justify-center py-12">
+                <div className="w-10 h-10 border-3 border-teal border-t-transparent rounded-full animate-spin shadow-lg" />
+              </div>
+            )}
+
+            {!clientsLoading && clientQuery.trim().length < 2 && (
+              <div className="flex flex-col items-center justify-center py-20 gap-4">
+                <div className="w-16 h-16 rounded-2xl bg-foreground/3 border border-foreground/8 flex items-center justify-center">
+                  <Search size={28} className="text-foreground/20" />
+                </div>
+                <p className="text-sm font-bold font-poppins text-foreground/40 uppercase tracking-widest">Unesite bar dva slova</p>
+                <p className="text-xs font-poppins text-foreground/35 text-center max-w-xs leading-relaxed">
+                  Pretražuje se cela istorija — ime, email i telefon, bez obzira na datum termina.
+                </p>
+              </div>
+            )}
+
+            {!clientsLoading && clientsSearched && clientGroups.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-20 gap-4">
+                <div className="w-16 h-16 rounded-2xl bg-foreground/3 border border-foreground/8 flex items-center justify-center">
+                  <User size={28} className="text-foreground/20" />
+                </div>
+                <p className="text-sm font-bold font-poppins text-foreground/40 uppercase tracking-widest">Nema rezultata</p>
+              </div>
+            )}
+
+            {!clientsLoading && clientGroups.length > 0 && (
+              <>
+                <p className="text-[11px] font-bold font-poppins text-foreground/30 uppercase tracking-widest mb-3 px-1">
+                  {clientGroups.length} {srPlural(clientGroups.length, "klijent", "klijenta", "klijenata")}
+                </p>
+                <div className="space-y-3">
+                  {clientGroups.map((c) => {
+                    const open = expandedClient === c.email;
+                    return (
+                      <div
+                        key={c.email}
+                        className={`rounded-2xl border-2 bg-white shadow-sm overflow-hidden transition-all ${
+                          c.blacklisted ? "border-red-200" : "border-foreground/5"
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setExpandedClient(open ? null : c.email)}
+                          className="w-full p-4 flex items-start gap-4 text-left cursor-pointer hover:bg-foreground/1 transition-colors"
+                        >
+                          <div className={`shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${
+                            c.blacklisted ? "bg-red-50" : "bg-teal/8"
+                          }`}>
+                            {c.blacklisted
+                              ? <Ban size={18} className="text-red-500" />
+                              : <User size={18} className="text-teal" />}
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-sm font-bold font-poppins text-foreground truncate">{c.name}</p>
+                              {c.blacklisted && (
+                                <span className="text-[10px] font-bold font-poppins uppercase tracking-widest text-red-600 bg-red-50 px-2 py-0.5 rounded-lg border border-red-200">
+                                  Crna lista
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[12px] font-medium font-poppins text-foreground/50 mt-0.5 truncate">{c.email}</p>
+                            <p className="text-[11px] font-poppins text-foreground/35 mt-0.5">{c.phone ?? "—"}</p>
+
+                            <div className="flex items-center gap-3 mt-2 flex-wrap">
+                              <span className="text-[11px] font-bold font-poppins text-teal bg-teal/8 px-2 py-0.5 rounded-lg">
+                                {c.visits} {srPlural(c.visits, "dolazak", "dolaska", "dolazaka")}
+                              </span>
+                              {c.cancelled > 0 && (
+                                <span className="text-[11px] font-poppins text-foreground/40">
+                                  {c.cancelled} otkazano
+                                </span>
+                              )}
+                              {c.lastVisit && (
+                                <span className="text-[11px] font-poppins text-foreground/40">
+                                  poslednji put {fmtShort(new Date(`${c.lastVisit}T00:00:00`))}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <ChevronRight
+                            size={18}
+                            className={`shrink-0 text-foreground/20 mt-1 transition-transform ${open ? "rotate-90" : ""}`}
+                          />
+                        </button>
+
+                        {open && (
+                          <div className="px-4 pb-4 pt-0 space-y-2">
+                            {c.reservations.map((r) => {
+                              const st = STATUS_STYLES[r.status] ?? UNKNOWN_STATUS_STYLE;
+                              const services = r.reservation_services
+                                .map(rs => rs.services?.name).filter(Boolean).join(", ");
+                              return (
+                                <button
+                                  key={r.id}
+                                  type="button"
+                                  onClick={() => openModal(r)}
+                                  className="w-full flex items-center gap-3 p-3 rounded-xl border border-foreground/8 hover:border-teal/30 hover:bg-teal/2 transition-all text-left cursor-pointer"
+                                >
+                                  <span className={`w-2 h-2 rounded-full shrink-0 ${st.dot}`} />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-[12px] font-bold font-poppins text-foreground/70">
+                                      {fmtFull(new Date(`${r.date}T00:00:00`))} · {r.start_time.slice(0, 5)}
+                                    </p>
+                                    {services && (
+                                      <p className="text-[11px] font-poppins text-foreground/40 truncate mt-0.5">{services}</p>
+                                    )}
+                                  </div>
+                                  <span className={`shrink-0 text-[10px] font-bold font-poppins uppercase tracking-wider px-2 py-1 rounded-lg ${st.bg} ${st.text}`}>
+                                    {st.label}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -1048,6 +1336,12 @@ export default function AdminPage() {
                   {selectedIsReturning === false && (
                     <span className="text-[10px] font-bold font-poppins uppercase tracking-widest text-pink bg-pink/10 px-2.5 py-1 rounded-lg border border-pink/15">
                       Prvi tretman
+                    </span>
+                  )}
+                  {selectedIsBlacklisted && (
+                    <span className="inline-flex items-center gap-1.5 text-[10px] font-bold font-poppins uppercase tracking-widest text-red-600 bg-red-50 px-2.5 py-1 rounded-lg border border-red-200">
+                      <Ban size={11} strokeWidth={2.5} />
+                      Crna lista
                     </span>
                   )}
                 </div>
@@ -1261,7 +1555,7 @@ export default function AdminPage() {
   function renderReservation(r: LaidOut, isMobile: boolean) {
     const topPx    = toTop(r.start_time);
     const heightPx = toHeight(r.total_duration);
-    const s        = STATUS_STYLES[r.status];
+    const s        = STATUS_STYLES[r.status] ?? UNKNOWN_STATUS_STYLE;
     const services = r.reservation_services.map(rs => rs.services?.name).filter(Boolean).join(", ");
     const bundle   = parseBundlePromo(r.promo_code);
 

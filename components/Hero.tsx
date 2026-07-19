@@ -4,7 +4,7 @@ import Image from "next/image";
 
 const steps = [
   { dot: "bg-rose-300", phase: "Danas",         label: "Svaki dan se briješ" },
-  { dot: "bg-pink-400", phase: "8-10 tretmana", label: "Epilacija" },
+  { dot: "bg-pink-400", phase: "6-8 tretmana", label: "Epilacija" },
   { dot: "bg-teal",     phase: "Zauvek",         label: "Glatka koža" },
 ] as const;
 
@@ -72,7 +72,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
           className="text-[2.4rem] leading-[1.18] font-bold font-playfair text-white"
           style={{ filter: "drop-shadow(0 1px 6px rgba(0,0,0,0.9)) drop-shadow(0 1px 2px rgba(0,0,0,0.8))" }}
         >
-          Reši se 70–90% dlačica ili{" "}
+          Reši se 70–90% dlačica{" "}
           <span
             style={{
               background: "linear-gradient(to right, #F72585, #FF6EB4, #FFB3D9)",
@@ -81,13 +81,13 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
               backgroundClip: "text",
             }}
           >
-            VRAĆAMO NOVAC
+            ZA 6-8 TRETMANA
           </span>
         </div>
 
         {/* Subtitle */}
         <p className="text-sm text-white font-poppins max-w-xs leading-relaxed" style={{ textShadow: "0 1px 8px rgba(0,0,0,0.8)" }}>
-          Za 6-8 tretmana, zauvek se opraštaš od brijača, iritacija i uraslih dlaka.
+          Zauvek se opraštaš od brijača, iritacija i uraslih dlaka.
         </p>
 
         {/* Stats */}
@@ -139,7 +139,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
             className="text-[3.75rem] leading-[1.12] font-bold font-playfair text-white"
             style={{ filter: "drop-shadow(0 1px 6px rgba(0,0,0,0.9)) drop-shadow(0 1px 2px rgba(0,0,0,0.8))" }}
           >
-            Reši se 70–90% dlačica ili{" "}
+            Reši se 70–90% dlačica{" "}
             <span
               style={{
                 background: "linear-gradient(to right, #F72585, #FF6EB4, #FFB3D9)",
@@ -148,12 +148,12 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
                 backgroundClip: "text",
               }}
             >
-              VRAĆAMO NOVAC
+              ZA 6-8 TRETMANA
             </span>
           </div>
 
           <p className="text-lg text-white font-poppins max-w-sm leading-relaxed" style={{ textShadow: "0 1px 10px rgba(0,0,0,0.85)" }}>
-            Za 6-8 tretmana, zauvek se opraštaš od brijača, iritacija i uraslih dlaka.
+            Zauvek se opraštaš od brijača, iritacija i uraslih dlaka.
           </p>
 
           <div className="flex flex-col gap-2 mt-2">

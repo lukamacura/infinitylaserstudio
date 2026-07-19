@@ -22,7 +22,7 @@ const faqs = [
   },
   {
     q: "Koliko tretmana treba?",
-    a: "Od 6–10 tretmana koji se rade na 6–8 nedelja. Dlake prolaze kroz različite faze rasta, a samo dlaka u aktivnoj fazi može biti uništena. Zbog toga je serija tretmana ključna za trajni rezultat.",
+    a: "Za telo je obično dovoljno 6–8 tretmana, dok lice traži oko 10. Tretmani se rade na 6–8 nedelja. Dlake prolaze kroz različite faze rasta, a samo dlaka u aktivnoj fazi može biti uništena. Zbog toga je serija tretmana ključna za trajni rezultat.",
   },
   {
     q: "Ko ne sme da radi tretman?",

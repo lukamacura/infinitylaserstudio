@@ -253,7 +253,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   const [loadingSlots, setLoadingSlots]   = useState(false);
   const [form, setForm]                   = useState({ name: "", email: "", phone: "" });
   const [customerNote, setCustomerNote]   = useState("");
-  const [fieldErrors, setFieldErrors]     = useState({ name: false, email: false, phone: false });
+  const [fieldErrors, setFieldErrors]     = useState({ name: false, email: false, phone: false, policy: false });
+  const [acceptedPolicy, setAcceptedPolicy] = useState(false);
   const [submitting, setSubmitting]       = useState(false);
   const [submitError, setSubmitError]     = useState<string | null>(null);
   const [bookingRef, setBookingRef]       = useState<string | null>(null);
@@ -550,7 +551,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     setSelectedDate(""); setSelectedTime(""); setDaySlots([]);
     setForm({ name: "", email: "", phone: "" });
     setCustomerNote("");
-    setFieldErrors({ name: false, email: false, phone: false });
+    setFieldErrors({ name: false, email: false, phone: false, policy: false });
+    setAcceptedPolicy(false);
     setSubmitError(null); setBookingRef(null);
     setPromoCode(""); setPromoStatus("idle"); setAppliedPromoCode(null);
     setPromoKind("none"); setCheckingPromo(false);
@@ -610,7 +612,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       .from("reservations")
       .select("id")
       .ilike("customer_email", trimmed)
-      .in("status", ["confirmed", "no_show"])
+      .eq("status", "confirmed")
       .limit(1)
       .maybeSingle();
     if (emailCheckSeqRef.current !== seq) return;
@@ -656,7 +658,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
         .select("id")
         .ilike("customer_email", email)
         .eq("promo_code", raw)
-        .in("status", ["confirmed", "no_show"])
+        .eq("status", "confirmed")
         .limit(1)
         .maybeSingle();
       setCheckingPromo(false);
@@ -683,9 +685,10 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       name: !form.name.trim(),
       email: !form.email.trim(),
       phone: !form.phone.trim(),
+      policy: !acceptedPolicy,
     };
     setFieldErrors(errors);
-    if (errors.name || errors.email || errors.phone || !selectedDate || !selectedTime) return;
+    if (errors.name || errors.email || errors.phone || errors.policy || !selectedDate || !selectedTime) return;
 
     setSubmitting(true);
     setSubmitError(null);
@@ -695,7 +698,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       .from("reservations")
       .select("id")
       .ilike("customer_email", emailTrim)
-      .in("status", ["confirmed", "no_show"])
+      .eq("status", "confirmed")
       .limit(1)
       .maybeSingle();
     const returningSubmit = !!existingReservation;
@@ -943,7 +946,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               <div className="flex flex-col gap-2 mb-3">
                 <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-green-100 border border-green-100">
                   <span className="text-green-500 text-base leading-none shrink-0">✓</span>
-                  <p className="text-xs font-poppins text-green-700 font-semibold leading-snug">Vraćamo novac ukoliko se ne rešiš 70–90% dlačica</p>
+                  <p className="text-xs font-poppins text-green-700 font-semibold leading-snug">70–90% manje dlačica nakon 6-8 tretmana</p>
                 </div>
                 <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-pink-100 border border-pink/15">
                   <span className="text-[#E85D8A] text-base leading-none shrink-0">♥</span>
@@ -1362,6 +1365,38 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                 </div>
               )}
 
+              {/* Cancellation policy — explicit consent, required before booking */}
+              <div>
+                <label
+                  className={`flex gap-3 p-3.5 rounded-2xl border-2 cursor-pointer transition-colors ${
+                    fieldErrors.policy ? "border-red-400 bg-red-50" : "border-foreground/10"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={acceptedPolicy}
+                    onChange={(e) => {
+                      setAcceptedPolicy(e.target.checked);
+                      setFieldErrors((p) => ({ ...p, policy: false }));
+                    }}
+                    className="mt-0.5 w-4 h-4 shrink-0 cursor-pointer"
+                    style={{ accentColor: accent.hex }}
+                  />
+                  <span className="text-xs font-poppins text-foreground/65 leading-relaxed">
+                    <span className="font-semibold text-foreground/80">Prihvatam uslove otkazivanja.</span>{" "}
+                    Termin mogu besplatno da otkažem ili pomerim najkasnije 24 sata pre tretmana.
+                    Ako otkažem u poslednja 24 sata <span className="font-semibold text-foreground/80">bez opravdanog razloga</span> ili
+                    se ne pojavim, naplaćuje se 50% cene tretmana pri sledećem zakazivanju.
+                  </span>
+                </label>
+                {fieldErrors.policy && (
+                  <p className="text-xs text-red-500 font-poppins mt-1">Potrebno je prihvatiti uslove otkazivanja.</p>
+                )}
+                <p className="text-[11px] font-poppins text-foreground/40 leading-snug mt-2 pl-1">
+                  Bolest, povreda ili hitan slučaj se ne naplaćuju — samo nas obavestite i naći ćemo novi termin.
+                </p>
+              </div>
+
               {submitError && (
                 <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 text-red-600 text-sm font-poppins">
                   <AlertCircle size={15} />
@@ -1590,7 +1625,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                   >
                     NASTAVI
                   </button>
-                  <p className="text-center text-[10px] font-poppins text-foreground/40">Vraćamo novac ako se ne rešiš 70–90% dlačica</p>
+                  <p className="text-center text-[10px] font-poppins text-foreground/40">Ništa se ne brini. Na prvom tretmanu se sve dogovaramo.</p>
                 </div>
               )}
 

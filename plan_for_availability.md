@@ -83,7 +83,8 @@ Ključna razlika:
 - Time admin i javni sajt dele **isti** raspored (kraj duplikata).
 
 > Napomena: `getBusinessWindows`/`getAdminBusinessWindows`/`SPECIAL_AVAILABILITY`/`ADMIN_WEEKLY_SCHEDULE`
-> se brišu iz `lib/supabase.ts` nakon migracije. Potrošača ima samo 2 — refaktor je lokalizovan.
+> se brišu iz `lib/supabase.ts` nakon migracije. Potrošača ima samo 2 — refaktor je lokalizovan.sve
+
 
 ---
 

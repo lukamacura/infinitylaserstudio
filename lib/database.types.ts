@@ -391,7 +391,7 @@ export type ReservationService = Database["public"]["Tables"]["reservation_servi
 export type Lead        = Database["public"]["Tables"]["leads"]["Row"];
 
 /** Narrowed status union – the DB stores this as plain string */
-export type ReservationStatus = "pending" | "confirmed" | "cancelled" | "no_show";
+export type ReservationStatus = "pending" | "confirmed" | "cancelled" | "blacklisted";
 
 /** Narrowed gender union – the DB stores this as plain string */
 export type Gender = "zene" | "muskarci";

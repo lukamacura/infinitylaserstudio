@@ -13,7 +13,7 @@ import type { ReservationStatus } from "@/lib/database.types";
 import { computeReservationPrice } from "@/lib/pricing";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const ADMIN_PWD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "laser2024";
+const ADMIN_PWD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "anails";
 const MARKETING_FEE = 311110;
 
 const SR_MONTHS = ["januar", "februar", "mart", "april", "maj", "jun", "jul", "avgust", "septembar", "oktobar", "novembar", "decembar"];
