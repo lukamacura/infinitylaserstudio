@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      availability_overrides: {
+        Row: {
+          date: string
+          updated_at: string
+          windows: Json
+        }
+        Insert: {
+          date: string
+          updated_at?: string
+          windows?: Json
+        }
+        Update: {
+          date?: string
+          updated_at?: string
+          windows?: Json
+        }
+        Relationships: []
+      }
+      weekly_schedule: {
+        Row: {
+          weekday: number
+          windows: Json
+        }
+        Insert: {
+          weekday: number
+          windows?: Json
+        }
+        Update: {
+          weekday?: number
+          windows?: Json
+        }
+        Relationships: []
+      }
       leads: {
         Row: {
           created_at: string | null

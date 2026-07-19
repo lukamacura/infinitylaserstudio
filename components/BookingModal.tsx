@@ -8,9 +8,13 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
-  supabase, calcBookingDuration, calcTotalDuration, getAvailableSlots, getBusinessWindows,
-  minutesToTime, timeToMinutes, SPECIAL_AVAILABILITY,
+  supabase, calcBookingDuration, calcTotalDuration, getAvailableSlots,
+  minutesToTime, timeToMinutes,
 } from "@/lib/supabase";
+import {
+  fetchAvailability, resolveWindows, buildCandidateDates,
+  PUBLIC_HORIZON_DAYS, EMPTY_AVAILABILITY, type AvailabilityData,
+} from "@/lib/availability";
 import type { Service } from "@/lib/database.types";
 import {
   eligibleBundleSizes, computeBundle, parseBundlePromo,
@@ -62,7 +66,12 @@ const SR_MONTHS_SHORT = [
 /** Returns Monday-index (0=Mon, 6=Sun) for a JS Date */
 function monIdx(d: Date) { return (d.getDay() + 6) % 7; }
 
-function toDateStr(d: Date) { return d.toISOString().split("T")[0]; }
+function toDateStr(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 function formatDateFull(dateStr: string) {
   const d = new Date(`${dateStr}T00:00:00`);
@@ -77,10 +86,11 @@ interface DayOption {
 }
 
 /**
- * Candidate days from the whitelist where the booking duration fits business windows
- * (ignores existing reservations — use after a reservations query to hide fully booked days).
+ * Candidate days within the rolling public horizon where the booking duration fits
+ * the effective business windows (ignores existing reservations — use after a
+ * reservations query to hide fully booked days).
  */
-function buildDayOptions(totalDuration: number): DayOption[] {
+function buildDayOptions(totalDuration: number, availability: AvailabilityData): DayOption[] {
   if (totalDuration <= 0) return [];
 
   const now = new Date();
@@ -88,16 +98,11 @@ function buildDayOptions(totalDuration: number): DayOption[] {
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   const minStartToday = nowMinutes + 120; // 2-hour notice
 
-  const whitelistDates: string[] = Object.keys(SPECIAL_AVAILABILITY).sort();
-
   const days: DayOption[] = [];
 
-  for (const dateStr of whitelistDates) {
-    const windows = getBusinessWindows(dateStr);
+  for (const dateStr of buildCandidateDates(PUBLIC_HORIZON_DAYS, availability, now)) {
+    const windows = resolveWindows(dateStr, availability);
     if (!windows) continue;
-
-    // Skip dates in the past
-    if (dateStr < todayStr) continue;
 
     const isToday = dateStr === todayStr;
     const minStart = isToday ? minStartToday : undefined;
@@ -276,6 +281,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   const [loadingBookableDays, setLoadingBookableDays] = useState(false);
   const bookableDaysFetchIdRef = useRef(0);
 
+  /** Working-hours schedule (weekly template + overrides) loaded from the DB. */
+  const [availability, setAvailability] = useState<AvailabilityData | null>(null);
+
   // ── Derived ───────────────────────────────────────────────────────────────
   const selectedServices = services.filter((s) => selectedIds.includes(s.id));
   /** Whole body is selected — lock out every region except earrings, chin & whole face. */
@@ -330,7 +338,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     bookableDayOptions.find((d) => d.date === selectedDate)?.isToday ?? false;
   const minStart = isToday ? nowMinutes + 120 : undefined;
 
-  const windows = selectedDate ? getBusinessWindows(selectedDate) : null;
+  const windows = selectedDate && availability ? resolveWindows(selectedDate, availability) : null;
   const availableSlots = windows?.length
     ? getAvailableSlots(daySlots, slotDuration, minStart, windows)
     : [];
@@ -346,6 +354,16 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       document.body.style.overflow = "";
     }
     return () => { document.body.style.overflow = ""; };
+  }, [isOpen]);
+
+  // Load the working-hours schedule once per open — one query for the whole horizon.
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    fetchAvailability()
+      .then((data) => { if (!cancelled) setAvailability(data); })
+      .catch(() => { if (!cancelled) setAvailability(EMPTY_AVAILABILITY); });
+    return () => { cancelled = true; };
   }, [isOpen]);
 
   // Preselected treatments are women's regions — open straight into her list,
@@ -409,9 +427,14 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       setLoadingBookableDays(false);
       return;
     }
+    if (!availability) {
+      // Schedule still loading — keep the spinner until it arrives.
+      setLoadingBookableDays(true);
+      return;
+    }
 
     const fetchId = ++bookableDaysFetchIdRef.current;
-    const candidates = buildDayOptions(slotDuration);
+    const candidates = buildDayOptions(slotDuration, availability);
     setLoadingBookableDays(true);
     setBookableDayOptions([]);
 
@@ -460,7 +483,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       const filtered = loadError
         ? candidates
         : candidates.filter((day) => {
-            const windows = getBusinessWindows(day.date);
+            const windows = resolveWindows(day.date, availability);
             if (!windows) return false;
             const minStart = day.date === todayStr ? minStartToday : undefined;
             const res = byDate.get(day.date) ?? [];
@@ -474,7 +497,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     return () => {
       bookableDaysFetchIdRef.current += 1;
     };
-  }, [isOpen, step, slotDuration]);
+  }, [isOpen, step, slotDuration, availability]);
 
   useEffect(() => {
     if (!selectedDate || bookableDayOptions.length === 0) return;

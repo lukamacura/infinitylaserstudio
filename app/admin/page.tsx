@@ -5,10 +5,14 @@ import {
   ChevronLeft, ChevronRight, LogOut, X,
   Clock, User, Mail, Phone, Calendar, CalendarPlus,
   PhoneCall, PhoneOff, AlertTriangle, StickyNote, HeartPulse, Tag, Package,
+  Plus, RotateCcw,
 } from "lucide-react";
-import { supabase, timeToMinutes } from "@/lib/supabase";
+import { supabase, timeToMinutes, type BusinessWindow } from "@/lib/supabase";
 import AdminReservationModal from "@/components/AdminReservationModal";
-import type { ReservationStatus } from "@/lib/database.types";
+import type { ReservationStatus, Json } from "@/lib/database.types";
+import {
+  fetchAvailability, resolveWindows, EMPTY_AVAILABILITY, type AvailabilityData,
+} from "@/lib/availability";
 import { computeReservationPrice, type PriceResult } from "@/lib/pricing";
 import { parseBundlePromo } from "@/lib/bundles";
 
@@ -16,8 +20,9 @@ import { parseBundlePromo } from "@/lib/bundles";
 const ADMIN_PWD   = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "laser2024";
 const SLOT_PX     = 14;
 const PX_PER_MIN  = SLOT_PX / 10;
-const GRID_H      = 54 * SLOT_PX;
-const BIZ_START   = 10 * 60;
+const BIZ_START   = 8 * 60;   // calendar grid spans 08:00 …
+const BIZ_END     = 22 * 60;  // … 22:00 (covers every schedule window)
+const GRID_H      = ((BIZ_END - BIZ_START) / 10) * SLOT_PX;
 
 const SR_DAYS_LONG  = ["Ponedeljak", "Utorak", "Sreda", "Četvrtak", "Petak", "Subota", "Nedelja"];
 const SR_DAYS_SHORT = ["Pon", "Uto", "Sre", "Čet", "Pet", "Sub", "Ned"];
@@ -111,10 +116,129 @@ function toHeight(minutes: number) {
   return minutes * PX_PER_MIN;
 }
 
-const HOUR_LABELS = Array.from({ length: 10 }, (_, i) => {
-  const h = 10 + i;
+const HOUR_LABELS = Array.from({ length: (BIZ_END - BIZ_START) / 60 + 1 }, (_, i) => {
+  const h = BIZ_START / 60 + i;
   return { label: `${String(h).padStart(2, "0")}:00`, top: i * 60 * PX_PER_MIN };
 });
+
+// ── Working-hours editor ────────────────────────────────────────────────────
+const HOUR_PRESETS: { label: string; windows: BusinessWindow[] }[] = [
+  { label: "10–16", windows: [{ start: 600, end: 960 }] },
+  { label: "14–20", windows: [{ start: 840, end: 1200 }] },
+  { label: "15–20", windows: [{ start: 900, end: 1200 }] },
+  { label: "13–18", windows: [{ start: 780, end: 1080 }] },
+  { label: "13–20", windows: [{ start: 780, end: 1200 }] },
+  { label: "10–21", windows: [{ start: 600, end: 1260 }] },
+];
+
+function fmtMin(m: number) {
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+/** "HH:MM" or "H:MM" → minutes since midnight, or null if invalid. */
+function parseHM(v: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(v.trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return h * 60 + min;
+}
+
+/** Chips + presets + custom "od–do" for editing a day's list of open windows. */
+function WindowsEditor({
+  windows,
+  onChange,
+}: {
+  windows: BusinessWindow[];
+  onChange: (next: BusinessWindow[]) => void;
+}) {
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+
+  function addCustom() {
+    const s = parseHM(from);
+    const e = parseHM(to);
+    if (s == null || e == null || e <= s) return;
+    onChange([...windows, { start: s, end: e }].sort((a, b) => a.start - b.start));
+    setFrom("");
+    setTo("");
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Current windows */}
+      <div className="flex flex-wrap items-center gap-2 min-h-8">
+        {windows.length === 0 ? (
+          <span className="text-xs font-poppins text-foreground/40 italic">Zatvoreno</span>
+        ) : (
+          windows.map((w, i) => (
+            <span key={i} className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-lg bg-teal/10 border border-teal/15 text-teal text-xs font-bold font-poppins">
+              {fmtMin(w.start)}–{fmtMin(w.end)}
+              <button
+                type="button"
+                onClick={() => onChange(windows.filter((_, j) => j !== i))}
+                className="w-5 h-5 flex items-center justify-center rounded-md hover:bg-teal/20 transition-colors cursor-pointer"
+                aria-label="Ukloni prozor"
+              >
+                <X size={12} />
+              </button>
+            </span>
+          ))
+        )}
+      </div>
+
+      {/* Presets */}
+      <div className="flex flex-wrap gap-1.5">
+        {HOUR_PRESETS.map((p) => (
+          <button
+            key={p.label}
+            type="button"
+            onClick={() => onChange(p.windows)}
+            className="px-3 py-1.5 rounded-lg bg-foreground/4 border border-foreground/8 text-[11px] font-bold font-poppins text-foreground/60 hover:bg-teal/5 hover:border-teal/20 hover:text-teal transition-all cursor-pointer"
+          >
+            {p.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => onChange([])}
+          className="px-3 py-1.5 rounded-lg bg-red-50 border border-red-100 text-[11px] font-bold font-poppins text-red-500 hover:bg-red-100 transition-all cursor-pointer"
+        >
+          Zatvoreno
+        </button>
+      </div>
+
+      {/* Custom range */}
+      <div className="flex items-center gap-2">
+        <input
+          value={from}
+          onChange={(e) => setFrom(e.target.value)}
+          placeholder="14:00"
+          inputMode="numeric"
+          className="w-20 px-3 py-2 rounded-lg border border-foreground/10 font-poppins text-xs focus:outline-none focus:border-teal/40 transition-colors"
+        />
+        <span className="text-foreground/30 text-xs">–</span>
+        <input
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+          placeholder="20:00"
+          inputMode="numeric"
+          className="w-20 px-3 py-2 rounded-lg border border-foreground/10 font-poppins text-xs focus:outline-none focus:border-teal/40 transition-colors"
+        />
+        <button
+          type="button"
+          onClick={addCustom}
+          className="px-3 py-2 rounded-lg bg-teal/10 border border-teal/15 text-teal text-[11px] font-bold font-poppins hover:bg-teal/15 transition-all cursor-pointer flex items-center gap-1"
+        >
+          <Plus size={13} /> Dodaj
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // ── Countdown helper ──────────────────────────────────────────────────────────
 function hoursUntilExpiry(attemptedAt: string): number {
@@ -130,8 +254,13 @@ export default function AdminPage() {
   const [password, setPassword]           = useState("");
   const [pwdError, setPwdError]           = useState(false);
 
-  const [activeTab, setActiveTab]         = useState<"calendar" | "calls">("calendar");
+  const [activeTab, setActiveTab]         = useState<"calendar" | "calls" | "hours">("calendar");
   const [expandedExpired, setExpandedExpired] = useState<string | null>(null);
+
+  // Working-hours schedule (weekly template + per-date overrides)
+  const [availability, setAvailability]   = useState<AvailabilityData>(EMPTY_AVAILABILITY);
+  const [overrideDate, setOverrideDate]   = useState<string | null>(null);
+  const [overrideDraft, setOverrideDraft] = useState<BusinessWindow[]>([]);
 
   const [weekStart, setWeekStart]         = useState<Date>(() => getMonday(new Date()));
   const [selectedDate, setSelectedDate]   = useState<Date>(() => {
@@ -231,6 +360,52 @@ export default function AdminPage() {
   useEffect(() => {
     if (authenticated) fetchPendingCalls();
   }, [authenticated, fetchPendingCalls]);
+
+  // ── Working hours: load + edit ─────────────────────────────────────────────
+  const fetchAvail = useCallback(async () => {
+    setAvailability(await fetchAvailability());
+  }, []);
+
+  useEffect(() => {
+    if (authenticated) fetchAvail();
+  }, [authenticated, fetchAvail]);
+
+  async function saveTemplateDay(weekday: number, windows: BusinessWindow[]) {
+    setAvailability((prev) => ({
+      ...prev,
+      template: prev.template.map((w, i) => (i === weekday ? windows : w)),
+    }));
+    await supabase
+      .from("weekly_schedule")
+      .upsert({ weekday, windows: windows as unknown as Json }, { onConflict: "weekday" });
+  }
+
+  function openOverride(dateStr: string) {
+    setOverrideDraft(resolveWindows(dateStr, availability) ?? []);
+    setOverrideDate(dateStr);
+  }
+
+  async function saveOverride(dateStr: string, windows: BusinessWindow[]) {
+    setAvailability((prev) => ({
+      ...prev,
+      overrides: { ...prev.overrides, [dateStr]: windows },
+    }));
+    setOverrideDate(null);
+    await supabase.from("availability_overrides").upsert(
+      { date: dateStr, windows: windows as unknown as Json, updated_at: new Date().toISOString() },
+      { onConflict: "date" },
+    );
+  }
+
+  async function clearOverride(dateStr: string) {
+    setAvailability((prev) => {
+      const overrides = { ...prev.overrides };
+      delete overrides[dateStr];
+      return { ...prev, overrides };
+    });
+    setOverrideDate(null);
+    await supabase.from("availability_overrides").delete().eq("date", dateStr);
+  }
 
   function handleLogin(e: FormEvent) {
     e.preventDefault();
@@ -531,6 +706,17 @@ export default function AdminPage() {
                 </span>
               )}
             </button>
+            <button
+              onClick={() => setActiveTab("hours")}
+              className={`h-9 px-5 flex items-center gap-2 rounded-xl text-xs font-bold font-poppins uppercase tracking-widest transition-all ${
+                activeTab === "hours"
+                  ? "bg-white shadow-sm text-foreground"
+                  : "text-foreground/40 hover:text-foreground/60"
+              }`}
+            >
+              <Clock size={14} />
+              <span className="hidden sm:inline">Radno vreme</span>
+            </button>
           </div>
 
           {/* Calendar nav — only visible in calendar tab */}
@@ -726,6 +912,32 @@ export default function AdminPage() {
         </div>
       )}
 
+      {/* ── Working Hours Tab ────────────────────────────────────────────────── */}
+      {activeTab === "hours" && (
+        <div className="flex-1 min-h-0 overflow-auto overscroll-y-contain custom-scrollbar">
+          <div className="max-w-3xl mx-auto px-4 py-6">
+            <div className="mb-5">
+              <h2 className="text-lg font-bold font-playfair">Nedeljni šablon radnog vremena</h2>
+              <p className="text-xs font-poppins text-foreground/45 mt-1 leading-relaxed">
+                Podrazumevano radno vreme po danu. Izmene se čuvaju odmah. Za poseban raspored na
+                pojedinačan datum, klikni na zaglavlje dana u kalendaru (izuzetak).
+              </p>
+            </div>
+            <div className="space-y-3">
+              {SR_DAYS_LONG.map((dayName, idx) => (
+                <div key={dayName} className="rounded-2xl border border-foreground/8 bg-white p-4 shadow-sm">
+                  <p className="text-sm font-bold font-poppins text-foreground/70 mb-3">{dayName}</p>
+                  <WindowsEditor
+                    windows={availability.template[idx] ?? []}
+                    onChange={(next) => saveTemplateDay(idx, next)}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Calendar Tab ─────────────────────────────────────────────────────── */}
       {activeTab === "calendar" && (
         <div className="flex-1 min-h-0 flex flex-col relative isolate bg-white/50">
@@ -742,21 +954,43 @@ export default function AdminPage() {
               <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-md border-b border-foreground/5 shadow-xs grid grid-cols-[60px_1fr] md:grid-cols-[80px_repeat(7,1fr)]">
                 <div className="flex items-center justify-center border-r border-foreground/3"><Clock size={14} className="text-foreground/20" /></div>
 
-                {/* Mobile Header */}
-                <div className="md:hidden py-4 text-center">
-                  <p className="text-[10px] font-bold font-poppins uppercase tracking-[0.2em] mb-0.5 text-teal">{SR_DAYS_SHORT[selectedDate.getDay() === 0 ? 6 : selectedDate.getDay() - 1]}</p>
-                  <p className="text-lg font-bold font-poppins text-teal">{selectedDate.getDate()}</p>
-                </div>
+                {/* Mobile Header — tap to edit that day's hours */}
+                {(() => {
+                  const dateStr = toDateStr(selectedDate);
+                  const hasOverride = dateStr in availability.overrides;
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => openOverride(dateStr)}
+                      className="md:hidden py-4 text-center w-full cursor-pointer active:bg-teal/5 transition-colors"
+                    >
+                      <p className="text-[10px] font-bold font-poppins uppercase tracking-[0.2em] mb-0.5 text-teal">{SR_DAYS_SHORT[selectedDate.getDay() === 0 ? 6 : selectedDate.getDay() - 1]}</p>
+                      <p className="text-lg font-bold font-poppins text-teal">{selectedDate.getDate()}</p>
+                      <span className={`inline-block mt-0.5 text-[9px] font-bold font-poppins uppercase tracking-wide ${hasOverride ? "text-pink" : "text-foreground/25"}`}>
+                        {hasOverride ? "izuzetak" : "uredi sate"}
+                      </span>
+                    </button>
+                  );
+                })()}
 
-                {/* Desktop Headers */}
+                {/* Desktop Headers — click to edit that day's hours */}
                 {weekDates.map((d, i) => {
                   const dateStr = toDateStr(d);
                   const isDayToday = dateStr === todayStr;
+                  const hasOverride = dateStr in availability.overrides;
                   return (
-                    <div key={dateStr} className={`hidden md:block py-4 text-center border-l border-foreground/3 first:border-l-0 ${isDayToday ? "bg-teal/2" : ""}`}>
+                    <button
+                      key={dateStr}
+                      type="button"
+                      onClick={() => openOverride(dateStr)}
+                      className={`hidden md:block py-4 text-center w-full border-l border-foreground/3 first:border-l-0 cursor-pointer transition-colors group ${isDayToday ? "bg-teal/2 hover:bg-teal/5" : "hover:bg-foreground/2"}`}
+                    >
                       <p className={`text-[10px] font-bold font-poppins uppercase tracking-[0.2em] mb-0.5 ${isDayToday ? "text-teal" : "text-foreground/30"}`}>{SR_DAYS_SHORT[i]}</p>
                       <p className={`text-lg font-bold font-poppins ${isDayToday ? "text-teal" : "text-foreground"}`}>{d.getDate()}</p>
-                    </div>
+                      <span className={`inline-block mt-0.5 text-[9px] font-bold font-poppins uppercase tracking-wide ${hasOverride ? "text-pink" : "text-foreground/20 group-hover:text-teal"}`}>
+                        {hasOverride ? "izuzetak" : "uredi"}
+                      </span>
+                    </button>
                   );
                 })}
               </div>
@@ -774,6 +1008,7 @@ export default function AdminPage() {
                 {/* Mobile Col */}
                 <div className={`md:hidden relative h-full ${toDateStr(selectedDate) === todayStr ? "bg-teal/2" : ""}`}>
                   {HOUR_LABELS.map(({ top }) => <div key={top} className="absolute left-0 right-0 border-t border-foreground/4" style={{ top }} />)}
+                  {renderHoursBand(toDateStr(selectedDate))}
                   {dayLaidOut.map(r => renderReservation(r, true))}
                 </div>
 
@@ -783,6 +1018,7 @@ export default function AdminPage() {
                   return (
                     <div key={dateStr} className={`hidden md:block relative h-full border-l border-foreground/3 first:border-l-0 transition-colors ${dateStr === todayStr ? "bg-teal/2" : "hover:bg-foreground/1"}`}>
                       {HOUR_LABELS.map(({ top }) => <div key={top} className="absolute left-0 right-0 border-t border-foreground/4" style={{ top }} />)}
+                      {renderHoursBand(dateStr)}
                       {resByDayLaid[colIdx].map(r => renderReservation(r, false))}
                     </div>
                   );
@@ -961,8 +1197,66 @@ export default function AdminPage() {
           </div>
         </div>
       )}
+
+      {/* Per-date override editor */}
+      {overrideDate && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-0 sm:p-4">
+          <div className="absolute inset-0 bg-foreground/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setOverrideDate(null)} />
+          <div className="relative z-10 bg-white rounded-t-[2.5rem] sm:rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col pb-[env(safe-area-inset-bottom)] sm:animate-in sm:zoom-in-95 sm:duration-200">
+            <div className="md:hidden w-12 h-1.5 bg-foreground/10 rounded-full mx-auto mt-4 mb-1" />
+            <div className="flex items-center justify-between px-6 py-5 border-b border-foreground/5">
+              <div className="min-w-0">
+                <h2 className="text-lg font-bold font-playfair">Radno vreme za dan</h2>
+                <p className="text-[11px] font-bold font-poppins text-foreground/30 uppercase tracking-widest mt-0.5 truncate">
+                  {fmtFull(new Date(`${overrideDate}T00:00:00`))}
+                </p>
+              </div>
+              <button onClick={() => setOverrideDate(null)} className="w-11 h-11 flex items-center justify-center rounded-2xl bg-foreground/3 text-foreground/40 hover:bg-red-50 hover:text-red-500 transition-all cursor-pointer shrink-0 ml-3"><X size={22} /></button>
+            </div>
+
+            <div className="px-6 py-6 space-y-4">
+              <p className="text-[11px] font-poppins text-foreground/45 leading-relaxed">
+                {overrideDate in availability.overrides
+                  ? "Ovaj dan ima poseban raspored (izuzetak). Izmeni sate ili ga vrati na nedeljni šablon."
+                  : "Ovaj dan prati nedeljni šablon. Sve što ovde sačuvaš postaje izuzetak samo za ovaj datum."}
+              </p>
+
+              <WindowsEditor windows={overrideDraft} onChange={setOverrideDraft} />
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => saveOverride(overrideDate, overrideDraft)}
+                  className="flex-1 h-12 rounded-2xl bg-teal text-white text-xs font-bold tracking-[0.2em] font-poppins uppercase hover:opacity-90 transition-all active:scale-95 cursor-pointer"
+                >
+                  Sačuvaj
+                </button>
+                {overrideDate in availability.overrides && (
+                  <button
+                    onClick={() => clearOverride(overrideDate)}
+                    className="h-12 px-4 rounded-2xl bg-foreground/4 border border-foreground/10 text-foreground/60 text-[11px] font-bold tracking-widest font-poppins uppercase hover:bg-foreground/8 transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"
+                  >
+                    <RotateCcw size={14} /> Default
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
+
+  // Light background band showing the effective working hours for a day.
+  function renderHoursBand(dateStr: string) {
+    const windows = resolveWindows(dateStr, availability) ?? [];
+    return windows.map((w, i) => (
+      <div
+        key={`band-${i}`}
+        className="absolute left-0 right-0 bg-teal/[0.06] pointer-events-none"
+        style={{ top: toHeight(w.start - BIZ_START), height: toHeight(w.end - w.start) }}
+      />
+    ));
+  }
 
   function renderReservation(r: LaidOut, isMobile: boolean) {
     const topPx    = toTop(r.start_time);

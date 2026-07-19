@@ -8,9 +8,13 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
-  supabase, calcBookingDuration, calcTotalDuration, getAvailableSlots, getAdminBusinessWindows,
-  minutesToTime, timeToMinutes, SLOT_SIZE,
+  supabase, calcBookingDuration, calcTotalDuration, getAvailableSlots,
+  minutesToTime, timeToMinutes,
 } from "@/lib/supabase";
+import {
+  fetchAvailability, resolveWindows,
+  ADMIN_HORIZON_DAYS, EMPTY_AVAILABILITY, type AvailabilityData,
+} from "@/lib/availability";
 import type { Service } from "@/lib/database.types";
 import { parseBundlePromo, bundleRedeemCode } from "@/lib/bundles";
 
@@ -57,7 +61,12 @@ const SR_MONTHS_SHORT = [
 /** Returns Monday-index (0=Mon, 6=Sun) for a JS Date */
 function monIdx(d: Date) { return (d.getDay() + 6) % 7; }
 
-function toDateStr(d: Date) { return d.toISOString().split("T")[0]; }
+function toDateStr(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 function formatDateFull(dateStr: string) {
   const d = new Date(`${dateStr}T00:00:00`);
@@ -72,19 +81,20 @@ interface DayOption {
 }
 
 /**
- * Build bookable days for Admin. Shows next 90 days that fall on a working
- * weekday per the fixed weekly schedule (Sundays and off days are skipped).
+ * Build bookable days for Admin. Unlike the public site (2-week horizon), admin can
+ * schedule across a much larger window — any open day per the effective schedule
+ * (weekly template + overrides). Closed days (e.g. Sundays) are skipped.
  */
-function buildAdminDayOptions(totalDuration: number): DayOption[] {
+function buildAdminDayOptions(totalDuration: number, availability: AvailabilityData): DayOption[] {
   const now = new Date();
   const days: DayOption[] = [];
 
-  for (let i = 0; i < 90; i++) {
+  for (let i = 0; i < ADMIN_HORIZON_DAYS; i++) {
     const d = new Date(now);
     d.setDate(d.getDate() + i);
     const dateStr = toDateStr(d);
 
-    const windows = getAdminBusinessWindows(dateStr);
+    const windows = resolveWindows(dateStr, availability);
     if (!windows) continue; // closed day (e.g. Sunday)
     const isToday = i === 0;
 
@@ -227,6 +237,9 @@ export default function AdminReservationModal({
   const [isReturningCustomer, setIsReturningCustomer] = useState<boolean | null>(null);
   const [checkingReturningEmail, setCheckingReturningEmail] = useState(false);
 
+  /** Working-hours schedule (weekly template + overrides), shared with the public site. */
+  const [availability, setAvailability] = useState<AvailabilityData>(EMPTY_AVAILABILITY);
+
   // ── Derived ───────────────────────────────────────────────────────────────
   const selectedServices = services.filter((s) => selectedIds.includes(s.id));
   const { effective: effectiveServices, appliedCombos } = applyComboRules(selectedServices, services);
@@ -255,8 +268,11 @@ export default function AdminReservationModal({
       ? Math.round(totalPrice * 0.9)
       : totalPrice;
 
-  // Day options rebuild whenever slot duration (incl. consultation) changes
-  const dayOptions = useMemo(() => buildAdminDayOptions(slotDuration), [slotDuration]);
+  // Day options rebuild whenever slot duration (incl. consultation) or schedule changes
+  const dayOptions = useMemo(
+    () => buildAdminDayOptions(slotDuration, availability),
+    [slotDuration, availability],
+  );
 
   const nowMinutes = useMemo(() => {
     const now = new Date();
@@ -267,7 +283,7 @@ export default function AdminReservationModal({
   // For Admin: no 2-hour buffer
   const minStart = isToday ? nowMinutes : undefined;
 
-  const windows = selectedDate ? getAdminBusinessWindows(selectedDate) : null;
+  const windows = selectedDate ? resolveWindows(selectedDate, availability) : null;
   const availableSlots = windows?.length
     ? getAvailableSlots(daySlots, slotDuration, minStart, windows)
     : [];
@@ -282,6 +298,16 @@ export default function AdminReservationModal({
       document.body.style.overflow = "";
     }
     return () => { document.body.style.overflow = ""; };
+  }, [isOpen]);
+
+  // Load the working-hours schedule once per open (fresh each time the modal opens).
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    fetchAvailability()
+      .then((data) => { if (!cancelled) setAvailability(data); })
+      .catch(() => { if (!cancelled) setAvailability(EMPTY_AVAILABILITY); });
+    return () => { cancelled = true; };
   }, [isOpen]);
 
   useEffect(() => {
