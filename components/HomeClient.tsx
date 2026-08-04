@@ -50,14 +50,22 @@ export default function HomeClient() {
     setBookingOpen(true);
   }
 
-  // Open the modal preselected to Žene + a region from a ?regija= link.
+  // Open the modal preselected to Žene + a region from a ?regija= link,
+  // or with nothing selected from a ?book=1 link.
   // Runs once on mount (after hydration) to read the URL — an external system.
   useEffect(() => {
-    const regija = new URLSearchParams(window.location.search).get("regija");
-    if (!regija) return;
-    const keywords = REGION_SLUGS[regija.toLowerCase()];
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (keywords) openWithPreselect(keywords);
+    const params = new URLSearchParams(window.location.search);
+    const regija = params.get("regija");
+    if (regija) {
+      const keywords = REGION_SLUGS[regija.toLowerCase()];
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (keywords) openWithPreselect(keywords);
+      return;
+    }
+    if (params.get("book") === "1") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      open();
+    }
   }, []);
 
   useEffect(() => {
