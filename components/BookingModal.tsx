@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
-import { createPortal } from "react-dom";
 import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -320,8 +319,11 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   /** Scrollable step body - reset to top on every step change */
   const scrollBodyRef = useRef<HTMLDivElement>(null);
 
-  // iOS-style notifications from Ana - each fires once per modal session
-  const [shownNotices, setShownNotices] = useState<NoticeKey[]>([]);
+  // iOS-style notifications from Ana - each fires once per modal session.
+  // "Already shown" lives in a ref, not state: as a dependency of the scheduling
+  // effect below it would re-run that effect the moment a notice fires and
+  // immediately dismiss it again.
+  const shownNoticesRef = useRef<NoticeKey[]>([]);
   const [activeNotice, setActiveNotice] = useState<NoticeKey | null>(null);
   const emailCheckSeqRef = useRef(0);
 
@@ -596,20 +598,21 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   // ── Notifications: slide in shortly after their step opens ──────────────────
   useEffect(() => {
     if (!isOpen) {
-      setShownNotices([]);
+      shownNoticesRef.current = [];
       setActiveNotice(null);
       return;
     }
     // A notice belongs to its step - leaving the step takes it with you.
+    // Safe only because this effect runs on step changes alone.
     setActiveNotice(null);
     const key = NOTICE_ORDER.find((k) => NOTICES[k].step === step);
-    if (!key || shownNotices.includes(key)) return;
+    if (!key || shownNoticesRef.current.includes(key)) return;
     const t = setTimeout(() => {
-      setShownNotices((prev) => [...prev, key]);
+      shownNoticesRef.current = [...shownNoticesRef.current, key];
       setActiveNotice(key);
     }, 700);
     return () => clearTimeout(t);
-  }, [isOpen, step, shownNotices]);
+  }, [isOpen, step]);
 
   // Auto-dismiss the banner like a real notification (X dismisses it instantly).
   useEffect(() => {
@@ -981,22 +984,16 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
         onClick={handleClose}
       />
 
-      {/* iOS-style notification from Ana (guarantee on services, paket on plan).
-          Portaled to <body> on purpose: as a sibling of the modal shell it relied
-          on z-index to paint over an opaque, transform+opacity-animated full-screen
-          layer - which iOS Safari orders wrong, hiding the banner completely.
-          No animated `filter` here either; blur promotes another layer on WebKit. */}
-      {typeof document !== "undefined" && createPortal(
+      {/* iOS-style notification from Ana (guarantee on services, paket on plan) */}
       <AnimatePresence>
         {activeNotice && (
           <motion.div
             key={`notice-${activeNotice}`}
-            className="fixed top-0 left-0 right-0 z-[90] flex justify-center px-3 pointer-events-none"
-            style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
-            initial={{ y: -170, opacity: 0, scale: 0.9 }}
-            animate={{ y: 0, opacity: 1, scale: 1 }}
+            className="absolute top-0 left-0 right-0 z-[70] flex justify-center px-3 pt-3 pointer-events-none"
+            initial={{ y: -170, opacity: 0, scale: 0.9, filter: "blur(10px)" }}
+            animate={{ y: 0, opacity: 1, scale: 1, filter: "blur(0px)" }}
             exit={{
-              y: -140, opacity: 0, scale: 0.94,
+              y: -140, opacity: 0, scale: 0.94, filter: "blur(8px)",
               transition: { duration: 0.32, ease: [0.36, 0, 0.66, -0.06] },
             }}
             transition={{ type: "spring", stiffness: 420, damping: 34, mass: 0.9 }}
@@ -1038,8 +1035,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>,
-      document.body)}
+      </AnimatePresence>
 
       {/* Modal shell */}
       <div
