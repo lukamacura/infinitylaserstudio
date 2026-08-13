@@ -236,6 +236,24 @@ const PAYMENT_TERMS =
   "Plati ceo iznos paketa na prvom tretmanu i rezerviši sve preostale termine uz zagarantovanu dostupnost.";
 
 /**
+ * iOS-style banners "from Ana", each tied to the step it argues for.
+ * One per step, shown once per modal session.
+ */
+type NoticeKey = "guarantee" | "plan";
+const NOTICES: Record<NoticeKey, { step: Step; message: string }> = {
+  guarantee: {
+    step: 2,
+    message: "Ako se ne rešiš 70–90% dlačica, vraćamo ti novac.",
+  },
+  plan: {
+    step: "plan",
+    message:
+      "Za potpune rezultate telu treba 6–8, a licu 10 tretmana. Uzmi paket i uštedi - plaćaš jednom, dolaziš koliko ti treba.",
+  },
+};
+const NOTICE_ORDER = Object.keys(NOTICES) as NoticeKey[];
+
+/**
  * Social-proof step: one client's photo and her result, shown right before the
  * package step so the "treba ti serija tretmana" argument lands with evidence.
  */
@@ -301,9 +319,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   /** Scrollable step body - reset to top on every step change */
   const scrollBodyRef = useRef<HTMLDivElement>(null);
 
-  // Guarantee notification (iOS-style banner shown once per modal session)
-  const [guaranteeShown, setGuaranteeShown]     = useState(false);
-  const [guaranteeVisible, setGuaranteeVisible] = useState(false);
+  // iOS-style notifications from Ana - each fires once per modal session
+  const [shownNotices, setShownNotices] = useState<NoticeKey[]>([]);
+  const [activeNotice, setActiveNotice] = useState<NoticeKey | null>(null);
   const emailCheckSeqRef = useRef(0);
 
   /** null = not checked yet for current email; true = exists in reservations */
@@ -574,27 +592,30 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     scrollBodyRef.current?.scrollTo({ top: 0 });
   }, [step]);
 
-  // ── Guarantee notification: slides in shortly after the service step opens ──
+  // ── Notifications: slide in shortly after their step opens ──────────────────
   useEffect(() => {
     if (!isOpen) {
-      setGuaranteeShown(false);
-      setGuaranteeVisible(false);
+      setShownNotices([]);
+      setActiveNotice(null);
       return;
     }
-    if (step !== 2 || guaranteeShown) return;
+    // A notice belongs to its step - leaving the step takes it with you.
+    setActiveNotice(null);
+    const key = NOTICE_ORDER.find((k) => NOTICES[k].step === step);
+    if (!key || shownNotices.includes(key)) return;
     const t = setTimeout(() => {
-      setGuaranteeShown(true);
-      setGuaranteeVisible(true);
+      setShownNotices((prev) => [...prev, key]);
+      setActiveNotice(key);
     }, 700);
     return () => clearTimeout(t);
-  }, [isOpen, step, guaranteeShown]);
+  }, [isOpen, step, shownNotices]);
 
   // Auto-dismiss the banner like a real notification (X dismisses it instantly).
   useEffect(() => {
-    if (!guaranteeVisible) return;
-    const t = setTimeout(() => setGuaranteeVisible(false), 7000);
+    if (!activeNotice) return;
+    const t = setTimeout(() => setActiveNotice(null), 7000);
     return () => clearTimeout(t);
-  }, [guaranteeVisible]);
+  }, [activeNotice]);
 
   // Note: if the region selection changes so the chosen bundle size is no longer
   // eligible (e.g. an all-face basket gains a body region, dropping the 10-pack),
@@ -959,11 +980,11 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
         onClick={handleClose}
       />
 
-      {/* iOS-style guarantee notification */}
+      {/* iOS-style notification from Ana (guarantee on services, paket on plan) */}
       <AnimatePresence>
-        {guaranteeVisible && (
+        {activeNotice && (
           <motion.div
-            key="guarantee-notification"
+            key={`notice-${activeNotice}`}
             className="absolute top-0 left-0 right-0 z-[70] flex justify-center px-3 pt-3 pointer-events-none"
             initial={{ y: -170, opacity: 0, scale: 0.9, filter: "blur(10px)" }}
             animate={{ y: 0, opacity: 1, scale: 1, filter: "blur(0px)" }}
@@ -978,13 +999,13 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               dragConstraints={{ top: 0, bottom: 0 }}
               dragElastic={{ top: 0.5, bottom: 0 }}
               onDragEnd={(_, info) => {
-                if (info.offset.y < -32 || info.velocity.y < -450) setGuaranteeVisible(false);
+                if (info.offset.y < -32 || info.velocity.y < -450) setActiveNotice(null);
               }}
               className="pointer-events-auto relative w-full max-w-[430px] rounded-[24px] border border-foreground/8 bg-white p-3.5 pr-9 shadow-[0_16px_44px_-10px_rgba(15,15,20,0.42)] cursor-grab active:cursor-grabbing"
             >
               <button
                 type="button"
-                onClick={() => setGuaranteeVisible(false)}
+                onClick={() => setActiveNotice(null)}
                 className="absolute top-2.5 right-2.5 w-6 h-6 flex items-center justify-center rounded-full bg-foreground/10 hover:bg-foreground/20 active:scale-90 transition-all cursor-pointer"
                 aria-label="Zatvori obaveštenje"
               >
@@ -1003,7 +1024,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                     <span className="text-[10px] font-poppins text-foreground/40 shrink-0 ml-auto mr-1">sada</span>
                   </div>
                   <p className="mt-0.5 text-[13px] leading-snug font-poppins text-foreground/80">
-                    Ako se ne rešiš 70–90% dlačica, vraćamo ti novac.
+                    {NOTICES[activeNotice].message}
                   </p>
                 </div>
               </div>
@@ -1282,12 +1303,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
           {/* ══ STEP "plan": Single vs Bundle ═══════════════════════════════ */}
           {step === "plan" && (
             <div className="flex flex-col gap-3 py-1">
-              <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-pink-100 border border-pink/15">
-                <span className="text-[#E85D8A] text-base leading-none shrink-0 mt-0.5">★</span>
-                <p className="text-xs font-poppins text-foreground/65 font-medium leading-snug">
-                  Za potpune rezultate telu treba 6–8, a licu 10 tretmana. Uzmi paket i uštedi - plaćaš jednom, dolaziš koliko ti treba.
-                </p>
-              </div>
+              {/* The "treba ti serija tretmana" argument now arrives as the
+                  Ana notification (NOTICES.plan) instead of an inline banner. */}
 
               {/* Single session - first option, kept visually light so bundles still win */}
               <button
