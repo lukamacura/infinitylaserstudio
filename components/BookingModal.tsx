@@ -298,6 +298,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   const [displayedPrice, setDisplayedPrice]   = useState(0);
   const animFrameRef = useRef<number>(0);
   const appliedPreselect = useRef(false);
+  /** Scrollable step body - reset to top on every step change */
+  const scrollBodyRef = useRef<HTMLDivElement>(null);
 
   // Guarantee notification (iOS-style banner shown once per modal session)
   const [guaranteeShown, setGuaranteeShown]     = useState(false);
@@ -565,6 +567,12 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     appliedPreselect.current = true;
 
   }, [isOpen, preselectedNames, preselectedBundle, services]);
+
+  // Every step starts at the top - otherwise a long previous step (services)
+  // leaves the next one scrolled past its opening.
+  useEffect(() => {
+    scrollBodyRef.current?.scrollTo({ top: 0 });
+  }, [step]);
 
   // ── Guarantee notification: slides in shortly after the service step opens ──
   useEffect(() => {
@@ -936,8 +944,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   const [stepLabel, stepSub] = STEP_LABELS[step];
 
   // ── Render ────────────────────────────────────────────────────────────────
+  // z-80: iznad SocialProofToast (z-60), da guarantee banner nikad ne ostane ispod njega
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-80 flex items-center justify-center">
       <style>{`
         @keyframes nastaviGlow {
           0%, 100% { box-shadow: 0 0 14px rgba(232,93,138,0.45), 0 4px 14px rgba(232,93,138,0.25); }
@@ -1030,7 +1039,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
           {/* Scrollable content - primary actions live in sticky footer below */}
-          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-6 pb-2">
+          <div ref={scrollBodyRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-6 pb-2">
 
 
           {/* ══ STEP 1: Gender ══════════════════════════════════════════════ */}
@@ -1137,16 +1146,16 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
           {/* ══ STEP "proof": Social proof ══════════════════════════════════ */}
           {step === "proof" && (
-            <div className="min-h-full flex flex-col items-center justify-center text-center py-4">
+            <div className="min-h-full flex flex-col items-center justify-center text-center py-2">
               {/* Who she is */}
               <motion.div
-                className="flex flex-col items-center gap-2"
+                className="flex flex-col items-center gap-1.5"
                 initial={{ opacity: 0, scale: 0.94 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.3, ease: PROOF_EASE }}
               >
                 <div
-                  className="relative w-[92px] h-[92px] rounded-full overflow-hidden ring-4 ring-white"
+                  className="relative w-16 h-16 rounded-full overflow-hidden ring-4 ring-white"
                   style={{ boxShadow: `0 0 0 2px ${accent.hex}40, 0 10px 26px -8px rgba(15,15,20,0.4)` }}
                 >
                   {/* Source is a full 9:16 shot - bias the square crop up onto her face */}
@@ -1154,7 +1163,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                     src={PROOF.profileImg}
                     alt={PROOF.name}
                     fill
-                    sizes="92px"
+                    sizes="64px"
                     className="object-cover object-[center_25%]"
                   />
                 </div>
@@ -1162,7 +1171,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               </motion.div>
 
               {/* Her legs: before → after, linked by a drawn arrow */}
-              <div className="flex items-center justify-center gap-1.5 w-full max-w-[380px] mt-5">
+              <div className="flex items-center justify-center gap-1.5 w-full max-w-[310px] mt-3.5">
                 <motion.div
                   className="flex-1 min-w-0"
                   initial={{ opacity: 0, y: 12 }}
@@ -1174,7 +1183,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                       src={PROOF.beforeImg}
                       alt="Noge pre tretmana"
                       fill
-                      sizes="(max-width: 420px) 42vw, 160px"
+                      sizes="(max-width: 420px) 40vw, 140px"
                       className="object-cover"
                     />
                     <span className="absolute bottom-2 left-1/2 -translate-x-1/2 px-2.5 py-1 rounded-full text-[9px] font-bold font-poppins tracking-wide text-white bg-foreground/55 backdrop-blur-sm">
@@ -1225,7 +1234,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                       src={PROOF.afterImg}
                       alt={`Noge nakon ${PROOF.sessions} tretmana`}
                       fill
-                      sizes="(max-width: 420px) 42vw, 160px"
+                      sizes="(max-width: 420px) 40vw, 140px"
                       className="object-cover"
                     />
                     <span
@@ -1239,16 +1248,16 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               </div>
 
               <motion.div
-                className="mt-7"
+                className="mt-4"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.34, ease: PROOF_EASE, delay: 0.62 }}
               >
-                <h3 className="text-2xl font-bold font-playfair leading-snug max-w-[320px] mx-auto">
+                <h3 className="text-xl font-bold font-playfair leading-snug max-w-[300px] mx-auto">
                   {PROOF.name} se rešila dlačica nakon{" "}
                   <span style={{ color: accent.hex }}>{PROOF.sessions} tretmana</span>
                 </h3>
-                <p className="text-sm font-poppins text-foreground/50 leading-relaxed mt-3 max-w-[300px] mx-auto">
+                <p className="text-[13px] font-poppins text-foreground/50 leading-snug mt-2 max-w-[300px] mx-auto">
                   Rezultat ne dolazi iz jednog tretmana, već iz serije - zato većina naših
                   klijentkinja odmah uzme paket.
                 </p>
@@ -1256,7 +1265,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
               {/* Volume proof, closing the screen */}
               <motion.div
-                className="flex items-center gap-2.5 mt-8 px-4 py-2.5 rounded-xl border"
+                className="flex items-center gap-2.5 mt-3 px-4 py-2 rounded-xl border"
                 style={{ backgroundColor: `${accent.hex}0F`, borderColor: `${accent.hex}26` }}
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
