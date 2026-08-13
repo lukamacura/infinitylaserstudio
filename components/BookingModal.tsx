@@ -1289,6 +1289,23 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                 </p>
               </div>
 
+              {/* Single session - first option, kept visually light so bundles still win */}
+              <button
+                type="button"
+                onClick={handleSelectSingle}
+                className="flex items-center justify-between gap-3 w-full p-3 rounded-2xl border-2 border-foreground/8 hover:border-foreground/20 text-left cursor-pointer transition-all"
+              >
+                <div className="flex flex-col gap-1 min-w-0">
+                  <p className="text-sm font-bold font-poppins">Samo 1 tretman</p>
+                  <span className="text-[11px] font-poppins text-foreground/45 leading-snug">
+                    Bez popusta - plaćaš tretman po tretman
+                  </span>
+                </div>
+                <p className="text-base font-bold font-poppins leading-tight shrink-0">
+                  {formatPrice(totalPrice)} RSD
+                </p>
+              </button>
+
               {/* Bundle options */}
               {eligibleSizes.map((size, idx) => {
                 const b = computeBundle(effectiveServices, size);
@@ -1356,19 +1373,6 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                   {PAYMENT_TERMS}
                 </p>
               )}
-
-              {/* Single session - plain text, de-emphasized */}
-              <button
-                type="button"
-                onClick={handleSelectSingle}
-                className={`self-center mt-2 text-sm font-poppins font-medium cursor-pointer transition-colors ${
-                  !bundleActive
-                    ? "text-foreground underline underline-offset-4"
-                    : "text-foreground/40 hover:text-foreground/60"
-                }`}
-              >
-                Hoću samo jedan tretman
-              </button>
             </div>
           )}
 
