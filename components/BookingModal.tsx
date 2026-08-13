@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -298,7 +299,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   const [form, setForm]                   = useState({ name: "", email: "", phone: "" });
   const [customerNote, setCustomerNote]   = useState("");
   const [fieldErrors, setFieldErrors]     = useState({ name: false, email: false, phone: false, policy: false });
-  const [acceptedPolicy, setAcceptedPolicy] = useState(false);
+  const [acceptedPolicy, setAcceptedPolicy] = useState(true);
   const [showPolicyInfo, setShowPolicyInfo] = useState(false);
   const [submitting, setSubmitting]       = useState(false);
   const [submitError, setSubmitError]     = useState<string | null>(null);
@@ -980,16 +981,22 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
         onClick={handleClose}
       />
 
-      {/* iOS-style notification from Ana (guarantee on services, paket on plan) */}
+      {/* iOS-style notification from Ana (guarantee on services, paket on plan).
+          Portaled to <body> on purpose: as a sibling of the modal shell it relied
+          on z-index to paint over an opaque, transform+opacity-animated full-screen
+          layer - which iOS Safari orders wrong, hiding the banner completely.
+          No animated `filter` here either; blur promotes another layer on WebKit. */}
+      {typeof document !== "undefined" && createPortal(
       <AnimatePresence>
         {activeNotice && (
           <motion.div
             key={`notice-${activeNotice}`}
-            className="absolute top-0 left-0 right-0 z-[70] flex justify-center px-3 pt-3 pointer-events-none"
-            initial={{ y: -170, opacity: 0, scale: 0.9, filter: "blur(10px)" }}
-            animate={{ y: 0, opacity: 1, scale: 1, filter: "blur(0px)" }}
+            className="fixed top-0 left-0 right-0 z-[90] flex justify-center px-3 pointer-events-none"
+            style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
+            initial={{ y: -170, opacity: 0, scale: 0.9 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{
-              y: -140, opacity: 0, scale: 0.94, filter: "blur(8px)",
+              y: -140, opacity: 0, scale: 0.94,
               transition: { duration: 0.32, ease: [0.36, 0, 0.66, -0.06] },
             }}
             transition={{ type: "spring", stiffness: 420, damping: 34, mass: 0.9 }}
@@ -1031,7 +1038,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body)}
 
       {/* Modal shell */}
       <div
