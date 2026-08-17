@@ -29,6 +29,8 @@ interface BookingModalProps {
   preselectedNames?: string[];
   /** Pre-select a bundle size when the modal opens (used by landing-page examples). */
   preselectedBundle?: number;
+  /** Skip the gender step and open straight into this gender's treatment list. */
+  preselectedGender?: "zene" | "muskarci";
 }
 
 type Step = 1 | 2 | "proof" | "plan" | 3 | 4 | 5 | "success" | "preparation";
@@ -284,7 +286,7 @@ const BUNDLE_IMAGES: Record<number, string> = {
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
-export default function BookingModal({ isOpen, onClose, preselectedNames, preselectedBundle }: BookingModalProps) {
+export default function BookingModal({ isOpen, onClose, preselectedNames, preselectedBundle, preselectedGender }: BookingModalProps) {
   const fbclidRef = useRef(
     typeof window !== "undefined"
       ? new URLSearchParams(window.location.search).get("fbclid")
@@ -428,13 +430,18 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   }, [isOpen]);
 
   // Preselected treatments are women's regions - open straight into her list,
-  // skipping the gender choice. Plain opens start on Step 1 (gender).
+  // skipping the gender choice. A ?pol= link does the same with nothing selected.
+  // Plain opens start on Step 1 (gender).
   useEffect(() => {
-    if (isOpen && preselectedNames && preselectedNames.length > 0) {
+    if (!isOpen) return;
+    if (preselectedNames && preselectedNames.length > 0) {
       setGender("zene");
       setStep(2);
+    } else if (preselectedGender) {
+      setGender(preselectedGender);
+      setStep(2);
     }
-  }, [isOpen, preselectedNames]);
+  }, [isOpen, preselectedNames, preselectedGender]);
 
   useEffect(() => {
     if (!gender) return;

@@ -19,6 +19,8 @@ import WistiaVideo from "@/components/WistiaVideo";
 
 // Region slug → service-name keywords (matched as substrings in BookingModal).
 // Combos map to their component parts, just like the FeaturedServices cards.
+type Gender = "zene" | "muskarci";
+
 const REGION_SLUGS: Record<string, string[]> = {
   "nausnice": ["nausnice"],
   "brada": ["brada"],
@@ -38,19 +40,30 @@ export default function HomeClient() {
   const [bookingOpen, setBookingOpen] = useState(false);
   const [preselectedNames, setPreselectedNames] = useState<string[]>([]);
   const [preselectedBundle, setPreselectedBundle] = useState<number | undefined>(undefined);
+  const [preselectedGender, setPreselectedGender] = useState<Gender | undefined>(undefined);
   function open() {
     setPreselectedNames([]);
     setPreselectedBundle(undefined);
+    setPreselectedGender(undefined);
     setBookingOpen(true);
   }
 
   function openWithPreselect(keywords: string[], bundleSize?: number) {
     setPreselectedNames(keywords);
     setPreselectedBundle(bundleSize);
+    setPreselectedGender(undefined);
+    setBookingOpen(true);
+  }
+
+  function openWithGender(g: Gender) {
+    setPreselectedNames([]);
+    setPreselectedBundle(undefined);
+    setPreselectedGender(g);
     setBookingOpen(true);
   }
 
   // Open the modal preselected to Žene + a region from a ?regija= link,
+  // straight into a gender's treatment list from a ?pol= link,
   // or with nothing selected from a ?book=1 link.
   // Runs once on mount (after hydration) to read the URL — an external system.
   useEffect(() => {
@@ -60,6 +73,12 @@ export default function HomeClient() {
       const keywords = REGION_SLUGS[regija.toLowerCase()];
       // eslint-disable-next-line react-hooks/set-state-in-effect
       if (keywords) openWithPreselect(keywords);
+      return;
+    }
+    const pol = params.get("pol")?.toLowerCase();
+    if (pol === "zene" || pol === "muskarci") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      openWithGender(pol);
       return;
     }
     if (params.get("book") === "1") {
@@ -103,9 +122,10 @@ export default function HomeClient() {
       <Footer onOpen={open} />
       <BookingModal
         isOpen={bookingOpen}
-        onClose={() => { setBookingOpen(false); setPreselectedNames([]); setPreselectedBundle(undefined); }}
+        onClose={() => { setBookingOpen(false); setPreselectedNames([]); setPreselectedBundle(undefined); setPreselectedGender(undefined); }}
         preselectedNames={preselectedNames}
         preselectedBundle={preselectedBundle}
+        preselectedGender={preselectedGender}
       />
 
     </main>
