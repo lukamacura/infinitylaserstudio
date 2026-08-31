@@ -33,7 +33,7 @@ interface BookingModalProps {
   preselectedGender?: "zene" | "muskarci";
 }
 
-type Step = 1 | 2 | "proof" | "plan" | 3 | 4 | 5 | "success" | "preparation";
+type Step = 1 | 2 | "plan" | 3 | 4 | 5 | "success" | "preparation";
 type BookingMode = "single" | "bundle";
 type Gender = "zene" | "muskarci";
 
@@ -225,7 +225,6 @@ const ACCENTS = {
 const STEP_LABELS: Record<Step, [string, string]> = {
   1: ["KORAK 1 OD 5", "Za koga zakazuješ?"],
   2: ["KORAK 1 OD 5", "Odaberi regije za tretman"],
-  proof: ["REZULTATI", "Ovako to izgleda u praksi"],
   plan: ["KORAK 2 OD 5", "Pojedinačno ili paket sa popustom?"],
   3: ["KORAK 3 OD 5", "Izaberi datum"],
   4: ["KORAK 4 OD 5", "Izaberi vreme"],
@@ -254,21 +253,6 @@ const NOTICES: Record<NoticeKey, { step: Step; message: string }> = {
   },
 };
 const NOTICE_ORDER = Object.keys(NOTICES) as NoticeKey[];
-
-/**
- * Social-proof step: one client's photo and her result, shown right before the
- * package step so the "treba ti serija tretmana" argument lands with evidence.
- */
-const PROOF = {
-  profileImg: "/sara/profile.webp",
-  beforeImg:  "/sara/before.webp",
-  afterImg:   "/sara/after.webp",
-  name:       "Sara",
-  sessions:   8,
-} as const;
-
-/** Soft ease-out (quint) shared by the proof-step reveal, so it lands instead of stopping. */
-const PROOF_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 /**
  * The modal is full-screen on every device, so on desktop the content would
@@ -670,8 +654,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   function handleBack() {
     if (step === 1) { handleClose(); }
     else if (step === 2) { setStep(1); setGender(null); setSelectedIds([]); }
-    else if (step === "proof") { setStep(2); }
-    else if (step === "plan") { setStep("proof"); }
+    else if (step === "plan") { setStep(2); }
     else if (step === 3) { setStep("plan"); setSelectedDate(""); setSelectedTime(""); }
     else if (step === 4) { setStep(3); setSelectedTime(""); }
     else if (step === 5) { setStep(4); }
@@ -940,7 +923,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
         fbclid: fbclidRef.current || undefined,
       }),
     }).catch(() => {});
-    setStep("proof");
+    setStep("plan");
   }
 
   function handleSelectSingle() {
@@ -1058,7 +1041,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
         {/* Header - from sm up, content lives in the centered COL_W column */}
         <div className={`flex items-center justify-between px-6 pt-6 pb-4 shrink-0 ${COL_W}`}>
           <div className="flex items-center gap-3">
-            {(step === 1 || step === 2 || step === "proof" || step === "plan" || step === 3 || step === 4 || step === 5 || step === "preparation") && (
+            {(step === 1 || step === 2 || step === "plan" || step === 3 || step === 4 || step === 5 || step === "preparation") && (
               <button onClick={handleBack} className="w-9 h-9 sm:w-11 sm:h-11 flex items-center justify-center rounded-full hover:bg-foreground/5 transition-colors cursor-pointer" aria-label="Nazad">
                 <ArrowLeft size={18} className="sm:w-[22px] sm:h-[22px]" />
               </button>
@@ -1186,141 +1169,6 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               })}
               </div>
               )}
-            </div>
-          )}
-
-          {/* ══ STEP "proof": Social proof ══════════════════════════════════ */}
-          {step === "proof" && (
-            <div className="min-h-full flex flex-col items-center justify-center text-center py-2">
-              {/* Who she is */}
-              <motion.div
-                className="flex flex-col items-center gap-1.5"
-                initial={{ opacity: 0, scale: 0.94 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.3, ease: PROOF_EASE }}
-              >
-                <div
-                  className="relative w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full overflow-hidden ring-4 ring-white"
-                  style={{ boxShadow: `0 0 0 2px ${accent.hex}40, 0 10px 26px -8px rgba(15,15,20,0.4)` }}
-                >
-                  {/* Source is a full 9:16 shot - bias the square crop up onto her face */}
-                  <Image
-                    src={PROOF.profileImg}
-                    alt={PROOF.name}
-                    fill
-                    sizes="(max-width: 640px) 64px, (max-width: 768px) 80px, 96px"
-                    className="object-cover object-[center_25%]"
-                  />
-                </div>
-                <span className="text-sm sm:text-base md:text-lg font-bold font-poppins text-foreground/75">{PROOF.name}</span>
-              </motion.div>
-
-              {/* Her legs: before → after, linked by a drawn arrow */}
-              <div className="flex items-center justify-center gap-1.5 sm:gap-3 md:gap-4 w-full max-w-[310px] sm:max-w-[460px] md:max-w-[580px] mt-3.5 sm:mt-6">
-                <motion.div
-                  className="flex-1 min-w-0"
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.34, ease: PROOF_EASE, delay: 0.1 }}
-                >
-                  <div className="relative w-full aspect-3/4 rounded-2xl sm:rounded-3xl overflow-hidden shadow-[0_10px_26px_-10px_rgba(15,15,20,0.4)]">
-                    <Image
-                      src={PROOF.beforeImg}
-                      alt="Noge pre tretmana"
-                      fill
-                      sizes="(max-width: 640px) 40vw, (max-width: 768px) 210px, 270px"
-                      className="object-cover"
-                    />
-                    <span className="absolute bottom-2 sm:bottom-3 left-1/2 -translate-x-1/2 px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-full text-[9px] sm:text-[11px] md:text-xs font-bold font-poppins tracking-wide text-white bg-foreground/55 backdrop-blur-sm">
-                      PRE
-                    </span>
-                  </div>
-                </motion.div>
-
-                <div className="shrink-0 w-[34px] sm:w-[52px] md:w-[64px]">
-                  <svg viewBox="0 0 40 24" fill="none" className="w-full h-auto overflow-visible" aria-hidden="true">
-                    <motion.path
-                      d="M4 12 H 29"
-                      stroke={accent.hex}
-                      strokeWidth={3}
-                      strokeLinecap="round"
-                      initial={{ pathLength: 0, opacity: 0 }}
-                      animate={{ pathLength: 1, opacity: 1 }}
-                      transition={{
-                        pathLength: { duration: 0.3, ease: PROOF_EASE, delay: 0.26 },
-                        opacity: { duration: 0.12, delay: 0.26 },
-                      }}
-                    />
-                    <motion.path
-                      d="M23 5 L 31 12 L 23 19"
-                      stroke={accent.hex}
-                      strokeWidth={3}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      initial={{ opacity: 0, scale: 0.5 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      style={{ transformOrigin: "31px 12px" }}
-                      transition={{ duration: 0.22, ease: PROOF_EASE, delay: 0.44 }}
-                    />
-                  </svg>
-                </div>
-
-                <motion.div
-                  className="flex-1 min-w-0"
-                  initial={{ opacity: 0, y: 12, scale: 0.97 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  transition={{ duration: 0.36, ease: PROOF_EASE, delay: 0.44 }}
-                >
-                  <div
-                    className="relative w-full aspect-3/4 rounded-2xl sm:rounded-3xl overflow-hidden"
-                    style={{ boxShadow: `0 0 0 2px ${accent.hex}, 0 14px 32px -10px rgba(15,15,20,0.45)` }}
-                  >
-                    <Image
-                      src={PROOF.afterImg}
-                      alt={`Noge nakon ${PROOF.sessions} tretmana`}
-                      fill
-                      sizes="(max-width: 640px) 40vw, (max-width: 768px) 210px, 270px"
-                      className="object-cover"
-                    />
-                    <span
-                      className="absolute bottom-2 sm:bottom-3 left-1/2 -translate-x-1/2 px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-full text-[9px] sm:text-[11px] md:text-xs font-bold font-poppins tracking-wide text-white whitespace-nowrap"
-                      style={{ backgroundColor: accent.hex }}
-                    >
-                      POSLE {PROOF.sessions} TRETMANA
-                    </span>
-                  </div>
-                </motion.div>
-              </div>
-
-              <motion.div
-                className="mt-4 sm:mt-7"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.34, ease: PROOF_EASE, delay: 0.62 }}
-              >
-                <h3 className="text-xl sm:text-2xl md:text-3xl font-bold font-playfair leading-snug max-w-[300px] sm:max-w-[460px] md:max-w-[560px] mx-auto">
-                  {PROOF.name} se rešila dlačica nakon{" "}
-                  <span style={{ color: accent.hex }}>{PROOF.sessions} tretmana</span>
-                </h3>
-                <p className="text-[13px] sm:text-[15px] md:text-base font-poppins text-foreground/50 leading-snug mt-2 sm:mt-3 max-w-[300px] sm:max-w-[440px] md:max-w-[520px] mx-auto">
-                  Rezultat ne dolazi iz jednog tretmana, već iz serije - zato većina naših
-                  klijentkinja odmah uzme paket.
-                </p>
-              </motion.div>
-
-              {/* Volume proof, closing the screen */}
-              <motion.div
-                className="flex items-center gap-2.5 sm:gap-3 mt-3 sm:mt-5 px-4 sm:px-6 py-2 sm:py-3 rounded-xl sm:rounded-2xl border"
-                style={{ backgroundColor: `${accent.hex}0F`, borderColor: `${accent.hex}26` }}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.34, ease: PROOF_EASE, delay: 0.74 }}
-              >
-                <span className="text-base sm:text-xl leading-none shrink-0" style={{ color: accent.hex }}>♥</span>
-                <p className="text-xs sm:text-sm md:text-base font-poppins text-foreground/65 font-medium leading-snug">
-                  Preko 1700 žena se uspešno rešilo dlačica
-                </p>
-              </motion.div>
             </div>
           )}
 
@@ -1893,7 +1741,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
           </div>
 
           {/* ── Sticky footer: primary CTA always visible while scrolling ───────── */}
-          {(step === 2 || step === "proof" || step === 3 || step === 4 || step === 5 || step === "success" || step === "preparation") && (
+          {(step === 2 || step === 3 || step === 4 || step === 5 || step === "success" || step === "preparation") && (
             <div className="shrink-0 border-t border-foreground/10 bg-white px-4 pt-3 pb-3 sm:pt-5 sm:pb-5 shadow-[0_-8px_24px_-4px_rgba(0,0,0,0.08)]">
               <div className={COL_W}>
               {step === 2 && (
@@ -1929,17 +1777,6 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                     NASTAVI
                   </button>
                 </div>
-              )}
-
-              {step === "proof" && (
-                <button
-                  type="button"
-                  onClick={() => setStep("plan")}
-                  className="w-full py-3.5 sm:py-4.5 rounded-full text-sm sm:text-base font-semibold tracking-widest font-poppins text-white active:scale-95 transition-transform cursor-pointer"
-                  style={{ backgroundColor: accent.hex, animation: "nastaviGlow 2s ease-in-out infinite" }}
-                >
-                  NASTAVI
-                </button>
               )}
 
               {step === 3 && (
