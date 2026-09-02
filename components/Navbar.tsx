@@ -72,7 +72,7 @@ export default function Navbar() {
               </svg>
             </a>
             <a
-              href="tel:+381653503057"
+              href="tel:+381677747301"
               aria-label="Pozovi"
               className="p-2 hover:text-white transition-colors duration-500"
             >

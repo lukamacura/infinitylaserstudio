@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import type { CSSProperties } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -22,6 +23,7 @@ import {
   eligibleBundleSizes, computeBundle, parseBundlePromo,
   bundlePurchaseCode, bundleRedeemCode, type BundleResult,
 } from "@/lib/bundles";
+import { STUDENT_PROMO_CODE, isStudentPromoCode } from "@/lib/pricing";
 
 interface BookingModalProps {
   isOpen: boolean;
@@ -132,10 +134,10 @@ function formatPrice(price: number): string {
   return price.toLocaleString("sr-RS");
 }
 
-/** Promo codes: `ils-` + any non-empty suffix (e.g. ils-leyla). Case-insensitive. */
-function isIlsPromoCode(raw: string): boolean {
-  return /^ils-.+$/i.test(raw.trim());
-}
+/* `ils-` promo codes (−10%) are deliberately NOT honoured here. They are an
+   admin-only discount, applied from the admin panel when creating/editing a
+   reservation - see AdminReservationModal. The public form accepts bundle
+   codes only. */
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -240,8 +242,9 @@ const PAYMENT_TERMS =
  * iOS-style banners "from Ana", each tied to the step it argues for.
  * One per step, shown once per modal session.
  */
-type NoticeKey = "guarantee" | "plan";
-const NOTICES: Record<NoticeKey, { step: Step; message: string }> = {
+type NoticeKey = "guarantee" | "plan" | "student";
+/** `step: null` = never auto-fires on a step; raised by hand from the flow. */
+const NOTICES: Record<NoticeKey, { step: Step | null; message: string }> = {
   guarantee: {
     step: 2,
     message: "Ako se ne rešiš 70–90% dlačica, vraćamo ti novac.",
@@ -250,6 +253,11 @@ const NOTICES: Record<NoticeKey, { step: Step; message: string }> = {
     step: "plan",
     message:
       "Za potpune rezultate telu treba 6–8, a licu 10 tretmana. Uzmi paket i uštedi - plaćaš jednom, dolaziš koliko ti treba.",
+  },
+  student: {
+    step: null,
+    message:
+      "Ponesi indeks na tretman. Bez njega studentski popust ne važi i plaćaš punu cenu.",
   },
 };
 const NOTICE_ORDER = Object.keys(NOTICES) as NoticeKey[];
@@ -299,9 +307,11 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   const [promoCode, setPromoCode]               = useState("");
   const [promoStatus, setPromoStatus]           = useState<"idle" | "valid" | "invalid">("idle");
   const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null);
-  /** "ils" = −10% promo, "bundle_redeem" = pre-paid bundle session (price 0). */
-  const [promoKind, setPromoKind]               = useState<"none" | "ils" | "bundle_redeem">("none");
+  /** "bundle_redeem" = pre-paid bundle session (price 0), "student" = −20%. */
+  const [promoKind, setPromoKind]               = useState<"none" | "bundle_redeem" | "student">("none");
   const [checkingPromo, setCheckingPromo]       = useState(false);
+  /** Why a code was refused - a plain "invalid" reads as wrong for a real code. */
+  const [promoErrorMsg, setPromoErrorMsg]       = useState<string | null>(null);
 
   // Step "plan" state
   const [bookingMode, setBookingMode] = useState<BookingMode>("single");
@@ -349,6 +359,14 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
         : calcBookingDuration(selectedServices);
   const totalPrice       = effectiveServices.reduce((sum, s) => sum + s.price, 0);
   const accent           = ACCENTS[gender ?? "zene"];
+  /** Step 2 list - "Celo telo" leads, it is the offer we most want booked. */
+  const pickableServices = useMemo(() => {
+    const visible = services.filter((s) => !isComboService(s.name));
+    return [
+      ...visible.filter((s) => isFullBody(s.name)),
+      ...visible.filter((s) => !isFullBody(s.name)),
+    ];
+  }, [services]);
 
   // ── Bundle ("Napravi svoj paket") ───────────────────────────────────────────
   const eligibleSizes = eligibleBundleSizes(effectiveServices);
@@ -358,21 +376,20 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       : null;
   const bundleActive = bookingMode === "bundle" && bundleResult != null;
 
-  // ── Discounts (mutually exclusive: bundle > redeem > ils) ────────────────────
-  const ilsPromoActive =
-    !bundleActive && promoKind === "ils" && promoStatus === "valid" &&
-    appliedPromoCode != null && isIlsPromoCode(appliedPromoCode);
+  // ── Discounts (mutually exclusive: bundle > redeem > student) ───────────────
   const redeemActive =
     !bundleActive && promoKind === "bundle_redeem" && promoStatus === "valid" &&
     appliedPromoCode != null;
+  const studentActive =
+    !bundleActive && !redeemActive && promoKind === "student" && promoStatus === "valid";
 
   const listTotal = bundleActive ? bundleResult!.originalTotal : totalPrice;
   const finalPrice = bundleActive
     ? bundleResult!.finalTotal
     : redeemActive
       ? 0
-      : ilsPromoActive
-        ? Math.round(totalPrice * 0.9)
+      : studentActive
+        ? Math.round(totalPrice * 0.8)
         : totalPrice;
   const savingsVsList = listTotal - finalPrice;
 
@@ -638,7 +655,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     setShowPolicyInfo(false);
     setSubmitError(null); setBookingRef(null);
     setPromoCode(""); setPromoStatus("idle"); setAppliedPromoCode(null);
-    setPromoKind("none"); setCheckingPromo(false);
+    setPromoKind("none"); setCheckingPromo(false); setPromoErrorMsg(null);
     setBookingMode("single"); setBundleSize(null);
     emailCheckSeqRef.current += 1;
     setIsReturningCustomer(null);
@@ -724,8 +741,17 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     setIsReturningCustomer(!!data);
   }
 
+  /** Shared exit for a refused code - `msg` explains why, when a reason helps. */
+  function rejectPromo(msg: string) {
+    setPromoStatus("invalid");
+    setAppliedPromoCode(null);
+    setPromoKind("none");
+    setPromoErrorMsg(msg);
+  }
+
   async function handleApplyPromo() {
     const raw = promoCode.trim();
+    setPromoErrorMsg(null);
     if (!raw) {
       setPromoStatus("idle");
       setAppliedPromoCode(null);
@@ -733,22 +759,46 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       return;
     }
 
-    // −10% ils- promo
-    if (isIlsPromoCode(raw)) {
+    // Student code - −20%, first treatment only. The student ID itself is checked
+    // at the studio; all we can verify here is that this email has never booked.
+    if (isStudentPromoCode(raw)) {
+      const email = form.email.trim();
+      if (!EMAIL_REGEX.test(email)) {
+        rejectPromo("Unesi svoj email pa primeni kod.");
+        return;
+      }
+      setCheckingPromo(true);
+      const { data, error } = await supabase
+        .from("reservations")
+        .select("id")
+        .ilike("customer_email", email)
+        .eq("status", "confirmed")
+        .limit(1)
+        .maybeSingle();
+      setCheckingPromo(false);
+      if (error) {
+        rejectPromo("Nevažeći promo kod.");
+        return;
+      }
+      if (data) {
+        rejectPromo("Studentski popust važi samo za prvi tretman.");
+        return;
+      }
       setPromoStatus("valid");
-      setAppliedPromoCode(raw);
-      setPromoKind("ils");
+      setAppliedPromoCode(STUDENT_PROMO_CODE);
+      setPromoKind("student");
+      // Raised by hand - the index-card warning matters more than any step notice.
+      setActiveNotice("student");
       return;
     }
 
     // Bundle code - redeeming a pre-paid follow-up session (price 0).
+    // `ils-` promo codes are rejected here on purpose (admin-only, see above).
     const bundle = parseBundlePromo(raw);
     if (bundle && !bundle.redeem) {
       const email = form.email.trim();
       if (!EMAIL_REGEX.test(email)) {
-        setPromoStatus("invalid");
-        setAppliedPromoCode(null);
-        setPromoKind("none");
+        rejectPromo("Nevažeći promo kod.");
         return;
       }
       setCheckingPromo(true);
@@ -767,16 +817,12 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
         setAppliedPromoCode(raw);
         setPromoKind("bundle_redeem");
       } else {
-        setPromoStatus("invalid");
-        setAppliedPromoCode(null);
-        setPromoKind("none");
+        rejectPromo("Nevažeći promo kod.");
       }
       return;
     }
 
-    setPromoStatus("invalid");
-    setAppliedPromoCode(null);
-    setPromoKind("none");
+    rejectPromo("Nevažeći promo kod.");
   }
 
   async function handleSubmit() {
@@ -814,8 +860,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     } else if (redeemActive) {
       promoForRecord = bundleRedeemCode(appliedPromoCode!);
       notesForRecord = `Iskorišćen tretman iz paketa ${appliedPromoCode}`;
-    } else if (ilsPromoActive) {
-      promoForRecord = appliedPromoCode;
+    } else if (studentActive) {
+      promoForRecord = STUDENT_PROMO_CODE;
+      notesForRecord = "STUDENTSKI POPUST −20% - proveri indeks pri dolasku!";
     }
     const listForSubmit  = listTotal;
     const finalForSubmit = finalPrice;
@@ -875,6 +922,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
         promo_code:       promoForRecord ?? "redovna cena",
         bundle_sessions:  bundleActive ? bundleSize : null,
         bundle_code:      bundleActive ? promoForRecord : null,
+        /* n8n uses this to add the "bring your student ID" line to the email. */
+        student_discount: studentActive,
         booking_ref:      bookingRefValue,
       }),
     }).catch(() => {});
@@ -936,7 +985,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     setBookingMode("bundle");
     setBundleSize(size);
     // A bundle is paid in full upfront - drop any single-session promo.
-    setPromoCode(""); setPromoStatus("idle"); setAppliedPromoCode(null); setPromoKind("none");
+    setPromoCode(""); setPromoStatus("idle"); setAppliedPromoCode(null); setPromoKind("none"); setPromoErrorMsg(null);
     setStep(3);
   }
 
@@ -1120,7 +1169,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               <div className="flex flex-col gap-2 mb-3 sm:mb-4">
                 <div className="flex items-center gap-2.5 sm:gap-3 px-3 sm:px-5 py-2.5 sm:py-3.5 rounded-xl sm:rounded-2xl bg-pink-100 border border-pink/15">
                   <span className="text-[#E85D8A] text-base sm:text-xl leading-none shrink-0">♥</span>
-                  <p className="text-xs sm:text-sm md:text-base font-poppins text-foreground/65 font-medium leading-snug">Preko 1700 žena se uspešno rešilo dlačica</p>
+                  <p className="text-xs sm:text-sm md:text-base font-poppins text-foreground/65 font-medium leading-snug">Preko 2000 žena se uspešno rešilo dlačica</p>
                 </div>
               </div>
               {loadingServices ? (
@@ -1131,10 +1180,55 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               /* Two columns from sm - the list is long enough that one column
                  wastes the horizontal room a desktop viewport gives us. */
               <div className="flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:gap-3">
-              {services.filter((s) => !isComboService(s.name)).map((service) => {
+              {pickableServices.map((service) => {
                 const isSelected = selectedIds.includes(service.id);
                 const isBlocked = fullBodySelected && !isSelected && !isAllowedWithFullBody(service.name);
                 const Icon = getIcon(service.name);
+
+                /* "Celo telo" gets the hero treatment: full width, always in the
+                   accent colour and softly glowing so it reads as the best deal. */
+                if (isFullBody(service.name)) {
+                  return (
+                    <div
+                      key={service.id}
+                      className="relative sm:col-span-2 mt-2 sm:mt-2.5"
+                      style={{ "--glow": accent.hex } as CSSProperties}
+                    >
+                      <span
+                        className="absolute -top-2 sm:-top-2.5 left-4 sm:left-5 z-10 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] sm:text-[11px] font-bold font-poppins tracking-widest text-white"
+                        style={{ backgroundColor: accent.hex }}
+                      >
+                        NAJISPLATIVIJE
+                      </span>
+                      <button
+                        onClick={() => toggleService(service.id)}
+                        className={`glow-card relative overflow-hidden flex items-center gap-3 sm:gap-4 w-full p-4 sm:p-5 rounded-2xl border-2 ${accent.border} ${isSelected ? accent.bgLight : "bg-transparent"} transition-all text-left cursor-pointer`}
+                      >
+                        <span className="shimmer-sweep" aria-hidden="true" />
+                        <div className={`relative w-12 h-12 sm:w-14 sm:h-14 rounded-xl flex items-center justify-center shrink-0 ${accent.bgMed}`}>
+                          <Icon size={24} style={{ color: accent.hex }} className="sm:w-7 sm:h-7" />
+                        </div>
+                        <div className="relative flex-1 min-w-0">
+                          <p className="text-base sm:text-lg font-bold font-poppins">{service.name}</p>
+                          <span className="block text-[11px] sm:text-[13px] text-foreground/50 font-poppins leading-snug mt-0.5">
+                            Sve regije u jednom tretmanu - najbolji odnos cene i rezultata
+                          </span>
+                          <span className="block text-sm sm:text-base font-bold font-poppins mt-1" style={{ color: accent.hex }}>
+                            {formatPrice(service.price)} RSD
+                          </span>
+                        </div>
+                        <div className={`relative w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg border-2 flex items-center justify-center transition-all shrink-0 ${isSelected ? `${accent.border} ${accent.bg}` : "border-foreground/20"}`}>
+                          {isSelected && (
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="sm:w-3.5 sm:h-3.5">
+                              <path d="M20 6L9 17l-5-5" />
+                            </svg>
+                          )}
+                        </div>
+                      </button>
+                    </div>
+                  );
+                }
+
                 return (
                   <button
                     key={service.id}
@@ -1445,6 +1539,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                         setPromoStatus("idle");
                         setAppliedPromoCode(null);
                         setPromoKind("none");
+                        setPromoErrorMsg(null);
                       }}
                       disabled={checkingReturningEmail || checkingPromo}
                       className="flex-1 min-w-0 px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl border-2 border-foreground/10 focus:outline-none font-poppins text-sm sm:text-base transition-colors disabled:opacity-60"
@@ -1461,20 +1556,40 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                       {checkingPromo ? "…" : "Primeni"}
                     </button>
                   </div>
-                  {promoStatus === "valid" && ilsPromoActive && (
-                    <p className="text-xs text-green-600 font-poppins mt-2">
-                      Kod primenjen - −10% na redovnu cenu.
-                    </p>
-                  )}
                   {promoStatus === "valid" && redeemActive && (
                     <p className="text-xs text-green-600 font-poppins mt-2">
                       Paket potvrđen - ovaj tretman je već plaćen. Cena: 0 RSD.
                     </p>
                   )}
+                  {/* Deliberately amber, not green: the discount is conditional and
+                      the condition is the whole point of the message. */}
+                  {studentActive && (
+                    <div className="flex items-start gap-2.5 mt-2 p-3 sm:p-3.5 rounded-xl bg-amber-50 border-2 border-amber-300">
+                      <AlertCircle size={18} className="text-amber-600 shrink-0 mt-px" />
+                      <div className="min-w-0">
+                        <p className="text-xs sm:text-sm font-bold font-poppins text-amber-900">
+                          Studentski popust −20% primenjen
+                        </p>
+                        <p className="text-[11px] sm:text-xs font-poppins text-amber-800 leading-snug mt-0.5">
+                          Obavezno ponesi indeks na tretman. Bez indeksa popust ne važi i plaćaš punu cenu.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   {promoStatus === "invalid" && (
                     <p className="text-xs text-red-500 font-poppins mt-2">
-                      Nevažeći kod. Unesite promo kod ili tačan kod paketa uz email kojim je paket plaćen.
+                      {promoErrorMsg ?? "Nevažeći promo kod."}
                     </p>
+                  )}
+                  {/* Discovery for anyone who never saw the ad. One tap fills the code. */}
+                  {promoKind === "none" && isReturningCustomer !== true && (
+                    <button
+                      type="button"
+                      onClick={() => { setPromoCode(STUDENT_PROMO_CODE); setPromoStatus("idle"); setPromoErrorMsg(null); }}
+                      className="text-[11px] sm:text-xs font-poppins text-foreground/45 hover:text-foreground/70 underline underline-offset-2 mt-2 cursor-pointer transition-colors"
+                    >
+                      Student? Iskoristi −20% na prvi tretman
+                    </button>
                   )}
                 </div>
               )}
@@ -1503,13 +1618,13 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                       <span className="text-sm sm:text-base font-poppins text-foreground/50">
                         {bundleActive ? `Redovna cena (${bundleSize}×)` : "Redovna cena"}
                       </span>
-                      <span className={`text-sm sm:text-base font-poppins font-semibold ${ilsPromoActive || bundleActive || redeemActive ? "text-foreground/40 line-through" : "font-bold text-foreground"}`}>
+                      <span className={`text-sm sm:text-base font-poppins font-semibold ${bundleActive || redeemActive || studentActive ? "text-foreground/40 line-through" : "font-bold text-foreground"}`}>
                         {formatPrice(listTotal)} RSD
                       </span>
                     </div>
-                    {ilsPromoActive && (
+                    {studentActive && (
                       <div className="flex justify-between items-center mt-1.5">
-                        <span className="text-sm sm:text-base font-poppins text-green-800 font-semibold">Sa promo kodom (−10%)</span>
+                        <span className="text-sm sm:text-base font-poppins text-green-800 font-semibold">Studentski popust (−20%)</span>
                         <span className="text-sm sm:text-base font-poppins font-bold text-green-800">{formatPrice(finalPrice)} RSD</span>
                       </div>
                     )}
@@ -1530,6 +1645,11 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                         <span className="text-xs sm:text-sm font-poppins text-foreground/40">Ušteda</span>
                         <span className="text-xs sm:text-sm font-poppins font-semibold" style={{ color: "#E85D8A" }}>{formatPrice(savingsVsList)} RSD</span>
                       </div>
+                    )}
+                    {studentActive && (
+                      <p className="text-[11px] sm:text-[13px] font-poppins text-amber-800 font-semibold leading-snug mt-2.5 pt-2.5 border-t border-foreground/8">
+                        Ova cena važi uz indeks. Bez njega se naplaćuje {formatPrice(listTotal)} RSD.
+                      </p>
                     )}
                     {bundleActive && (
                       <p className="text-[11px] sm:text-[13px] font-poppins text-foreground/45 leading-snug mt-2.5 pt-2.5 border-t border-foreground/8">
@@ -1642,7 +1762,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                 >
                   <p className="text-[10px] sm:text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-1 sm:mb-2">CENA</p>
 
-                  {(ilsPromoActive || bundleActive || redeemActive) && (
+                  {(bundleActive || redeemActive || studentActive) && (
                     <p className="text-xs sm:text-sm text-foreground/35 font-poppins line-through leading-none mb-0.5">
                       {formatPrice(listTotal)} RSD
                     </p>
@@ -1659,9 +1779,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                     <span className="mt-2 sm:mt-3 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-poppins text-white bg-green-500">
                       PLAĆENO U PAKETU
                     </span>
-                  ) : ilsPromoActive ? (
-                    <span className="mt-2 sm:mt-3 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-poppins text-white bg-green-500">
-                      −10% PROMO
+                  ) : studentActive ? (
+                    <span className="mt-2 sm:mt-3 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-poppins text-white bg-amber-500">
+                      STUDENT −20% · UZ INDEKS
                     </span>
                   ) : (
                     <span className="mt-2 sm:mt-3 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-poppins text-foreground/70 bg-foreground/10">
@@ -1682,10 +1802,13 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                     <span className="font-semibold">{value}</span>
                   </div>
                 ))}
-                {promoStatus === "valid" && appliedPromoCode && isIlsPromoCode(appliedPromoCode) && (
-                  <p className="text-xs text-green-600 font-poppins text-right">
-                    Promo kod {appliedPromoCode} primenjen (−10% na redovnu cenu)
-                  </p>
+                {studentActive && (
+                  <div className="flex items-start gap-2.5 p-3 sm:p-3.5 rounded-xl bg-amber-50 border-2 border-amber-300">
+                    <AlertCircle size={18} className="text-amber-600 shrink-0 mt-px" />
+                    <p className="text-[11px] sm:text-xs font-poppins text-amber-900 font-semibold leading-snug">
+                      Ne zaboravi indeks! Bez njega studentski popust ne važi i naplaćuje se puna cena od {formatPrice(listTotal)} RSD.
+                    </p>
+                  </div>
                 )}
                 <div className="border-t border-foreground/10 pt-3">
                   <p className="text-xs sm:text-sm text-foreground/40 font-poppins mb-1.5 sm:mb-2">USLUGE</p>
@@ -1780,7 +1903,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               )}
 
               {step === 3 && (
-                <p className="text-center text-[10px] sm:text-sm font-poppins text-foreground/40">Preko 1700 žena se uspešno rešilo dlačica</p>
+                <p className="text-center text-[10px] sm:text-sm font-poppins text-foreground/40">Preko 2000 žena se uspešno rešilo dlačica</p>
               )}
 
               {step === 4 && (

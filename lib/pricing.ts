@@ -17,10 +17,23 @@ export function isIlsPromoCode(raw: string | null | undefined): boolean {
   return !!raw && /^ils-.+$/i.test(raw.trim());
 }
 
+/**
+ * Student discount: −20% on the first treatment, valid only against a student ID
+ * shown at the studio. Unlike every other code this one cannot be verified while
+ * booking, so the price it produces is provisional - the admin panel can strip the
+ * code off the reservation, which returns it to full price everywhere.
+ */
+export const STUDENT_PROMO_CODE = "student20";
+
+export function isStudentPromoCode(raw: string | null | undefined): boolean {
+  return !!raw && raw.trim().toLowerCase() === STUDENT_PROMO_CODE;
+}
+
 export type DiscountKind =
   | "fifty"
   | "promo"
   | "fifty_promo"
+  | "student"
   | "bundle"
   | "bundle_redeem"
   | "none";
@@ -34,7 +47,9 @@ export interface PriceResult {
   fiftyOff: boolean;
   /** −10% ils- promo code applied. */
   promoOff: boolean;
-  /** The applied promo code (only when promoOff). */
+  /** −20% student code applied (pending a student ID at the studio). */
+  studentOff: boolean;
+  /** The applied promo code (only when promoOff or studentOff). */
   promoCode: string | null;
   /** Number of treatments in the bundle (only when kind is a bundle). */
   bundleSessions: number | null;
@@ -47,6 +62,8 @@ export interface PriceResult {
  *   treatment AND it was booked before the 50% promo was removed.
  * - 10% ils- promo stacks on top of whatever base remains (matches the historical
  *   booking-flow behaviour where the promo applied after the first-treatment cut).
+ * - 20% student code never stacks with the ils- promo; it is only ever issued for
+ *   a first treatment, so it also cannot meet the (retired) 50% discount.
  */
 export function computeReservationPrice(opts: {
   listPrice: number;
@@ -66,6 +83,7 @@ export function computeReservationPrice(opts: {
       finalPrice: bundle.redeem ? 0 : bundle.total,
       fiftyOff: false,
       promoOff: false,
+      studentOff: false,
       promoCode: promoCode!.trim(),
       bundleSessions: bundle.sessions,
       kind: bundle.redeem ? "bundle_redeem" : "bundle",
@@ -76,20 +94,27 @@ export function computeReservationPrice(opts: {
     createdAt != null && new Date(createdAt) < FIRST_TREATMENT_50_END;
   const fiftyOff = isFirstTreatment && bookedBeforeCutoff;
   const promoOff = isIlsPromoCode(promoCode);
+  const studentOff = isStudentPromoCode(promoCode);
 
   let finalPrice = listPrice;
   if (fiftyOff) finalPrice = Math.round(finalPrice * 0.5);
   if (promoOff) finalPrice = Math.round(finalPrice * 0.9);
+  if (studentOff) finalPrice = Math.round(finalPrice * 0.8);
 
   const kind: DiscountKind =
-    fiftyOff && promoOff ? "fifty_promo" : fiftyOff ? "fifty" : promoOff ? "promo" : "none";
+    fiftyOff && promoOff ? "fifty_promo"
+      : fiftyOff ? "fifty"
+      : promoOff ? "promo"
+      : studentOff ? "student"
+      : "none";
 
   return {
     listPrice,
     finalPrice,
     fiftyOff,
     promoOff,
-    promoCode: promoOff ? promoCode!.trim() : null,
+    studentOff,
+    promoCode: promoOff || studentOff ? promoCode!.trim() : null,
     bundleSessions: null,
     kind,
   };

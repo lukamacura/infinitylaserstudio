@@ -9,7 +9,9 @@ import {
 import { supabase } from "@/lib/supabase";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const ADMIN_PWD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "anails";
+/** Set via NEXT_PUBLIC_ADMIN_PASSWORD. No fallback on purpose - with the
+    variable unset, login simply never succeeds. */
+const ADMIN_PWD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD;
 
 const SR_MONTHS = [
   "januar", "februar", "mart", "april", "maj", "jun",
@@ -87,7 +89,7 @@ export default function MarketingPage() {
 
   function handleLogin(e: FormEvent) {
     e.preventDefault();
-    if (password === ADMIN_PWD) {
+    if (ADMIN_PWD && password === ADMIN_PWD) {
       sessionStorage.setItem("ils_admin", "1");
       setAuthenticated(true);
     } else {

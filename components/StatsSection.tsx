@@ -1,5 +1,5 @@
 const stats = [
-  { value: "1700+", label: "Zadovoljnih klijenata", sub: "koji su rekli zbogom brijaču" },
+  { value: "2000+", label: "Zadovoljnih klijenata", sub: "koji su rekli zbogom brijaču" },
   { value: "20+", label: "Zona tretmana", sub: "za svaki deo tela" },
   { value: "70-90%", label: "Dlačica", sub: "uklonjeno zauvek" },
 ];

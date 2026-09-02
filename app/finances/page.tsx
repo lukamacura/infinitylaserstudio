@@ -13,7 +13,9 @@ import type { ReservationStatus } from "@/lib/database.types";
 import { computeReservationPrice } from "@/lib/pricing";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const ADMIN_PWD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "anails";
+/** Set via NEXT_PUBLIC_ADMIN_PASSWORD. No fallback on purpose - with the
+    variable unset, login simply never succeeds. */
+const ADMIN_PWD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD;
 const MARKETING_FEE = 311110;
 
 const SR_MONTHS = ["januar", "februar", "mart", "april", "maj", "jun", "jul", "avgust", "septembar", "oktobar", "novembar", "decembar"];
@@ -165,7 +167,7 @@ export default function FinancesPage() {
 
   function handleLogin(e: FormEvent) {
     e.preventDefault();
-    if (password === ADMIN_PWD) { sessionStorage.setItem("ils_admin", "1"); setAuthenticated(true); }
+    if (ADMIN_PWD && password === ADMIN_PWD) { sessionStorage.setItem("ils_admin", "1"); setAuthenticated(true); }
     else setPwdError(true);
   }
 
@@ -390,7 +392,7 @@ export default function FinancesPage() {
                   <tr><td colSpan={4} className="px-8 py-20 text-center opacity-20"><Wallet size={48} className="mx-auto mb-2"/><p className="font-poppins text-sm font-medium uppercase tracking-widest">Nema podataka</p></td></tr>
                 ) : (
                   calculated.map(r => {
-                    const { finalPrice, effectiveServices, fiftyOff, promoOff, promoCode, listPrice } = r.calc;
+                    const { finalPrice, effectiveServices, fiftyOff, promoOff, studentOff, promoCode, listPrice } = r.calc;
                     const services = effectiveServices.map(s => s.name).join(", ");
                     const hasDiscount = finalPrice !== listPrice;
                     const d = new Date(r.date);
@@ -421,6 +423,11 @@ export default function FinancesPage() {
                               {promoOff && (
                                 <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 uppercase tracking-widest">
                                   <Tag size={10} /> −10% promo{promoCode ? ` · ${promoCode}` : ""}
+                                </div>
+                              )}
+                              {studentOff && (
+                                <div className="flex items-center gap-1 text-[9px] font-bold text-amber-600 uppercase tracking-widest">
+                                  <Tag size={10} /> −20% student
                                 </div>
                               )}
                             </div>

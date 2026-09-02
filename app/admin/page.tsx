@@ -17,7 +17,9 @@ import { computeReservationPrice, type PriceResult } from "@/lib/pricing";
 import { parseBundlePromo } from "@/lib/bundles";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const ADMIN_PWD   = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "anails";
+/** Set via NEXT_PUBLIC_ADMIN_PASSWORD. No fallback on purpose - with the
+    variable unset, login simply never succeeds. */
+const ADMIN_PWD   = process.env.NEXT_PUBLIC_ADMIN_PASSWORD;
 const SLOT_PX     = 14;
 const PX_PER_MIN  = SLOT_PX / 10;
 const BIZ_START   = 8 * 60;   // calendar grid spans 08:00 …
@@ -477,7 +479,7 @@ export default function AdminPage() {
   }
 
   function openOverride(dateStr: string) {
-    setOverrideDraft(resolveWindows(dateStr, availability) ?? []);
+~    setOverrideDraft(resolveWindows(dateStr, availability) ?? []);
     setOverrideDate(dateStr);
   }
 
@@ -505,7 +507,7 @@ export default function AdminPage() {
 
   function handleLogin(e: FormEvent) {
     e.preventDefault();
-    if (password === ADMIN_PWD) {
+    if (ADMIN_PWD && password === ADMIN_PWD) {
       sessionStorage.setItem("ils_admin", "1");
       setAuthenticated(true);
     } else {
@@ -626,6 +628,36 @@ export default function AdminPage() {
     });
     setSaving(false);
     setSelected(null);
+  }
+
+  /**
+   * No student ID at the treatment - strip the code so every price in the app
+   * (calendar, finances, stats) recomputes at full price, and record why.
+   */
+  async function handleRevokeStudentDiscount() {
+    if (!selected) return;
+    setSaving(true);
+    const stamp = new Date().toLocaleDateString("sr-RS");
+    const revokedNote = [newNotes.trim(), `Studentski popust ukinut ${stamp} - bez indeksa.`]
+      .filter(Boolean)
+      .join(" · ");
+    const { error } = await supabase
+      .from("reservations")
+      .update({ promo_code: null, notes: revokedNote })
+      .eq("id", selected.id);
+    if (error) {
+      console.error("Revoking the student discount failed:", error);
+      setSaving(false);
+      return;
+    }
+    setReservations((prev) =>
+      prev.map((r) => r.id === selected.id ? { ...r, promo_code: null, notes: revokedNote } : r)
+    );
+    setNewNotes(revokedNote);
+    setSelectedPrice((prev) =>
+      prev ? { ...prev, finalPrice: prev.listPrice, studentOff: false, promoCode: null, kind: "none" } : prev
+    );
+    setSaving(false);
   }
 
   // ── Call action handlers ───────────────────────────────────────────────────
@@ -1415,6 +1447,11 @@ export default function AdminPage() {
                           Paket{selectedPrice.bundleSessions ? ` ${selectedPrice.bundleSessions}×` : ""} · iskorišćen tretman
                         </span>
                       )}
+                      {selectedPrice.studentOff && (
+                        <span className="text-[10px] font-bold font-poppins uppercase tracking-widest text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
+                          −20% student · uz indeks
+                        </span>
+                      )}
                       {selectedPrice.kind === "none" && (
                         <span className="text-[10px] font-bold font-poppins uppercase tracking-widest text-foreground/40 bg-foreground/5 px-2.5 py-1 rounded-lg border border-foreground/8">Bez popusta</span>
                       )}
@@ -1432,6 +1469,17 @@ export default function AdminPage() {
                       <p className="text-lg font-bold font-poppins text-teal leading-tight mt-0.5">{selectedPrice.finalPrice.toLocaleString("sr-RS")} RSD</p>
                     </div>
                   </div>
+                  {/* The student discount is the one code nobody could verify while
+                      booking - this is where it gets settled against a real index. */}
+                  {selectedPrice.studentOff && (
+                    <button
+                      onClick={handleRevokeStudentDiscount}
+                      disabled={saving}
+                      className="w-full mt-3 py-2.5 rounded-xl border-2 border-amber-300 bg-amber-50 text-[11px] font-bold font-poppins uppercase tracking-wider text-amber-800 hover:bg-amber-100 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {saving ? "Čuvam…" : "Nije donela indeks — naplati punu cenu"}
+                    </button>
+                  )}
                 </div>
               )}
 
