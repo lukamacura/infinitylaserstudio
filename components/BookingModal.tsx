@@ -275,8 +275,8 @@ const ACCENTS = {
 
 /** Per-gender social proof - shown on the services step and the date step. */
 const SOCIAL_PROOF: Record<Gender, { mark: string; line: string }> = {
-  zene: { mark: "♥", line: "Preko 2000 žena se uspešno rešilo dlačica" },
-  muskarci: { mark: "◆", line: "Preko 2000 muškaraca se uspešno rešilo dlačica" },
+  zene: { mark: "♥", line: "Preko 2000 ljudi se uspešno rešilo dlačica" },
+  muskarci: { mark: "◆", line: "Preko 2000 ljudi se uspešno rešilo dlačica" },
 };
 
 const STEP_LABELS: Record<Step, [string, string]> = {
@@ -291,7 +291,7 @@ const STEP_LABELS: Record<Step, [string, string]> = {
 };
 
 const PAYMENT_TERMS =
-  "Plati ceo iznos paketa na prvom tretmanu i rezerviši sve preostale termine uz zagarantovanu dostupnost.";
+  "Ceo paket plaćaš na prvom tretmanu - svi preostali termini su ti zagarantovani.";
 
 /**
  * iOS-style banners "from Ana", each tied to the step it argues for.
@@ -1200,7 +1200,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
         className={`bm-sheet relative shadow-2xl w-full h-full flex flex-col overflow-hidden transition-all duration-300 ${isAnimating ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-95 translate-y-4"}`}
       >
         {/* Header - from sm up, content lives in the centered COL_W column */}
-        <div className={`flex items-center justify-between px-6 pt-6 pb-4 shrink-0 ${COL_W}`}>
+        <div className={`flex items-center justify-between px-4 sm:px-6 pt-4 sm:pt-6 pb-2 sm:pb-4 shrink-0 ${COL_W}`}>
           <div className="flex items-center gap-3">
             {(step === 1 || step === 2 || step === "plan" || step === 3 || step === 4 || step === 5 || step === "preparation") && (
               <button onClick={handleBack} className="w-9 h-9 sm:w-11 sm:h-11 flex items-center justify-center rounded-full hover:bg-foreground/5 transition-colors cursor-pointer" aria-label="Nazad">
@@ -1215,7 +1215,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
         </div>
 
         {/* Step indicator */}
-        <div className={`px-6 pb-4 sm:pb-6 shrink-0 ${COL_W}`}>
+        <div className={`px-4 sm:px-6 pb-3 sm:pb-6 shrink-0 ${COL_W}`}>
           <p
             className="text-xs sm:text-[13px] text-foreground/50 tracking-[3px] font-semibold font-poppins"
             style={gender ? { color: accent.hex } : undefined}
@@ -1227,7 +1227,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
           {/* Scrollable content - primary actions live in sticky footer below */}
-          <div ref={scrollBodyRef} className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-6 pb-2 ${COL_W}`}>
+          <div ref={scrollBodyRef} className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 sm:px-6 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:pb-2 ${COL_W}`}>
 
 
           {/* ══ STEP 1: Gender ══════════════════════════════════════════════ */}
@@ -1412,16 +1412,16 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               <button
                 type="button"
                 onClick={handleSelectSingle}
-                className="flex items-center justify-between gap-3 sm:gap-4 w-full p-3 sm:p-5 rounded-2xl sm:rounded-3xl border-2 border-foreground/8 hover:border-foreground/20 text-left cursor-pointer transition-all"
+                className="flex items-center justify-between gap-3 sm:gap-4 w-full px-3.5 py-3 sm:p-5 rounded-2xl sm:rounded-3xl border-2 border-foreground/8 hover:border-foreground/20 text-left cursor-pointer transition-all"
               >
-                <div className="flex flex-col gap-1 min-w-0">
+                <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
                   <p className="text-sm sm:text-base md:text-lg font-bold font-poppins">Samo 1 tretman</p>
                   <span className="text-[11px] sm:text-[13px] font-poppins text-foreground/45 leading-snug">
-                    Bez popusta - plaćaš tretman po tretman
+                    Bez popusta
                   </span>
                 </div>
-                <p className="text-base sm:text-xl font-bold font-poppins leading-tight shrink-0">
-                  {formatPrice(totalPrice)} RSD
+                <p className="text-base sm:text-xl font-bold font-poppins leading-tight shrink-0 tabular-nums">
+                  {formatPrice(totalPrice)}<span className="ml-1 text-[10px] sm:text-sm font-semibold">RSD</span>
                 </p>
               </button>
 
@@ -1457,7 +1457,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                       /* Tilt-in, dealt one by one; the best-value package lands
                          last with extra overshoot so the eye ends on it. */
                       <motion.div
-                        className="relative shrink-0 w-20 h-20 sm:w-[104px] sm:h-[104px]"
+                        className="relative shrink-0 w-14 h-14 sm:w-[104px] sm:h-[104px]"
                         style={{ transformPerspective: 600 }}
                         initial={reduceMotion ? { opacity: 0 } : { opacity: 0, rotateY: -28, rotateX: 10, scale: 0.85 }}
                         animate={{ opacity: 1, rotateY: 0, rotateX: 0, scale: 1 }}
@@ -1485,7 +1485,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                               src={BUNDLE_IMAGES[size]}
                               alt={`Paket ${size} tretmana`}
                               fill
-                              sizes="(max-width: 640px) 80px, 104px"
+                              sizes="(max-width: 640px) 56px, 104px"
                               className="rounded-xl object-contain"
                             />
                             {isBest && (
@@ -1502,27 +1502,29 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                         </motion.div>
                       </motion.div>
                     )}
-                    <div className="flex items-center justify-between gap-3 sm:gap-4 flex-1 min-w-0">
-                      <div className="flex flex-col gap-1.5 sm:gap-2 min-w-0">
-                        <div className="flex items-center gap-2 sm:gap-2.5">
-                          <p className="text-sm sm:text-base md:text-lg font-bold font-poppins">Paket {size} tretmana</p>
+                    {/* Two aligned rows (name | price, savings | list price) so
+                        nothing wraps on a 360px screen. */}
+                    <div className="flex flex-col gap-1 sm:gap-2 flex-1 min-w-0">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <p className="text-sm sm:text-base md:text-lg font-bold font-poppins truncate">Paket {size} tretmana</p>
+                        <p className="text-base sm:text-xl font-bold font-poppins leading-tight shrink-0 tabular-nums" style={{ color: accent.hex }}>
+                          {formatPrice(b.finalTotal)}<span className="ml-1 text-[10px] sm:text-sm font-semibold">RSD</span>
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
                           <span
-                            className="px-1.5 sm:px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-bold font-poppins bm-metal"
+                            className="px-1.5 sm:px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-bold font-poppins bm-metal shrink-0"
                             style={{ backgroundColor: accent.hex }}
                           >
                             −{b.blendedPct}%
                           </span>
+                          <span className="text-[11px] sm:text-sm font-semibold font-poppins text-emerald-300 truncate">
+                            Ušteda {formatPrice(b.savings)}
+                          </span>
                         </div>
-                        <span className="self-start px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-poppins text-emerald-300 bg-emerald-400/10 border border-emerald-400/25">
-                          Ušteda {formatPrice(b.savings)} RSD
-                        </span>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-[11px] sm:text-[13px] text-foreground/35 font-poppins line-through leading-none">
+                        <p className="text-[11px] sm:text-[13px] text-foreground/35 font-poppins line-through shrink-0 tabular-nums">
                           {formatPrice(b.originalTotal)}
-                        </p>
-                        <p className="text-base sm:text-xl font-bold font-poppins leading-tight sm:mt-0.5" style={{ color: accent.hex }}>
-                          {formatPrice(b.finalTotal)} RSD
                         </p>
                       </div>
                     </div>
@@ -2070,7 +2072,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
           {/* ── Sticky footer: primary CTA always visible while scrolling ───────── */}
           {(step === 2 || step === 3 || step === 4 || step === 5 || step === "success" || step === "preparation") && (
-            <div className="shrink-0 border-t border-foreground/10 bg-[var(--bm-bg)]/90 backdrop-blur-md px-4 pt-3 pb-3 sm:pt-5 sm:pb-5 shadow-[0_-8px_24px_-4px_rgba(0,0,0,0.5)]">
+            <div className="shrink-0 sm:border-t sm:border-foreground/10 bg-[var(--bm-bg)]/90 backdrop-blur-md px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pt-5 sm:pb-5 shadow-[0_-12px_24px_-12px_rgba(0,0,0,0.6)]">
               <div className={COL_W}>
               {step === 2 && (
                 <div className="flex flex-col gap-2">
@@ -2167,8 +2169,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
           )}
         </div>
 
-        {/* Bottom accent bar */}
-        <div className="h-1 bm-metal shrink-0" />
+        {/* Bottom accent bar - desktop only; on phones it read as a stray border
+            against the home indicator. */}
+        <div className="hidden sm:block h-1 bm-metal shrink-0" />
       </div>
     </div>
   );
