@@ -1,6 +1,10 @@
 "use client";
 
-import Image from "next/image";
+import { getImageProps } from "next/image";
+
+const common = { alt: "", fill: true, sizes: "100vw", fetchPriority: "high", loading: "eager" } as const;
+const { props: { srcSet: desktopSrcSet } } = getImageProps({ ...common, src: "/desktop.webp", quality: 70 });
+const { props: mobileImg } = getImageProps({ ...common, src: "/phone.webp", quality: 65 });
 
 const steps = [
   { dot: "bg-rose-300", phase: "Danas",         label: "Svaki dan se briješ" },
@@ -22,30 +26,19 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
         background: "linear-gradient(115deg, #7DD8D5 0%, #ACE6E4 25%, #FCD6ED 65%, #FCCAE2 100%)",
       }}
     >
-      {/* Background image — mobile only */}
-      <div className="absolute inset-0 z-10 lg:hidden">
-        <Image
-          src="/phone.JPG"
+      {/* Background image — art-directed so each device downloads only its own file */}
+      <picture className="absolute inset-0 z-10 pointer-events-none">
+        <source media="(min-width: 1024px)" srcSet={desktopSrcSet} sizes="100vw" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          {...mobileImg}
           alt=""
-          fill
-          className="object-cover object-center"
-          priority
+          className="absolute inset-0 w-full h-full object-cover object-center"
         />
-      </div>
+      </picture>
 
       {/* Dark overlay — mobile only */}
       <div className="absolute inset-0 z-15 bg-black/55 lg:hidden" />
-
-      {/* Background image — desktop only */}
-      <div className="absolute inset-0 z-10 pointer-events-none hidden lg:block">
-        <Image
-          src="/desktop.JPG"
-          alt=""
-          fill
-          className="object-cover object-center"
-          priority
-        />
-      </div>
 
       {/* Dark gradient overlay — desktop only */}
       <div className="absolute inset-0 z-15 pointer-events-none hidden lg:block"

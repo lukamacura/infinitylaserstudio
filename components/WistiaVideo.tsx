@@ -38,8 +38,10 @@ export default function WistiaVideo() {
               padding-top: 177.78%;
             }
           `}</style>
-          <Script src="https://fast.wistia.com/player.js" strategy="lazyOnload" />
-          <Script src="https://fast.wistia.com/embed/vwpjkz1l7z.js" strategy="lazyOnload" />
+          {/* Wistia ships these as ES modules - without type="module" the embed
+              script throws "Unexpected token 'export'" and its media data is lost. */}
+          <Script src="https://fast.wistia.com/player.js" strategy="lazyOnload" type="module" />
+          <Script src="https://fast.wistia.com/embed/vwpjkz1l7z.js" strategy="lazyOnload" type="module" />
           {/* @ts-expect-error - wistia-player is a web component */}
           <wistia-player media-id="vwpjkz1l7z" wistia-popover="true" aspect="0.5625" />
         </div>

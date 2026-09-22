@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
     event_name,
     event_time: Math.floor(Date.now() / 1000),
     action_source: "website",
-    event_source_url: event_source_url ?? "https://infinitylaserstudio.rs",
+    event_source_url: event_source_url ?? "https://www.infinitylaserstudio.com",
     event_id,
     user_data: userData,
     ...(value != null && currency

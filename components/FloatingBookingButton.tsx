@@ -2,11 +2,15 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import BookingModal from "./BookingModal";
+import dynamic from "next/dynamic";
+
+const BookingModal = dynamic(() => import("./BookingModal"), { ssr: false });
 
 export default function FloatingBookingButton() {
   const [isOpen, setIsOpen] = useState(false);
   const [visible, setVisible] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  if (isOpen && !mounted) setMounted(true);
 
   useEffect(() => {
     function onScroll() {
@@ -44,7 +48,7 @@ export default function FloatingBookingButton() {
         )}
       </AnimatePresence>
 
-      <BookingModal isOpen={isOpen} onClose={() => setIsOpen(false)} />
+      {mounted && <BookingModal isOpen={isOpen} onClose={() => setIsOpen(false)} />}
     </>
   );
 }

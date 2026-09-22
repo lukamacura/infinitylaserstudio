@@ -40,22 +40,31 @@ body {
 /* ── "Celo telo" highlight ────────────────────────────────────────────────────
    The whole-body option is the offer we want booked most, so its card gets a
    soft breathing glow plus a slow light sweep. Both read off the `--glow`
-   custom property so the card stays on the active gender accent. */
-@keyframes glowPulse {
-  0%, 100% {
-    box-shadow:
-      0 0 0 1px color-mix(in srgb, var(--glow) 25%, transparent),
-      0 0 16px -2px color-mix(in srgb, var(--glow) 35%, transparent);
-  }
-  50% {
-    box-shadow:
-      0 0 0 1px color-mix(in srgb, var(--glow) 50%, transparent),
-      0 0 30px 2px color-mix(in srgb, var(--glow) 60%, transparent);
-  }
+   custom property so the card stays on the active gender accent.
+   The glow shadow is painted once on a pseudo-element and only its opacity
+   breathes - animating box-shadow directly repaints every frame and stutters
+   on mid-range phones. Opacity stays on the compositor. `.glow-halo` goes on
+   any element without overflow clipping (it draws outside the box). */
+@keyframes haloBreathe {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
+
+.glow-halo::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--glow) 50%, transparent),
+    0 0 30px 2px color-mix(in srgb, var(--glow) 60%, transparent);
+  animation: haloBreathe 2.8s ease-in-out infinite;
+  will-change: opacity;
 }
 
 .glow-card {
-  animation: glowPulse 2.8s ease-in-out infinite;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--glow) 25%, transparent);
 }
 
 @keyframes shimmerSweep {
@@ -79,6 +88,107 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .glow-card { animation: none; box-shadow: 0 0 0 1px color-mix(in srgb, var(--glow) 40%, transparent); }
-  .shimmer-sweep { display: none; }
+  .glow-halo::before { animation: none; opacity: 0.5; }
+  .shimmer-sweep, .bm-shine { display: none; }
+}
+
+/* ── Booking modal dark themes ────────────────────────────────────────────────
+   The modal goes dark and takes on the chosen gender's palette. Overriding
+   `--foreground` flips every `text-/bg-/border-foreground/x` utility inside
+   the modal to a light tone, so the markup keeps its existing opacity scale.
+   muskarci: obsidian + antique gold · zene: midnight plum + rose gold ·
+   neutral: step 1, before a gender is picked. */
+.bm-theme {
+  --foreground: #EFE8DC;
+  --bm-bg: #0E0D0E;
+  --bm-surface: #181617;
+  --bm-accent: #D8B98A;
+  --bm-accent-deep: #9A8468;
+  --bm-on-accent: #0E0D0E;
+  --bm-bg-image:
+    radial-gradient(70% 45% at 0% 0%, rgba(212, 175, 103, 0.10), transparent 70%),
+    radial-gradient(70% 45% at 100% 0%, rgba(220, 168, 166, 0.10), transparent 70%),
+    linear-gradient(180deg, #161416 0%, #0E0D0E 55%);
+  color: var(--foreground);
+  color-scheme: dark;
+}
+
+.bm-theme-muskarci {
+  --foreground: #EDE6DA;
+  --bm-bg: #0B0B0C;
+  --bm-surface: #161616;
+  --bm-accent: #D4AF67;
+  --bm-accent-deep: #9A783E;
+  --bm-on-accent: #0B0B0C;
+  /* Directional warm rim light from the top-left, like the voucher. */
+  --bm-bg-image:
+    radial-gradient(90% 55% at 12% -8%, rgba(212, 175, 103, 0.14), transparent 62%),
+    radial-gradient(60% 40% at 100% 100%, rgba(154, 120, 62, 0.08), transparent 70%),
+    linear-gradient(180deg, #161616 0%, #0B0B0C 60%);
+}
+
+.bm-theme-zene {
+  --foreground: #F5E6E6;
+  --bm-bg: #120A0E;
+  --bm-surface: #1E1017;
+  --bm-accent: #DCA8A6;
+  --bm-accent-deep: #9E6769;
+  --bm-on-accent: #1E1017;
+  /* Softer, diffuse mauve glow - silkier than the men's hard rim light. */
+  --bm-bg-image:
+    radial-gradient(110% 60% at 50% -12%, rgba(220, 168, 166, 0.16), transparent 65%),
+    radial-gradient(70% 45% at 0% 100%, rgba(158, 103, 105, 0.12), transparent 70%),
+    linear-gradient(180deg, #1E1017 0%, #120A0E 60%);
+}
+
+.bm-sheet {
+  background-color: var(--bm-bg);
+  background-image: var(--bm-bg-image);
+  transition: background-color 0.4s ease;
+}
+
+/* Metallic fill for primary CTAs and badges. */
+.bm-metal {
+  background-image: linear-gradient(135deg, var(--bm-accent) 0%, color-mix(in srgb, var(--bm-accent) 70%, #fff) 45%, var(--bm-accent-deep) 100%);
+  color: var(--bm-on-accent);
+}
+
+.bm-metal-text {
+  background-image: linear-gradient(135deg, color-mix(in srgb, var(--bm-accent) 75%, #fff) 0%, var(--bm-accent) 45%, var(--bm-accent-deep) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.bm-theme input::placeholder,
+.bm-theme textarea::placeholder {
+  color: color-mix(in srgb, var(--foreground) 30%, transparent);
+}
+
+/* One-shot light sweep across the best-value package art. Masked by the
+   image itself (--shine-mask) so the shine only lands on the artwork, not on
+   its transparent padding. Plays twice after the tilt-in settles, then stops. */
+@keyframes bmShine {
+  0%        { transform: translateX(-160%) skewX(-18deg); }
+  45%, 100% { transform: translateX(320%) skewX(-18deg); }
+}
+
+.bm-shine {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  -webkit-mask: var(--shine-mask) center / contain no-repeat;
+  mask: var(--shine-mask) center / contain no-repeat;
+}
+
+.bm-shine::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 45%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  transform: translateX(-160%) skewX(-18deg);
+  animation: bmShine 2.2s cubic-bezier(0.4, 0, 0.2, 1) var(--shine-delay, 0.7s) 2 both;
 }

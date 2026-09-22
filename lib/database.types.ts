@@ -14,6 +14,12 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_users: {
+        Row: { user_id: string; created_at: string }
+        Insert: { user_id: string; created_at?: string }
+        Update: { user_id?: string; created_at?: string }
+        Relationships: []
+      }
       availability_overrides: {
         Row: {
           date: string
@@ -250,7 +256,28 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      is_admin: { Args: Record<string, never>; Returns: boolean }
+      public_busy_slots: {
+        Args: { p_from: string; p_to: string }
+        Returns: { date: string; start_time: string; end_time: string; status: string }[]
+      }
+      public_is_returning: { Args: { p_email: string }; Returns: boolean }
+      bundle_sessions_left: { Args: { p_email: string; p_code: string }; Returns: number }
+      public_create_booking: {
+        Args: {
+          p_id: string
+          p_name: string
+          p_email: string
+          p_phone: string
+          p_customer_note: string | null
+          p_date: string
+          p_start_time: string
+          p_service_ids: string[]
+          p_promo_code: string | null
+          p_notes: string | null
+        }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never

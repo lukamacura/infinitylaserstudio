@@ -21,7 +21,7 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://infinitylaserstudio.rs"),
+  metadataBase: new URL("https://www.infinitylaserstudio.com"),
   title: {
     default: "Laserska epilacija Novi Sad | Infinity Laser Studio",
     template: "%s | Infinity Laser Studio",
@@ -47,13 +47,16 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 };
 
+const CLARITY_ID =
+  process.env.NODE_ENV === "production" ? process.env.NEXT_PUBLIC_CLARITY_ID : undefined;
+
 const localBusinessSchema = {
   "@context": "https://schema.org",
   "@type": "MedicalBusiness",
   name: "Infinity Laser Studio",
   description:
     "Profesionalni studio za lasersku epilaciju u Novom Sadu, osnovan od strane doktora medicine Dr Ane Kasap.",
-  url: "https://infinitylaserstudio.rs",
+  url: "https://www.infinitylaserstudio.com",
   telephone: "+381653738991",
   email: "ana.infinitystudio@gmail.com",
   address: {
@@ -77,7 +80,7 @@ export default function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(localBusinessSchema) }}
         />
-        <Script id="meta-pixel" strategy="afterInteractive">
+        <Script id="meta-pixel" strategy="lazyOnload">
           {`
             !function(f,b,e,v,n,t,s)
             {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
@@ -91,6 +94,19 @@ export default function RootLayout({
             fbq('track', 'PageView');
           `}
         </Script>
+        {CLARITY_ID && (
+          // lazyOnload = injected after window load, during browser idle time,
+          // so it never competes with hydration, LCP or the booking flow.
+          <Script id="ms-clarity" strategy="lazyOnload">
+            {`
+              (function(c,l,a,r,i,t,y){
+                c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+                t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+                y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+              })(window, document, "clarity", "script", "${CLARITY_ID}");
+            `}
+          </Script>
+        )}
         <noscript>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img

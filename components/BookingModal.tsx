@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import type { CSSProperties } from "react";
 import Image from "next/image";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   X, ScanFace, Hand, Footprints,
   Flower2, Minus, Target, Shirt, ArrowLeft,
@@ -141,6 +141,51 @@ function formatPrice(price: number): string {
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** A reachable phone number has at least 8 digits (e.g. 065 373 8991, +381…). */
+function isValidPhone(phone: string): boolean {
+  return phone.replace(/\D/g, "").length >= 8;
+}
+
+/**
+ * crypto.randomUUID is missing on older iOS Safari (<15.4) - a throw there
+ * would block the whole booking flow, so fall back to a v4 built by hand.
+ */
+function safeUUID(): string {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+  } catch { /* fall through */ }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
+/** Meta Pixel + CAPI + Clarity. Tracking must never be able to break the booking flow. */
+function trackEvent(eventName: string, extra: Record<string, unknown> = {}, pixelParams: Record<string, unknown> = {}) {
+  try {
+    const eventId = safeUUID();
+    const w = window as Window & { fbq?: (...args: unknown[]) => void; clarity?: (...args: unknown[]) => void };
+    w.fbq?.("track", eventName, pixelParams, { eventID: eventId });
+    // Clarity custom event - lets recordings be filtered by funnel step. No-op until Clarity loads.
+    w.clarity?.("event", eventName);
+    fetch("/api/meta-capi", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      keepalive: true,
+      body: JSON.stringify({
+        event_name: eventName,
+        event_id: eventId,
+        event_source_url: window.location.href,
+        ...extra,
+      }),
+    }).catch(() => {});
+  } catch { /* ignore */ }
+}
+
+type SlotRow = { start_time: string; end_time: string; status: string };
+
 // ── Combo detection ───────────────────────────────────────────────────────────
 interface ComboRule {
   parts: string[];   // lowercase substrings that identify the component services
@@ -207,22 +252,32 @@ function applyComboRules(
 }
 
 // ── Accent theme ──────────────────────────────────────────────────────────────
+// Both genders run on a dark sheet (see `.bm-theme-*` in globals.css):
+// zene = midnight plum + rose gold, muskarci = obsidian + antique gold.
 const ACCENTS = {
   zene: {
-    hex: "#E85D8A",
-    border: "border-pink",
-    bg: "bg-pink",
-    bgLight: "bg-pink/8",
-    bgMed: "bg-pink/25",
+    hex: "#DCA8A6",
+    onHex: "#1E1017",
+    border: "border-[#DCA8A6]",
+    bg: "bg-[#DCA8A6]",
+    bgLight: "bg-[#DCA8A6]/10",
+    bgMed: "bg-[#DCA8A6]/20",
   },
   muskarci: {
-    hex: "#0D9488",
-    border: "border-teal",
-    bg: "bg-teal",
-    bgLight: "bg-teal/8",
-    bgMed: "bg-teal/25",
+    hex: "#D4AF67",
+    onHex: "#0B0B0C",
+    border: "border-[#D4AF67]",
+    bg: "bg-[#D4AF67]",
+    bgLight: "bg-[#D4AF67]/10",
+    bgMed: "bg-[#D4AF67]/20",
   },
 } as const;
+
+/** Per-gender social proof - shown on the services step and the date step. */
+const SOCIAL_PROOF: Record<Gender, { mark: string; line: string }> = {
+  zene: { mark: "♥", line: "Preko 2000 žena se uspešno rešilo dlačica" },
+  muskarci: { mark: "◆", line: "Preko 2000 muškaraca se uspešno rešilo dlačica" },
+};
 
 const STEP_LABELS: Record<Step, [string, string]> = {
   1: ["KORAK 1 OD 5", "Za koga zakazuješ?"],
@@ -294,8 +349,24 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   // Step 3 state
   const [selectedDate, setSelectedDate]   = useState("");
   const [selectedTime, setSelectedTime]   = useState("");
-  const [daySlots, setDaySlots]           = useState<{ start_time: string; end_time: string; status: string }[]>([]);
+  const [daySlots, setDaySlots]           = useState<SlotRow[]>([]);
   const [loadingSlots, setLoadingSlots]   = useState(false);
+  /** Reservations for the day failed to load - never show slots as free then. */
+  const [slotsError, setSlotsError]       = useState(false);
+  /** Bump to force a fresh reservations fetch for the selected day. */
+  const [slotsReloadKey, setSlotsReloadKey] = useState(0);
+  const [servicesError, setServicesError] = useState(false);
+  /** The picked time got booked by someone else while the form was open. */
+  const [slotTaken, setSlotTaken]         = useState(false);
+  const [servicesReloadKey, setServicesReloadKey] = useState(0);
+  /** Synchronous double-submit guard (state updates land a render too late). */
+  const submitLockRef = useRef(false);
+  /**
+   * Client-generated reservation id, reused while the booking details stay the
+   * same: if an insert succeeded but its response was lost, the retry hits the
+   * primary key instead of creating a duplicate booking.
+   */
+  const pendingBookingRef = useRef<{ key: string; id: string } | null>(null);
   const [form, setForm]                   = useState({ name: "", email: "", phone: "" });
   const [customerNote, setCustomerNote]   = useState("");
   const [fieldErrors, setFieldErrors]     = useState({ name: false, email: false, phone: false, policy: false });
@@ -359,6 +430,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
         : calcBookingDuration(selectedServices);
   const totalPrice       = effectiveServices.reduce((sum, s) => sum + s.price, 0);
   const accent           = ACCENTS[gender ?? "zene"];
+  const reduceMotion     = useReducedMotion();
+  const proof            = SOCIAL_PROOF[gender ?? "zene"];
   /** Step 2 list - "Celo telo" leads, it is the offer we most want booked. */
   const pickableServices = useMemo(() => {
     const visible = services.filter((s) => !isComboService(s.name));
@@ -393,14 +466,13 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
         : totalPrice;
   const savingsVsList = listTotal - finalPrice;
 
-  // For today: slots must start ≥ now+120min
-  const nowMinutes = useMemo(() => {
-    const now = new Date();
-    return now.getHours() * 60 + now.getMinutes();
-  }, []);
+  // For today: slots must start ≥ now+120min. Read the clock on every render -
+  // the modal stays mounted between opens, so a memoised value would be the
+  // page-load time and offer same-day slots that are already too close.
+  const nowDate = new Date();
+  const nowMinutes = nowDate.getHours() * 60 + nowDate.getMinutes();
 
-  const isToday =
-    bookableDayOptions.find((d) => d.date === selectedDate)?.isToday ?? false;
+  const isToday = selectedDate !== "" && selectedDate === toDateStr(nowDate);
   const minStart = isToday ? nowMinutes + 120 : undefined;
 
   const windows = selectedDate && availability ? resolveWindows(selectedDate, availability) : null;
@@ -446,14 +518,31 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
   useEffect(() => {
     if (!gender) return;
+    // Ignore a late response for the other gender (quick back + switch).
+    let cancelled = false;
     setLoadingServices(true);
+    setServicesError(false);
     supabase
       .from("services")
       .select("*")
       .eq("gender", gender)
       .order("sort_order")
-      .then(({ data }) => { setServices(data ?? []); setLoadingServices(false); });
-  }, [gender]);
+      .then(
+        ({ data, error }) => {
+          if (cancelled) return;
+          if (error || !data || data.length === 0) setServicesError(true);
+          setServices(data ?? []);
+          setLoadingServices(false);
+        },
+        () => {
+          if (cancelled) return;
+          setServicesError(true);
+          setServices([]);
+          setLoadingServices(false);
+        },
+      );
+    return () => { cancelled = true; };
+  }, [gender, servicesReloadKey]);
 
   // ── Animated price count-down on success screen ───────────────────────────
   useEffect(() => {
@@ -478,16 +567,32 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     return () => cancelAnimationFrame(animFrameRef.current);
   }, [step, finalPrice, listTotal]);
 
+  // Reservations for the chosen day - refetched every time the time step opens,
+  // so coming back to a day never shows slots that were booked in the meantime.
   useEffect(() => {
-    if (!selectedDate) return;
+    if (!selectedDate || step !== 4) return;
+    let cancelled = false;
     setLoadingSlots(true);
-    setSelectedTime("");
+    setSlotsError(false);
+    setDaySlots([]);
     supabase
-      .from("reservations")
-      .select("start_time, end_time, status")
-      .eq("date", selectedDate)
-      .then(({ data }) => { setDaySlots(data ?? []); setLoadingSlots(false); });
-  }, [selectedDate]);
+      .rpc("public_busy_slots", { p_from: selectedDate, p_to: selectedDate })
+      .then(
+        ({ data, error }) => {
+          if (cancelled) return;
+          // On error show nothing as free - an empty list would mark the whole day open.
+          if (error) setSlotsError(true);
+          else setDaySlots(data ?? []);
+          setLoadingSlots(false);
+        },
+        () => {
+          if (cancelled) return;
+          setSlotsError(true);
+          setLoadingSlots(false);
+        },
+      );
+    return () => { cancelled = true; };
+  }, [selectedDate, step, slotsReloadKey]);
 
   // Step 3: load reservations for all candidate days, hide dates with no free slot
   useEffect(() => {
@@ -520,9 +625,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       let loadError = false;
       try {
         const { data, error } = await supabase
-          .from("reservations")
-          .select("date, start_time, end_time, status")
-          .in("date", dates);
+          .rpc("public_busy_slots", { p_from: dates[0], p_to: dates[dates.length - 1] });
         if (error) loadError = true;
         else rows = data ?? [];
       } catch {
@@ -629,6 +732,11 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     return () => clearTimeout(t);
   }, [isOpen, step]);
 
+  // The student-ID warning only makes sense while the student code is applied.
+  useEffect(() => {
+    if (promoKind !== "student") setActiveNotice((n) => (n === "student" ? null : n));
+  }, [promoKind]);
+
   // Auto-dismiss the banner like a real notification (X dismisses it instantly).
   useEffect(() => {
     if (!activeNotice) return;
@@ -648,10 +756,14 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     setLoadingBookableDays(false);
     setStep(1); setGender(null); setSelectedIds([]);
     setSelectedDate(""); setSelectedTime(""); setDaySlots([]);
+    setSlotsError(false); setServicesError(false); setSlotTaken(false);
+    submitLockRef.current = false;
+    pendingBookingRef.current = null;
+    setSubmitting(false);
     setForm({ name: "", email: "", phone: "" });
     setCustomerNote("");
     setFieldErrors({ name: false, email: false, phone: false, policy: false });
-    setAcceptedPolicy(false);
+    setAcceptedPolicy(true);
     setShowPolicyInfo(false);
     setSubmitError(null); setBookingRef(null);
     setPromoCode(""); setPromoStatus("idle"); setAppliedPromoCode(null);
@@ -712,6 +824,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     if (date !== selectedDate) {
       setSelectedDate(date);
       setSelectedTime("");
+      setSlotTaken(false);
     }
     setStep(4);
   }
@@ -725,20 +838,14 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     }
     const seq = ++emailCheckSeqRef.current;
     setCheckingReturningEmail(true);
-    const { data, error } = await supabase
-      .from("reservations")
-      .select("id")
-      .ilike("customer_email", trimmed)
-      .eq("status", "confirmed")
-      .limit(1)
-      .maybeSingle();
+    const { data, error } = await supabase.rpc("public_is_returning", { p_email: trimmed });
     if (emailCheckSeqRef.current !== seq) return;
     setCheckingReturningEmail(false);
     if (error) {
       setIsReturningCustomer(false);
       return;
     }
-    setIsReturningCustomer(!!data);
+    setIsReturningCustomer(data === true);
   }
 
   /** Shared exit for a refused code - `msg` explains why, when a reason helps. */
@@ -768,19 +875,13 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
         return;
       }
       setCheckingPromo(true);
-      const { data, error } = await supabase
-        .from("reservations")
-        .select("id")
-        .ilike("customer_email", email)
-        .eq("status", "confirmed")
-        .limit(1)
-        .maybeSingle();
+      const { data, error } = await supabase.rpc("public_is_returning", { p_email: email });
       setCheckingPromo(false);
       if (error) {
-        rejectPromo("Nevažeći promo kod.");
+        rejectPromo("Provera koda nije uspela. Pokušaj ponovo.");
         return;
       }
-      if (data) {
+      if (data === true) {
         rejectPromo("Studentski popust važi samo za prvi tretman.");
         return;
       }
@@ -802,23 +903,21 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
         return;
       }
       setCheckingPromo(true);
-      // Verify a matching bundle purchase exists for this email before granting it.
-      const { data, error } = await supabase
-        .from("reservations")
-        .select("id")
-        .ilike("customer_email", email)
-        .eq("promo_code", raw)
-        .eq("status", "confirmed")
-        .limit(1)
-        .maybeSingle();
+      // Pre-paid sessions still free for this email + code (0 = no such
+      // purchase, or every session of the bundle is already booked).
+      const { data: left, error } = await supabase.rpc("bundle_sessions_left", { p_email: email, p_code: raw });
       setCheckingPromo(false);
-      if (!error && data) {
-        setPromoStatus("valid");
-        setAppliedPromoCode(raw);
-        setPromoKind("bundle_redeem");
-      } else {
-        rejectPromo("Nevažeći promo kod.");
+      if (error) {
+        rejectPromo("Provera koda nije uspela. Pokušaj ponovo.");
+        return;
       }
+      if (!left || left <= 0) {
+        rejectPromo("Nevažeći kod ili su svi tretmani iz paketa već zakazani.");
+        return;
+      }
+      setPromoStatus("valid");
+      setAppliedPromoCode(raw.toLowerCase());
+      setPromoKind("bundle_redeem");
       return;
     }
 
@@ -826,28 +925,39 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   }
 
   async function handleSubmit() {
+    if (submitLockRef.current) return;
     // Validate – highlight empty required fields instead of blocking silently
     const errors = {
       name: !form.name.trim(),
       email: !EMAIL_REGEX.test(form.email.trim()),
-      phone: !form.phone.trim(),
+      phone: !isValidPhone(form.phone),
       policy: !acceptedPolicy,
     };
     setFieldErrors(errors);
-    if (errors.name || errors.email || errors.phone || errors.policy || !selectedDate || !selectedTime) return;
+    if (errors.name || errors.email || errors.phone || errors.policy) return;
+    if (!selectedDate || !selectedTime) {
+      setStep(selectedDate ? 4 : 3);
+      return;
+    }
 
+    submitLockRef.current = true;
     setSubmitting(true);
     setSubmitError(null);
+    try {
+      await submitBooking();
+    } catch (err) {
+      console.error("[booking] submit failed:", err);
+      setSubmitError("Greška pri zakazivanju. Proverite internet konekciju i pokušajte ponovo.");
+    } finally {
+      submitLockRef.current = false;
+      setSubmitting(false);
+    }
+  }
 
+  async function submitBooking() {
+    const nameTrim  = form.name.trim();
     const emailTrim = form.email.trim();
-    const { data: existingReservation } = await supabase
-      .from("reservations")
-      .select("id")
-      .ilike("customer_email", emailTrim)
-      .eq("status", "confirmed")
-      .limit(1)
-      .maybeSingle();
-    const returningSubmit = !!existingReservation;
+    const phoneTrim = form.phone.trim();
 
     // Resolve the recorded promo code, prices and admin note for this booking.
     let promoForRecord: string | null = null;
@@ -867,51 +977,84 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     const listForSubmit  = listTotal;
     const finalForSubmit = finalPrice;
 
-    const durationForReservation = returningSubmit
-      ? calcTotalDuration(selectedServices)
-      : calcBookingDuration(selectedServices);
-    const endTime = minutesToTime(timeToMinutes(selectedTime) + durationForReservation);
+    // Same details as a previous (possibly lost) attempt → same id, so a retry
+    // can never create a second reservation.
+    const bookingKey = JSON.stringify([
+      selectedDate, selectedTime, emailTrim.toLowerCase(), nameTrim, phoneTrim,
+      [...selectedIds].sort(), promoForRecord,
+    ]);
+    if (pendingBookingRef.current?.key !== bookingKey) {
+      pendingBookingRef.current = { key: bookingKey, id: safeUUID() };
+    }
+    const reservationId = pendingBookingRef.current.id;
 
-    const { data: res, error } = await supabase
-      .from("reservations")
-      .insert({
-        customer_name:  form.name.trim(),
-        customer_email: form.email.trim(),
-        customer_phone: form.phone.trim() || null,
-        customer_note:  customerNote.trim() || null,
-        notes:          notesForRecord,
-        date:           selectedDate,
-        start_time:     `${selectedTime}:00`,
-        end_time:       `${endTime}:00`,
-        total_duration: durationForReservation,
-        status:         "confirmed",
-        promo_code:     promoForRecord,
-      })
-      .select()
-      .single();
+    // The database does every check under a per-day lock - free slot, working
+    // hours, promo validity, first-visit consultation - then saves the booking
+    // and its regions together. Two clients can never get the same time.
+    const { data, error } = await supabase.rpc("public_create_booking", {
+      p_id:            reservationId,
+      p_name:          nameTrim,
+      p_email:         emailTrim,
+      p_phone:         phoneTrim,
+      p_customer_note: customerNote.trim() || null,
+      p_date:          selectedDate,
+      p_start_time:    `${selectedTime}:00`,
+      p_service_ids:   selectedIds,
+      p_promo_code:    promoForRecord,
+      p_notes:         notesForRecord,
+    });
 
-    if (error || !res) {
-      setSubmitError("Greška pri zakazivanju. Pokušajte ponovo.");
-      setSubmitting(false);
+    if (error || !data) {
+      console.error("[booking] create failed:", error);
+      setSubmitError("Greška pri zakazivanju. Proverite internet konekciju i pokušajte ponovo.");
       return;
     }
 
-    if (selectedIds.length > 0) {
-      await supabase.from("reservation_services").insert(
-        selectedIds.map((id) => ({ reservation_id: res.id, service_id: id }))
+    const result = data as {
+      status: "ok" | "slot_taken" | "too_late" | "invalid_promo" | "invalid_input";
+      reason?: string;
+      end_time?: string;
+      total_duration?: number;
+      returning?: boolean;
+    };
+
+    if (result.status === "slot_taken" || result.status === "too_late") {
+      sendBackToTimes();
+      return;
+    }
+    if (result.status === "invalid_promo") {
+      rejectPromo(
+        result.reason === "student_not_first"
+          ? "Studentski popust važi samo za prvi tretman."
+          : result.reason === "bundle_used"
+            ? "Svi tretmani iz ovog paketa su već zakazani."
+            : "Nevažeći promo kod.",
       );
+      setSubmitError("Promo kod nije prihvaćen - ukloni ga ili unesi drugi.");
+      return;
+    }
+    if (result.status !== "ok") {
+      setSubmitError("Proverite unete podatke i pokušajte ponovo.");
+      return;
     }
 
-    const bookingRefValue = res.id.slice(-8).toUpperCase();
+    const returningSubmit        = result.returning === true;
+    const durationForReservation = result.total_duration ?? reservationDuration;
+    const endTime = result.end_time ?? minutesToTime(timeToMinutes(selectedTime) + durationForReservation);
+
+    pendingBookingRef.current = null;
+    const bookingRefValue = reservationId.slice(-8).toUpperCase();
     setBookingRef(bookingRefValue);
 
     fetch("/api/booking-confirm", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      // keepalive: the confirmation still goes out if the client closes the tab right away.
+      keepalive: true,
       body: JSON.stringify({
-        customer_name:    form.name.trim(),
-        customer_email:   form.email.trim(),
-        customer_phone:   form.phone.trim() || null,
+        customer_name:    nameTrim,
+        customer_email:   emailTrim,
+        customer_phone:   phoneTrim || null,
         date:             selectedDate,
         start_time:       selectedTime,
         end_time:         endTime,
@@ -931,47 +1074,32 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     setIsReturningCustomer(returningSubmit);
 
     const usdValue = +(finalForSubmit / 102).toFixed(2);
-    const eventId = crypto.randomUUID();
-
-    // Browser Pixel - include eventID for deduplication with CAPI
-    (window as Window & { fbq?: (...args: unknown[]) => void }).fbq?.("track", "Purchase", {
-      value: usdValue,
-      currency: "USD",
-    }, { eventID: eventId });
-
-    // Server-side CAPI - mirrors the Pixel event
-    fetch("/api/meta-capi", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        event_name: "Purchase",
-        event_id: eventId,
-        event_source_url: window.location.href,
-        email: form.email.trim(),
-        phone: form.phone.trim() || undefined,
+    // Browser Pixel + server-side CAPI share one eventID for deduplication.
+    trackEvent(
+      "Purchase",
+      {
+        email: emailTrim,
+        phone: phoneTrim || undefined,
         value: usdValue,
         currency: "USD",
         fbclid: fbclidRef.current || undefined,
-      }),
-    }).catch(() => {});
+      },
+      { value: usdValue, currency: "USD" },
+    );
 
     setStep("success");
-    setSubmitting(false);
+  }
+
+  /** The picked time was taken (or passed) while the form was open. */
+  function sendBackToTimes() {
+    setSelectedTime("");
+    setSlotTaken(true);
+    setSlotsReloadKey((k) => k + 1);
+    setStep(4);
   }
 
   function handleAddToCart() {
-    const eventId = crypto.randomUUID();
-    (window as Window & { fbq?: (...args: unknown[]) => void }).fbq?.("track", "AddToCart", {}, { eventID: eventId });
-    fetch("/api/meta-capi", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        event_name: "AddToCart",
-        event_id: eventId,
-        event_source_url: window.location.href,
-        fbclid: fbclidRef.current || undefined,
-      }),
-    }).catch(() => {});
+    trackEvent("AddToCart", { fbclid: fbclidRef.current || undefined });
     setStep("plan");
   }
 
@@ -990,23 +1118,13 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   }
 
   function handleInitiateCheckout() {
-    const eventId = crypto.randomUUID();
-    (window as Window & { fbq?: (...args: unknown[]) => void }).fbq?.("track", "InitiateCheckout", {}, { eventID: eventId });
-    fetch("/api/meta-capi", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        event_name: "InitiateCheckout",
-        event_id: eventId,
-        event_source_url: window.location.href,
-        fbclid: fbclidRef.current || undefined,
-      }),
-    }).catch(() => {});
+    trackEvent("InitiateCheckout", { fbclid: fbclidRef.current || undefined });
     setStep(5);
   }
 
   function handleTimeSelect(slot: string) {
     setSelectedTime(slot);
+    setSlotTaken(false);
     handleInitiateCheckout();
   }
 
@@ -1017,16 +1135,10 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   // ── Render ────────────────────────────────────────────────────────────────
   // z-80: iznad SocialProofToast (z-60), da guarantee banner nikad ne ostane ispod njega
   return (
-    <div className="fixed inset-0 z-80 flex items-center justify-center">
-      <style>{`
-        @keyframes nastaviGlow {
-          0%, 100% { box-shadow: 0 0 14px rgba(232,93,138,0.45), 0 4px 14px rgba(232,93,138,0.25); }
-          50% { box-shadow: 0 0 28px rgba(232,93,138,0.75), 0 6px 22px rgba(232,93,138,0.45); }
-        }
-      `}</style>
+    <div className={`bm-theme ${gender ? `bm-theme-${gender}` : ""} fixed inset-0 z-80 flex items-center justify-center`}>
       {/* Backdrop */}
       <div
-        className={`absolute inset-0 bg-foreground/40 backdrop-blur-sm transition-opacity duration-300 ${isAnimating ? "opacity-100" : "opacity-0"}`}
+        className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${isAnimating ? "opacity-100" : "opacity-0"}`}
         onClick={handleClose}
       />
 
@@ -1051,7 +1163,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               onDragEnd={(_, info) => {
                 if (info.offset.y < -32 || info.velocity.y < -450) setActiveNotice(null);
               }}
-              className="pointer-events-auto relative w-full max-w-[430px] sm:max-w-[520px] rounded-[24px] sm:rounded-[28px] border border-foreground/8 bg-white p-3.5 sm:p-5 pr-9 sm:pr-11 shadow-[0_16px_44px_-10px_rgba(15,15,20,0.42)] cursor-grab active:cursor-grabbing"
+              className="pointer-events-auto relative w-full max-w-[430px] sm:max-w-[520px] rounded-[24px] sm:rounded-[28px] border border-foreground/10 bg-[var(--bm-surface)]/95 backdrop-blur-xl p-3.5 sm:p-5 pr-9 sm:pr-11 shadow-[0_16px_44px_-10px_rgba(0,0,0,0.7)] cursor-grab active:cursor-grabbing"
             >
               <button
                 type="button"
@@ -1063,8 +1175,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               </button>
 
               <div className="flex items-start gap-3">
-                <div className="relative w-11 h-11 sm:w-14 sm:h-14 rounded-[14px] sm:rounded-[18px] overflow-hidden shrink-0 ring-1 ring-black/5 shadow-sm">
-                  <Image src="/ana.jpg" alt="Ana" fill sizes="(max-width: 640px) 44px, 56px" className="object-cover" />
+                <div className="relative w-11 h-11 sm:w-14 sm:h-14 rounded-[14px] sm:rounded-[18px] overflow-hidden shrink-0 ring-1 ring-white/10 shadow-sm">
+                  <Image src="/ana.webp" alt="Ana" fill sizes="(max-width: 640px) 44px, 56px" className="object-cover" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline gap-2">
@@ -1085,7 +1197,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
       {/* Modal shell */}
       <div
-        className={`relative bg-white shadow-2xl w-full h-full flex flex-col overflow-hidden transition-all duration-300 ${isAnimating ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-95 translate-y-4"}`}
+        className={`bm-sheet relative shadow-2xl w-full h-full flex flex-col overflow-hidden transition-all duration-300 ${isAnimating ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-95 translate-y-4"}`}
       >
         {/* Header - from sm up, content lives in the centered COL_W column */}
         <div className={`flex items-center justify-between px-6 pt-6 pb-4 shrink-0 ${COL_W}`}>
@@ -1095,7 +1207,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                 <ArrowLeft size={18} className="sm:w-[22px] sm:h-[22px]" />
               </button>
             )}
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold font-playfair">Zakaži tretman</h2>
+            <h2 className={`text-2xl sm:text-3xl md:text-4xl font-bold font-playfair ${gender ? "bm-metal-text" : ""}`}>Zakaži tretman</h2>
           </div>
           <button onClick={handleClose} className="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center rounded-full hover:bg-foreground/5 transition-colors cursor-pointer" aria-label="Zatvori">
             <X size={20} className="sm:w-6 sm:h-6" />
@@ -1104,7 +1216,12 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
         {/* Step indicator */}
         <div className={`px-6 pb-4 sm:pb-6 shrink-0 ${COL_W}`}>
-          <p className="text-xs sm:text-[13px] text-foreground/50 tracking-[3px] font-semibold font-poppins">{stepLabel}</p>
+          <p
+            className="text-xs sm:text-[13px] text-foreground/50 tracking-[3px] font-semibold font-poppins"
+            style={gender ? { color: accent.hex } : undefined}
+          >
+            {stepLabel}
+          </p>
           <p className="text-sm sm:text-base text-foreground/60 font-poppins mt-1">{stepSub}</p>
         </div>
 
@@ -1117,24 +1234,25 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
           {step === 1 && (
             <div className="flex flex-col gap-3 py-2">
               {([
-                { key: "zene",     label: "Žene",      sub: "Tretmani za žene",      Icon: Flower2,         hex: ACCENTS.zene.hex },
-                { key: "muskarci", label: "Muškarci",  sub: "Tretmani za muškarce",  Icon: PersonStanding,  hex: ACCENTS.muskarci.hex },
+                { key: "zene",     label: "Žene",      sub: "Tretmani za žene",      Icon: Flower2,         hex: ACCENTS.zene.hex,     surface: "linear-gradient(120deg, #1E1017 0%, #120A0E 100%)" },
+                { key: "muskarci", label: "Muškarci",  sub: "Tretmani za muškarce",  Icon: PersonStanding,  hex: ACCENTS.muskarci.hex, surface: "linear-gradient(120deg, #161616 0%, #0B0B0C 100%)" },
               ] as const).map((opt) => (
                 <button
                   key={opt.key}
                   type="button"
                   onClick={() => handleGenderSelect(opt.key)}
-                  className="flex items-center gap-4 sm:gap-5 w-full p-5 sm:p-6 rounded-2xl sm:rounded-3xl border-2 border-foreground/8 hover:border-foreground/20 active:scale-[0.99] transition-all text-left cursor-pointer"
+                  className="flex items-center gap-4 sm:gap-5 w-full p-5 sm:p-6 rounded-2xl sm:rounded-3xl border-2 hover:brightness-125 active:scale-[0.99] transition-all text-left cursor-pointer"
+                  style={{ backgroundImage: opt.surface, borderColor: `${opt.hex}40` }}
                 >
                   <div
-                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl flex items-center justify-center shrink-0"
-                    style={{ backgroundColor: `${opt.hex}1A` }}
+                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl flex items-center justify-center shrink-0 border"
+                    style={{ backgroundColor: `${opt.hex}1A`, borderColor: `${opt.hex}33` }}
                   >
                     <opt.Icon size={28} style={{ color: opt.hex }} className="sm:w-8 sm:h-8" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-base sm:text-lg font-bold font-poppins">{opt.label}</p>
-                    <p className="text-xs sm:text-sm text-foreground/45 font-poppins mt-0.5">{opt.sub}</p>
+                    <p className="text-base sm:text-lg font-bold font-playfair tracking-wide" style={{ color: opt.hex }}>{opt.label}</p>
+                    <p className="text-xs sm:text-sm text-foreground/50 font-poppins mt-0.5">{opt.sub}</p>
                   </div>
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={opt.hex} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 sm:w-6 sm:h-6">
                     <path d="M9 18l6-6-6-6" />
@@ -1167,14 +1285,32 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
             <div className="flex flex-col gap-2">
               {/* Social proof signals */}
               <div className="flex flex-col gap-2 mb-3 sm:mb-4">
-                <div className="flex items-center gap-2.5 sm:gap-3 px-3 sm:px-5 py-2.5 sm:py-3.5 rounded-xl sm:rounded-2xl bg-pink-100 border border-pink/15">
-                  <span className="text-[#E85D8A] text-base sm:text-xl leading-none shrink-0">♥</span>
-                  <p className="text-xs sm:text-sm md:text-base font-poppins text-foreground/65 font-medium leading-snug">Preko 2000 žena se uspešno rešilo dlačica</p>
+                <div
+                  className="flex items-center gap-2.5 sm:gap-3 px-3 sm:px-5 py-2.5 sm:py-3.5 rounded-xl sm:rounded-2xl border"
+                  style={{
+                    borderColor: `${accent.hex}33`,
+                    backgroundImage: `linear-gradient(100deg, ${accent.hex}1F 0%, ${accent.hex}08 70%)`,
+                  }}
+                >
+                  <span className="text-base sm:text-xl leading-none shrink-0" style={{ color: accent.hex }}>{proof.mark}</span>
+                  <p className="text-xs sm:text-sm md:text-base font-poppins text-foreground/80 font-medium leading-snug">{proof.line}</p>
                 </div>
               </div>
               {loadingServices ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 size={28} className="animate-spin text-foreground/30" />
+                </div>
+              ) : servicesError ? (
+                <div className="flex flex-col items-center gap-3 p-5 rounded-xl sm:rounded-2xl bg-foreground/5 text-foreground/60 text-sm sm:text-base font-poppins text-center">
+                  <span className="flex items-center gap-2"><AlertCircle size={16} />Tretmani trenutno ne mogu da se učitaju.</span>
+                  <button
+                    type="button"
+                    onClick={() => setServicesReloadKey((k) => k + 1)}
+                    className="px-5 py-2 rounded-full text-sm font-semibold font-poppins bm-metal cursor-pointer"
+                    style={{ backgroundColor: accent.hex }}
+                  >
+                    Pokušaj ponovo
+                  </button>
                 </div>
               ) : (
               /* Two columns from sm - the list is long enough that one column
@@ -1191,11 +1327,11 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                   return (
                     <div
                       key={service.id}
-                      className="relative sm:col-span-2 mt-2 sm:mt-2.5"
+                      className="glow-halo relative sm:col-span-2 mt-2 sm:mt-2.5 rounded-2xl"
                       style={{ "--glow": accent.hex } as CSSProperties}
                     >
                       <span
-                        className="absolute -top-2 sm:-top-2.5 left-4 sm:left-5 z-10 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] sm:text-[11px] font-bold font-poppins tracking-widest text-white"
+                        className="absolute -top-2 sm:-top-2.5 left-4 sm:left-5 z-10 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] sm:text-[11px] font-bold font-poppins tracking-widest bm-metal"
                         style={{ backgroundColor: accent.hex }}
                       >
                         NAJISPLATIVIJE
@@ -1219,7 +1355,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                         </div>
                         <div className={`relative w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg border-2 flex items-center justify-center transition-all shrink-0 ${isSelected ? `${accent.border} ${accent.bg}` : "border-foreground/20"}`}>
                           {isSelected && (
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="sm:w-3.5 sm:h-3.5">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={accent.onHex} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="sm:w-3.5 sm:h-3.5">
                               <path d="M20 6L9 17l-5-5" />
                             </svg>
                           )}
@@ -1253,7 +1389,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                     </div>
                     <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg border-2 flex items-center justify-center transition-all shrink-0 ${isSelected ? `${accent.border} ${accent.bg}` : "border-foreground/20"}`}>
                       {isSelected && (
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="sm:w-3.5 sm:h-3.5">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={accent.onHex} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="sm:w-3.5 sm:h-3.5">
                           <path d="M20 6L9 17l-5-5" />
                         </svg>
                       )}
@@ -1295,11 +1431,15 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                 const isSelected = bundleActive && bundleSize === size;
                 const isBest = idx === eligibleSizes.length - 1;
                 return (
-                  <button
+                  <motion.button
                     key={size}
                     type="button"
                     onClick={() => handleSelectBundle(size)}
-                    className={`relative flex items-center gap-2.5 sm:gap-4 w-full p-3 sm:p-4 rounded-2xl sm:rounded-3xl border-2 text-left cursor-pointer transition-all ${
+                    whileTap="tap"
+                    variants={{ tap: { scale: reduceMotion ? 1 : 0.985 } }}
+                    /* transition-colors, not transition-all: a CSS transform
+                       transition would fight framer's inline transforms. */
+                    className={`relative flex items-center gap-2.5 sm:gap-4 w-full p-3 sm:p-4 rounded-2xl sm:rounded-3xl border-2 text-left cursor-pointer transition-colors ${
                       isSelected
                         ? `${accent.border} ${accent.bgLight}`
                         : "border-foreground/8 hover:border-foreground/20"
@@ -1307,34 +1447,73 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                   >
                     {isBest && (
                       <span
-                        className="absolute -top-2.5 sm:-top-3 left-4 sm:left-5 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] sm:text-[11px] font-bold font-poppins tracking-widest text-white"
+                        className="absolute -top-2.5 sm:-top-3 left-4 sm:left-5 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] sm:text-[11px] font-bold font-poppins tracking-widest bm-metal"
                         style={{ backgroundColor: accent.hex }}
                       >
                         NAJVEĆA UŠTEDA
                       </span>
                     )}
                     {BUNDLE_IMAGES[size] && (
-                      <Image
-                        src={BUNDLE_IMAGES[size]}
-                        alt={`Paket ${size} tretmana`}
-                        width={80}
-                        height={80}
-                        /* scale-110 trims the whitespace baked into the source art */
-                        className="shrink-0 rounded-xl object-contain scale-110 sm:w-[104px] sm:h-[104px]"
-                      />
+                      /* Tilt-in, dealt one by one; the best-value package lands
+                         last with extra overshoot so the eye ends on it. */
+                      <motion.div
+                        className="relative shrink-0 w-20 h-20 sm:w-[104px] sm:h-[104px]"
+                        style={{ transformPerspective: 600 }}
+                        initial={reduceMotion ? { opacity: 0 } : { opacity: 0, rotateY: -28, rotateX: 10, scale: 0.85 }}
+                        animate={{ opacity: 1, rotateY: 0, rotateX: 0, scale: 1 }}
+                        transition={
+                          reduceMotion
+                            ? { duration: 0.25 }
+                            : {
+                                type: "spring",
+                                stiffness: isBest ? 240 : 300,
+                                damping: isBest ? 13 : 22,
+                                delay: 0.1 + idx * 0.08,
+                                opacity: { duration: 0.2, delay: 0.1 + idx * 0.08 },
+                              }
+                        }
+                      >
+                        {/* Pops on press - inherits "tap" from the card. */}
+                        <motion.div
+                          className="relative w-full h-full"
+                          variants={{ tap: { scale: reduceMotion ? 1 : 1.1 } }}
+                          transition={{ type: "spring", stiffness: 500, damping: 15 }}
+                        >
+                          {/* scale-110 trims the whitespace baked into the source art */}
+                          <div className="relative w-full h-full scale-110">
+                            <Image
+                              src={BUNDLE_IMAGES[size]}
+                              alt={`Paket ${size} tretmana`}
+                              fill
+                              sizes="(max-width: 640px) 80px, 104px"
+                              className="rounded-xl object-contain"
+                            />
+                            {isBest && (
+                              <span
+                                className="bm-shine"
+                                aria-hidden="true"
+                                style={{
+                                  "--shine-mask": `url(${BUNDLE_IMAGES[size]})`,
+                                  "--shine-delay": `${0.5 + idx * 0.08}s`,
+                                } as CSSProperties}
+                              />
+                            )}
+                          </div>
+                        </motion.div>
+                      </motion.div>
                     )}
                     <div className="flex items-center justify-between gap-3 sm:gap-4 flex-1 min-w-0">
                       <div className="flex flex-col gap-1.5 sm:gap-2 min-w-0">
                         <div className="flex items-center gap-2 sm:gap-2.5">
                           <p className="text-sm sm:text-base md:text-lg font-bold font-poppins">Paket {size} tretmana</p>
                           <span
-                            className="px-1.5 sm:px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-bold font-poppins text-white"
+                            className="px-1.5 sm:px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-bold font-poppins bm-metal"
                             style={{ backgroundColor: accent.hex }}
                           >
                             −{b.blendedPct}%
                           </span>
                         </div>
-                        <span className="self-start px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-poppins text-green-700 bg-green-50 border border-green-100">
+                        <span className="self-start px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-poppins text-emerald-300 bg-emerald-400/10 border border-emerald-400/25">
                           Ušteda {formatPrice(b.savings)} RSD
                         </span>
                       </div>
@@ -1347,7 +1526,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                         </p>
                       </div>
                     </div>
-                  </button>
+                  </motion.button>
                 );
               })}
 
@@ -1388,7 +1567,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                       >
                         {day.isToday && (
                           <span
-                            className="absolute top-2 right-2 sm:top-3 sm:right-3 px-1.5 sm:px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-bold font-poppins text-white"
+                            className="absolute top-2 right-2 sm:top-3 sm:right-3 px-1.5 sm:px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-bold font-poppins bm-metal"
                             style={{ backgroundColor: accent.hex }}
                           >
                             DANAS
@@ -1413,9 +1592,27 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
           {step === 4 && (
             <div className="flex flex-col gap-4">
               <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/40 font-poppins mb-1">SLOBODNI TERMINI</p>
+              {slotTaken && (
+                <div className="flex items-start gap-2 sm:gap-3 p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-amber-400/10 border border-amber-400/40 text-amber-200 text-sm sm:text-base font-poppins">
+                  <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                  Izabrani termin je upravo zauzet. Izaberi drugo vreme - tvoji podaci su sačuvani.
+                </div>
+              )}
               {loadingSlots ? (
                 <div className="flex justify-center py-6">
                   <Loader2 size={22} className="animate-spin text-foreground/30" />
+                </div>
+              ) : slotsError ? (
+                <div className="flex flex-col items-center gap-3 p-5 rounded-xl sm:rounded-2xl bg-foreground/5 text-foreground/60 text-sm sm:text-base font-poppins text-center">
+                  <span className="flex items-center gap-2"><AlertCircle size={16} />Termini trenutno ne mogu da se učitaju.</span>
+                  <button
+                    type="button"
+                    onClick={() => setSlotsReloadKey((k) => k + 1)}
+                    className="px-5 py-2 rounded-full text-sm font-semibold font-poppins bm-metal cursor-pointer"
+                    style={{ backgroundColor: accent.hex }}
+                  >
+                    Pokušaj ponovo
+                  </button>
                 </div>
               ) : availableSlots.length === 0 ? (
                 <div className="flex items-center gap-2 sm:gap-3 p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-foreground/5 text-foreground/50 text-sm sm:text-base font-poppins">
@@ -1432,8 +1629,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                       className="py-2.5 sm:py-3.5 rounded-lg sm:rounded-xl text-sm sm:text-base font-semibold font-poppins transition-all cursor-pointer"
                       style={
                         selectedTime === slot
-                          ? { backgroundColor: accent.hex, color: "white" }
-                          : { backgroundColor: "rgba(0,0,0,0.05)", color: "rgba(0,0,0,0.6)" }
+                          ? { backgroundColor: accent.hex, color: accent.onHex }
+                          : { backgroundColor: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.75)" }
                       }
                     >
                       {slot}
@@ -1447,7 +1644,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
           {/* ══ STEP 5: Vaši podaci only ══════════════════════════════════════════════ */}
           {step === 5 && (
-            <div className="flex flex-col gap-4 sm:gap-6">
+            // Personal + health data: always masked in Clarity recordings.
+            <div className="flex flex-col gap-4 sm:gap-6" data-clarity-mask="true">
               <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/40 font-poppins mb-1">VAŠI PODACI</p>
 
               <div>
@@ -1457,11 +1655,11 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                   placeholder="Ana Marković"
                   value={form.name}
                   onChange={(e) => { setForm((p) => ({ ...p, name: e.target.value })); setFieldErrors((p) => ({ ...p, name: false })); }}
-                  className={`w-full px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl border-2 focus:outline-none font-poppins text-sm sm:text-base transition-colors ${fieldErrors.name ? "border-red-400 bg-red-50" : "border-foreground/10"}`}
+                  className={`w-full px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl border-2 focus:outline-none font-poppins text-sm sm:text-base transition-colors ${fieldErrors.name ? "border-red-400/70 bg-red-500/10" : "border-foreground/10"}`}
                   onFocus={(e) => { if (!fieldErrors.name) e.target.style.borderColor = accent.hex; }}
                   onBlur={(e) => { e.target.style.borderColor = ""; }}
                 />
-                {fieldErrors.name && <p className="text-xs text-red-500 font-poppins mt-1">Unesite ime i prezime.</p>}
+                {fieldErrors.name && <p className="text-xs text-red-400 font-poppins mt-1">Unesite ime i prezime.</p>}
               </div>
 
               <div>
@@ -1475,15 +1673,22 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                     setForm((p) => ({ ...p, email: e.target.value }));
                     setFieldErrors((p) => ({ ...p, email: false }));
                     setIsReturningCustomer(null);
+                    // Student & bundle codes were verified against the old email.
+                    if (promoKind !== "none" || promoStatus === "invalid") {
+                      setPromoStatus("idle");
+                      setAppliedPromoCode(null);
+                      setPromoKind("none");
+                      setPromoErrorMsg(null);
+                    }
                   }}
-                  className={`w-full px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl border-2 focus:outline-none font-poppins text-sm sm:text-base transition-colors ${fieldErrors.email ? "border-red-400 bg-red-50" : "border-foreground/10"}`}
+                  className={`w-full px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl border-2 focus:outline-none font-poppins text-sm sm:text-base transition-colors ${fieldErrors.email ? "border-red-400/70 bg-red-500/10" : "border-foreground/10"}`}
                   onFocus={(e) => { if (!fieldErrors.email) e.target.style.borderColor = accent.hex; }}
                   onBlur={(e) => {
                     e.target.style.borderColor = "";
                     void runReturningEmailCheck(e.target.value);
                   }}
                 />
-                {fieldErrors.email && <p className="text-xs text-red-500 font-poppins mt-1">Unesite ispravnu email adresu.</p>}
+                {fieldErrors.email && <p className="text-xs text-red-400 font-poppins mt-1">Unesite ispravnu email adresu.</p>}
                 {checkingReturningEmail && (
                   <p className="text-xs text-foreground/45 font-poppins mt-1.5">Proveravamo istoriju zakazivanja…</p>
                 )}
@@ -1504,11 +1709,11 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                     setForm((p) => ({ ...p, phone: e.target.value }));
                     setFieldErrors((p) => ({ ...p, phone: false }));
                   }}
-                  className={`w-full px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl border-2 focus:outline-none font-poppins text-sm sm:text-base transition-colors ${fieldErrors.phone ? "border-red-400 bg-red-50" : "border-foreground/10"}`}
+                  className={`w-full px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl border-2 focus:outline-none font-poppins text-sm sm:text-base transition-colors ${fieldErrors.phone ? "border-red-400/70 bg-red-500/10" : "border-foreground/10"}`}
                   onFocus={(e) => { if (!fieldErrors.phone) e.target.style.borderColor = accent.hex; }}
                   onBlur={(e) => { e.target.style.borderColor = ""; }}
                 />
-                {fieldErrors.phone && <p className="text-xs text-red-500 font-poppins mt-1">Unesite broj telefona.</p>}
+                {fieldErrors.phone && <p className="text-xs text-red-400 font-poppins mt-1">Unesite ispravan broj telefona.</p>}
               </div>
 
               <div>
@@ -1550,34 +1755,34 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                       type="button"
                       onClick={handleApplyPromo}
                       disabled={!promoCode.trim() || checkingReturningEmail || checkingPromo}
-                      className="shrink-0 px-4 sm:px-7 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl text-sm sm:text-base font-semibold tracking-wide font-poppins text-white transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="shrink-0 px-4 sm:px-7 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl text-sm sm:text-base font-semibold tracking-wide font-poppins bm-metal transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       style={{ backgroundColor: accent.hex }}
                     >
                       {checkingPromo ? "…" : "Primeni"}
                     </button>
                   </div>
                   {promoStatus === "valid" && redeemActive && (
-                    <p className="text-xs text-green-600 font-poppins mt-2">
+                    <p className="text-xs text-emerald-400 font-poppins mt-2">
                       Paket potvrđen - ovaj tretman je već plaćen. Cena: 0 RSD.
                     </p>
                   )}
                   {/* Deliberately amber, not green: the discount is conditional and
                       the condition is the whole point of the message. */}
                   {studentActive && (
-                    <div className="flex items-start gap-2.5 mt-2 p-3 sm:p-3.5 rounded-xl bg-amber-50 border-2 border-amber-300">
-                      <AlertCircle size={18} className="text-amber-600 shrink-0 mt-px" />
+                    <div className="flex items-start gap-2.5 mt-2 p-3 sm:p-3.5 rounded-xl bg-amber-400/10 border-2 border-amber-400/50">
+                      <AlertCircle size={18} className="text-amber-400 shrink-0 mt-px" />
                       <div className="min-w-0">
-                        <p className="text-xs sm:text-sm font-bold font-poppins text-amber-900">
+                        <p className="text-xs sm:text-sm font-bold font-poppins text-amber-200">
                           Studentski popust −20% primenjen
                         </p>
-                        <p className="text-[11px] sm:text-xs font-poppins text-amber-800 leading-snug mt-0.5">
+                        <p className="text-[11px] sm:text-xs font-poppins text-amber-300 leading-snug mt-0.5">
                           Obavezno ponesi indeks na tretman. Bez indeksa popust ne važi i plaćaš punu cenu.
                         </p>
                       </div>
                     </div>
                   )}
                   {promoStatus === "invalid" && (
-                    <p className="text-xs text-red-500 font-poppins mt-2">
+                    <p className="text-xs text-red-400 font-poppins mt-2">
                       {promoErrorMsg ?? "Nevažeći promo kod."}
                     </p>
                   )}
@@ -1624,30 +1829,30 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                     </div>
                     {studentActive && (
                       <div className="flex justify-between items-center mt-1.5">
-                        <span className="text-sm sm:text-base font-poppins text-green-800 font-semibold">Studentski popust (−20%)</span>
-                        <span className="text-sm sm:text-base font-poppins font-bold text-green-800">{formatPrice(finalPrice)} RSD</span>
+                        <span className="text-sm sm:text-base font-poppins text-emerald-300 font-semibold">Studentski popust (−20%)</span>
+                        <span className="text-sm sm:text-base font-poppins font-bold text-emerald-300">{formatPrice(finalPrice)} RSD</span>
                       </div>
                     )}
                     {bundleActive && (
                       <div className="flex justify-between items-center mt-1.5">
-                        <span className="text-sm sm:text-base font-poppins text-green-800 font-semibold">Cena paketa (−{bundleResult!.blendedPct}%)</span>
-                        <span className="text-sm sm:text-base font-poppins font-bold text-green-800">{formatPrice(finalPrice)} RSD</span>
+                        <span className="text-sm sm:text-base font-poppins text-emerald-300 font-semibold">Cena paketa (−{bundleResult!.blendedPct}%)</span>
+                        <span className="text-sm sm:text-base font-poppins font-bold text-emerald-300">{formatPrice(finalPrice)} RSD</span>
                       </div>
                     )}
                     {redeemActive && (
                       <div className="flex justify-between items-center mt-1.5">
-                        <span className="text-sm sm:text-base font-poppins text-green-800 font-semibold">Plaćeno u paketu</span>
-                        <span className="text-sm sm:text-base font-poppins font-bold text-green-800">0 RSD</span>
+                        <span className="text-sm sm:text-base font-poppins text-emerald-300 font-semibold">Plaćeno u paketu</span>
+                        <span className="text-sm sm:text-base font-poppins font-bold text-emerald-300">0 RSD</span>
                       </div>
                     )}
                     {savingsVsList > 0 && (
                       <div className="flex justify-between items-center mt-1 pt-2 border-t border-foreground/8">
                         <span className="text-xs sm:text-sm font-poppins text-foreground/40">Ušteda</span>
-                        <span className="text-xs sm:text-sm font-poppins font-semibold" style={{ color: "#E85D8A" }}>{formatPrice(savingsVsList)} RSD</span>
+                        <span className="text-xs sm:text-sm font-poppins font-semibold" style={{ color: accent.hex }}>{formatPrice(savingsVsList)} RSD</span>
                       </div>
                     )}
                     {studentActive && (
-                      <p className="text-[11px] sm:text-[13px] font-poppins text-amber-800 font-semibold leading-snug mt-2.5 pt-2.5 border-t border-foreground/8">
+                      <p className="text-[11px] sm:text-[13px] font-poppins text-amber-300 font-semibold leading-snug mt-2.5 pt-2.5 border-t border-foreground/8">
                         Ova cena važi uz indeks. Bez njega se naplaćuje {formatPrice(listTotal)} RSD.
                       </p>
                     )}
@@ -1664,7 +1869,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               <div>
                 <label
                   className={`flex gap-3 sm:gap-4 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border-2 cursor-pointer transition-colors ${
-                    fieldErrors.policy ? "border-red-400 bg-red-50" : "border-foreground/10"
+                    fieldErrors.policy ? "border-red-400/70 bg-red-500/10" : "border-foreground/10"
                   }`}
                 >
                   <input
@@ -1690,7 +1895,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                   </button>
                 </label>
                 {fieldErrors.policy && (
-                  <p className="text-xs text-red-500 font-poppins mt-1">Potrebno je prihvatiti uslove otkazivanja.</p>
+                  <p className="text-xs text-red-400 font-poppins mt-1">Potrebno je prihvatiti uslove otkazivanja.</p>
                 )}
               </div>
 
@@ -1700,9 +1905,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                   className="fixed inset-0 z-[60] flex items-center justify-center p-6"
                   onClick={() => setShowPolicyInfo(false)}
                 >
-                  <div className="absolute inset-0 bg-foreground/40 backdrop-blur-sm" />
+                  <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
                   <div
-                    className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6"
+                    className="relative bg-[var(--bm-surface)] border border-foreground/10 rounded-2xl shadow-2xl max-w-md w-full p-6"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <div className="flex items-start justify-between gap-4 mb-4">
@@ -1729,7 +1934,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               )}
 
               {submitError && (
-                <div className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-red-50 text-red-600 text-sm sm:text-base font-poppins">
+                <div className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-red-500/10 text-red-300 text-sm sm:text-base font-poppins">
                   <AlertCircle size={15} />
                   {submitError}
                 </div>
@@ -1740,8 +1945,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
           {/* ══ SUCCESS ════════════════════════════════════════════════════ */}
           {step === "success" && (
             <div className="flex flex-col items-center text-center py-4 sm:py-6">
-              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-green-50 flex items-center justify-center mb-5 sm:mb-6">
-                <CheckCircle2 size={44} className="text-green-500 sm:w-13 sm:h-13" strokeWidth={1.5} />
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-emerald-400/10 flex items-center justify-center mb-5 sm:mb-6">
+                <CheckCircle2 size={44} className="text-emerald-400 sm:w-13 sm:h-13" strokeWidth={1.5} />
               </div>
               <h3 className="text-2xl sm:text-3xl md:text-4xl font-bold font-playfair mb-2 sm:mb-3">Termin zakazan! Čekamo Vas u Miloja Čiplića 51 u Novom Sadu</h3>
               <p className="text-sm sm:text-base text-foreground/50 font-poppins mb-6 sm:mb-8">Potvrda je poslata na {form.email}</p>
@@ -1803,9 +2008,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                   </div>
                 ))}
                 {studentActive && (
-                  <div className="flex items-start gap-2.5 p-3 sm:p-3.5 rounded-xl bg-amber-50 border-2 border-amber-300">
-                    <AlertCircle size={18} className="text-amber-600 shrink-0 mt-px" />
-                    <p className="text-[11px] sm:text-xs font-poppins text-amber-900 font-semibold leading-snug">
+                  <div className="flex items-start gap-2.5 p-3 sm:p-3.5 rounded-xl bg-amber-400/10 border-2 border-amber-400/50">
+                    <AlertCircle size={18} className="text-amber-400 shrink-0 mt-px" />
+                    <p className="text-[11px] sm:text-xs font-poppins text-amber-200 font-semibold leading-snug">
                       Ne zaboravi indeks! Bez njega studentski popust ne važi i naplaćuje se puna cena od {formatPrice(listTotal)} RSD.
                     </p>
                   </div>
@@ -1865,7 +2070,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
           {/* ── Sticky footer: primary CTA always visible while scrolling ───────── */}
           {(step === 2 || step === 3 || step === 4 || step === 5 || step === "success" || step === "preparation") && (
-            <div className="shrink-0 border-t border-foreground/10 bg-white px-4 pt-3 pb-3 sm:pt-5 sm:pb-5 shadow-[0_-8px_24px_-4px_rgba(0,0,0,0.08)]">
+            <div className="shrink-0 border-t border-foreground/10 bg-[var(--bm-bg)]/90 backdrop-blur-md px-4 pt-3 pb-3 sm:pt-5 sm:pb-5 shadow-[0_-8px_24px_-4px_rgba(0,0,0,0.5)]">
               <div className={COL_W}>
               {step === 2 && (
                 <div className="flex flex-col gap-2">
@@ -1878,7 +2083,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                         </div>
                         {appliedCombos.length > 0 && (
                           <div className="flex items-center justify-center gap-1 mt-1">
-                            <span className="px-1.5 sm:px-2 py-0.5 rounded text-[9px] sm:text-[11px] font-bold font-poppins text-white" style={{ backgroundColor: accent.hex }}>COMBO</span>
+                            <span className="px-1.5 sm:px-2 py-0.5 rounded text-[9px] sm:text-[11px] font-bold font-poppins bm-metal" style={{ backgroundColor: accent.hex }}>COMBO</span>
                             <span className="text-[10px] sm:text-xs font-poppins text-foreground/40">paket popust uračunat</span>
                           </div>
                         )}
@@ -1891,11 +2096,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                     type="button"
                     onClick={handleAddToCart}
                     disabled={selectedIds.length === 0}
-                    className="w-full py-3.5 sm:py-4.5 rounded-full text-sm sm:text-base font-semibold tracking-widest font-poppins text-white active:scale-95 transition-transform cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
-                    style={{
-                      backgroundColor: accent.hex,
-                      animation: selectedIds.length > 0 ? "nastaviGlow 2s ease-in-out infinite" : undefined,
-                    }}
+                    className={`${selectedIds.length > 0 ? "glow-halo" : ""} relative w-full py-3.5 sm:py-4.5 rounded-full text-sm sm:text-base font-semibold tracking-widest font-poppins bm-metal active:scale-95 transition-transform cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed`}
+                    style={{ backgroundColor: accent.hex, "--glow": accent.hex } as CSSProperties}
                   >
                     NASTAVI
                   </button>
@@ -1903,7 +2105,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               )}
 
               {step === 3 && (
-                <p className="text-center text-[10px] sm:text-sm font-poppins text-foreground/40">Preko 2000 žena se uspešno rešilo dlačica</p>
+                <p className="text-center text-[10px] sm:text-sm font-poppins text-foreground/45">
+                  <span className="mr-1.5" style={{ color: accent.hex }}>{proof.mark}</span>{proof.line}
+                </p>
               )}
 
               {step === 4 && (
@@ -1915,7 +2119,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                   type="button"
                   onClick={handleSubmit}
                   disabled={submitting}
-                  className="w-full py-3.5 sm:py-4.5 rounded-full text-sm sm:text-base font-semibold tracking-widest font-poppins text-white transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="w-full py-3.5 sm:py-4.5 rounded-full text-sm sm:text-base font-semibold tracking-widest font-poppins bm-metal transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                   style={{ backgroundColor: accent.hex }}
                 >
                   {submitting ? (
@@ -1940,7 +2144,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                   <button
                     type="button"
                     onClick={handleClose}
-                    className="w-full py-3 sm:py-4 rounded-full text-sm sm:text-base font-semibold tracking-widest font-poppins text-white cursor-pointer transition-opacity hover:opacity-90"
+                    className="w-full py-3 sm:py-4 rounded-full text-sm sm:text-base font-semibold tracking-widest font-poppins bm-metal cursor-pointer transition-opacity hover:opacity-90"
                     style={{ backgroundColor: accent.hex }}
                   >
                     ZATVORI
@@ -1952,7 +2156,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                 <button
                   type="button"
                   onClick={handleClose}
-                  className="w-full py-3.5 sm:py-4.5 rounded-full text-sm sm:text-base font-semibold tracking-widest font-poppins text-white cursor-pointer transition-opacity hover:opacity-90"
+                  className="w-full py-3.5 sm:py-4.5 rounded-full text-sm sm:text-base font-semibold tracking-widest font-poppins bm-metal cursor-pointer transition-opacity hover:opacity-90"
                   style={{ backgroundColor: accent.hex }}
                 >
                   ZATVORI
@@ -1964,7 +2168,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
         </div>
 
         {/* Bottom accent bar */}
-        <div className="h-1 bg-linear-to-r from-teal via-pink to-rose shrink-0" />
+        <div className="h-1 bm-metal shrink-0" />
       </div>
     </div>
   );

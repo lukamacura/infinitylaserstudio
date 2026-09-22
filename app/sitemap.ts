@@ -3,13 +3,13 @@ import type { MetadataRoute } from "next";
 export default function sitemap(): MetadataRoute.Sitemap {
   return [
     {
-      url: "https://infinitylaserstudio.rs",
+      url: "https://www.infinitylaserstudio.com",
       lastModified: new Date(),
       changeFrequency: "weekly",
       priority: 1,
     },
     {
-      url: "https://infinitylaserstudio.rs/cenovnik",
+      url: "https://www.infinitylaserstudio.com/cenovnik",
       lastModified: new Date(),
       changeFrequency: "monthly",
       priority: 0.8,

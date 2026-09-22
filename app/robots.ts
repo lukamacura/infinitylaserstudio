@@ -9,6 +9,6 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ["/admin", "/api/"],
       },
     ],
-    sitemap: "https://infinitylaserstudio.rs/sitemap.xml",
+    sitemap: "https://www.infinitylaserstudio.com/sitemap.xml",
   };
 }

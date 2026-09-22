@@ -1,17 +1,16 @@
 "use client";
 
-import { useState, useEffect, useCallback, type FormEvent } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   LogOut, DollarSign, Target, CheckCircle2, XCircle, AlertCircle,
   TrendingUp, TrendingDown, CalendarCheck, Users
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { useAdminAuth } from "@/lib/adminAuth";
+import AdminLogin from "@/components/AdminLogin";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-/** Set via NEXT_PUBLIC_ADMIN_PASSWORD. No fallback on purpose - with the
-    variable unset, login simply never succeeds. */
-const ADMIN_PWD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD;
 
 const SR_MONTHS = [
   "januar", "februar", "mart", "april", "maj", "jun",
@@ -57,16 +56,11 @@ function getRateBg(rate: number) {
 // Marketing Page
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function MarketingPage() {
-  const [authenticated, setAuthenticated] = useState(false);
-  const [password, setPassword]           = useState("");
-  const [pwdError, setPwdError]           = useState(false);
+  const { authenticated: authState, signIn, signOut } = useAdminAuth();
+  const authenticated = authState === true;
 
   const [appointments, setAppointments]   = useState<AppointmentRow[]>([]);
   const [loading, setLoading]             = useState(false);
-
-  useEffect(() => {
-    if (sessionStorage.getItem("ils_admin") === "1") setAuthenticated(true);
-  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -87,20 +81,8 @@ export default function MarketingPage() {
     if (authenticated) fetchData();
   }, [authenticated, fetchData]);
 
-  function handleLogin(e: FormEvent) {
-    e.preventDefault();
-    if (ADMIN_PWD && password === ADMIN_PWD) {
-      sessionStorage.setItem("ils_admin", "1");
-      setAuthenticated(true);
-    } else {
-      setPwdError(true);
-    }
-  }
-
   function handleLogout() {
-    sessionStorage.removeItem("ils_admin");
-    setAuthenticated(false);
-    setPassword("");
+    void signOut();
   }
 
   // ── Calculations ─────────────────────────────────────────────────────────────
@@ -154,38 +136,7 @@ export default function MarketingPage() {
 
   // ── Password screen ──────────────────────────────────────────────────────────
   if (!authenticated) {
-    return (
-      <main className="min-h-dvh bg-linear-to-br from-[#0D1117] to-[#1A2332] flex items-center justify-center p-4">
-        <style jsx global>{` .animate-promo-in { display: none !important; } `}</style>
-        <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 md:p-12">
-          <div className="flex justify-center mb-8">
-            <div className="w-16 h-16 rounded-2xl bg-linear-to-br from-teal to-pink flex items-center justify-center shadow-lg shadow-teal/20">
-              <DollarSign size={32} className="text-white" />
-            </div>
-          </div>
-          <div className="text-center mb-10">
-            <h1 className="text-2xl font-bold font-playfair mb-2">Admin Panel</h1>
-            <p className="text-[10px] text-foreground/30 font-bold font-poppins uppercase tracking-[0.2em]">Infinity Laser Studio</p>
-          </div>
-          <form onSubmit={handleLogin} className="flex flex-col gap-6">
-            <div className="space-y-2">
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => { setPassword(e.target.value); setPwdError(false); }}
-                placeholder="Unesite lozinku"
-                autoFocus
-                className={`w-full px-5 py-4 rounded-2xl border-2 font-poppins text-sm focus:outline-none transition-all ${
-                  pwdError ? "border-red-400 bg-red-50" : "border-foreground/5 bg-foreground/2 focus:border-teal/50 focus:bg-white"
-                }`}
-              />
-              {pwdError && <p className="text-[11px] text-red-500 font-poppins font-medium mt-1.5 ml-1">Neispravna lozinka.</p>}
-            </div>
-            <button type="submit" className="w-full py-4.5 rounded-2xl bg-linear-to-r from-teal to-[#14B8A6] text-white text-xs font-bold tracking-[0.2em] font-poppins cursor-pointer active:scale-[0.98] transition-all shadow-lg shadow-teal/10">PRIJAVA</button>
-          </form>
-        </div>
-      </main>
-    );
+    return <AdminLogin icon={DollarSign} onSignIn={signIn} checking={authState === null} />;
   }
 
   // ── Dashboard screen ──────────────────────────────────────────────────────────

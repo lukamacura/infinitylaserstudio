@@ -9,7 +9,7 @@ const members = [
     role: "Medicinska sestra",
     quote: "Svaki tretman je priča za sebe.",
     bio: "Preciznost, toplina i posvećenost - Mila svaku klijentkinju dočeka s pažnjom kakvu zaslužuje.",
-    src: "/mila.jpg",
+    src: "/mila.webp",
     accent: "#ACE6E4",
   },
   {
@@ -17,7 +17,7 @@ const members = [
     role: "Medicinska sestra",
     quote: "Rezultati govore. Osmesi potvrđuju.",
     bio: "Mirna ruka, brz tretman i uvek raspoložena za razgovor. Tanja se stara da se iz ordinacije izađe s osmehom - i bez dlaka. Specijalizovana za tretmane lica i osetljivih zona.",
-    src: "/tanja.jpg",
+    src: "/tanja.webp",
     accent: "#FCCAE2",
   },
 ];

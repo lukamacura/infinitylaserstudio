@@ -23,9 +23,9 @@ export default function Navbar() {
         <div className="max-w-7xl mx-auto flex items-center justify-between px-6 lg:px-12 py-3">
           <a href="/" aria-label="Infinity Laser Studio" className="flex items-center gap-3">
             <Image
-              src="/logo.png"
+              src="/logo.webp"
               alt="Infinity Laser Studio"
-              width={140}
+              width={40}
               height={40}
               className="h-10 w-auto object-contain"
               priority

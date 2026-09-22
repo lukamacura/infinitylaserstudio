@@ -11,12 +11,12 @@ export const metadata: Metadata = {
   title: "Cenovnik laserske epilacije",
   description:
     "Pregledni cenovnik svih tretmana laserske epilacije u Infinity Laser Studiju. Paketi za žene i muškarce, mogućnost plaćanja na rate.",
-  alternates: { canonical: "https://infinitylaserstudio.rs/cenovnik" },
+  alternates: { canonical: "https://www.infinitylaserstudio.com/cenovnik" },
   openGraph: {
     title: "Cenovnik laserske epilacije | Infinity Laser Studio",
     description:
       "Pregledni cenovnik svih tretmana laserske epilacije u Infinity Laser Studiju. Paketi za žene i muškarce, mogućnost plaćanja na rate.",
-    url: "https://infinitylaserstudio.rs/cenovnik",
+    url: "https://www.infinitylaserstudio.com/cenovnik",
   },
 };
 

@@ -66,7 +66,7 @@ export default function ServiceHighlights() {
             <div className="relative w-[20rem] h-96 md:w-md md:h-136">
               <div className="absolute inset-12 md:inset-20 rounded-full bg-pink opacity-50" />
               <Image
-                src="/ATON-magnum.png"
+                src="/ATON-magnum.webp"
                 alt="ATON Magnum laser uređaj"
                 fill
                 className="object-contain z-10"
