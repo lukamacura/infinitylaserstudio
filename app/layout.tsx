@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { DM_Serif_Display, Poppins } from "next/font/google";
 import Script from "next/script";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
 import FloatingBookingButton from "@/components/FloatingBookingButton";
@@ -127,6 +128,7 @@ export default function RootLayout({
         <SocialProofToast />
 {children}
         <FloatingBookingButton />
+        <Analytics />
       </body>
     </html>
   );
