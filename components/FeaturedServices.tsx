@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import Reveal from "@/components/Reveal";
 import Image from "next/image";
 
 interface Props {
@@ -50,13 +50,7 @@ const services: ServiceCard[] = [
 export default function FeaturedServices({ onOpen, onOpenService }: Props) {
   return (
     <section id="usluge" className="py-20 px-6 bg-white">
-      <motion.div
-        className="max-w-6xl mx-auto"
-        initial={{ opacity: 0, y: 32 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: "-80px" }}
-        transition={{ duration: 0.7, ease: [0.25, 0.46, 0.45, 0.94] }}
-      >
+      <Reveal className="max-w-6xl mx-auto">
         {/* Heading */}
         <div className="text-center mb-4">
           <h2 className="font-playfair text-4xl md:text-5xl text-gray-800 mb-3">
@@ -123,7 +117,7 @@ export default function FeaturedServices({ onOpen, onOpenService }: Props) {
             Zakaži tretman
           </button>
         </div>
-      </motion.div>
+      </Reveal>
     </section>
   );
 }

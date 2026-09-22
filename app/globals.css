@@ -90,6 +90,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .glow-halo::before { animation: none; opacity: 0.5; }
   .shimmer-sweep, .bm-shine { display: none; }
+  [data-reveal] { transition: none !important; }
 }
 
 /* ── Booking modal dark themes ────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { motion } from "framer-motion";
+import Reveal from "@/components/Reveal";
 
 const faqs = [
   {
@@ -60,13 +60,7 @@ export default function FAQSection() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
       />
-      <motion.div
-        className="max-w-3xl mx-auto"
-        initial={{ opacity: 0, y: 32 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: "-80px" }}
-        transition={{ duration: 0.7, ease: [0.25, 0.46, 0.45, 0.94] }}
-      >
+      <Reveal className="max-w-3xl mx-auto">
         {/* Heading */}
         <div className="text-center mb-14">
           <span className="inline-flex items-center gap-2 font-poppins text-sm text-gray-500 mb-4">
@@ -119,7 +113,7 @@ export default function FAQSection() {
             </div>
           ))}
         </div>
-      </motion.div>
+      </Reveal>
     </section>
   );
 }

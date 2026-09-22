@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import Reveal from "@/components/Reveal";
 
 const navLinks = [
   { label: "Naša priča", href: "/#o-nama" },
@@ -14,13 +14,7 @@ interface Props { onOpen: () => void; }
 export default function Footer({ onOpen }: Props) {
   return (
     <footer id="kontakt" className="bg-white border-t border-gray-100 py-28 px-6">
-      <motion.div
-        className="max-w-6xl mx-auto flex flex-col items-center gap-8"
-        initial={{ opacity: 0, y: 32 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: "-80px" }}
-        transition={{ duration: 0.7, ease: [0.25, 0.46, 0.45, 0.94] }}
-      >
+      <Reveal className="max-w-6xl mx-auto flex flex-col items-center gap-8">
         {/* Logo + tagline */}
         <div className="text-center">
           <p className="font-playfair text-2xl text-gray-800 mb-1">Infinity Laser Studio</p>
@@ -123,7 +117,7 @@ export default function Footer({ onOpen }: Props) {
             Politika privatnosti · Uslovi korišćenja
           </p>
         </div>
-      </motion.div>
+      </Reveal>
     </footer>
   );
 }

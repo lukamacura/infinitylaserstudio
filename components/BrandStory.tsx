@@ -1,19 +1,13 @@
 "use client";
 
-import { motion } from "framer-motion";
+import Reveal from "@/components/Reveal";
 import Image from "next/image";
 import { Check } from "lucide-react";
 
 export default function BrandStory() {
   return (
     <section id="o-nama" className="py-20 px-6 bg-cream">
-      <motion.div
-        className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-16 items-center"
-        initial={{ opacity: 0, y: 32 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: "-80px" }}
-        transition={{ duration: 0.7, ease: [0.25, 0.46, 0.45, 0.94] }}
-      >
+      <Reveal className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
         {/* Text */}
         <div>
           <span className="inline-flex items-center gap-2 font-poppins text-sm text-gray-500 mb-4">
@@ -100,7 +94,7 @@ export default function BrandStory() {
             </div>
           </div>
         </div>
-      </motion.div>
+      </Reveal>
     </section>
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
 
 const BookingModal = dynamic(() => import("./BookingModal"), { ssr: false });
@@ -29,24 +28,17 @@ export default function FloatingBookingButton() {
         }
       `}</style>
 
-      <AnimatePresence>
-        {visible && (
-          <motion.button
-            onClick={() => setIsOpen(true)}
-            className="cursor-pointer fixed bottom-6 left-1/2 -translate-x-1/2 z-40 font-poppins font-semibold text-base px-10 py-3.5 rounded-full bg-pink text-black tracking-wide"
-            style={{ animation: "floatingGlow 2.2s ease-in-out infinite" }}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
-            whileHover={{ scale: 1.06 }}
-            whileTap={{ scale: 0.97 }}
-            aria-label="Zakaži tretman"
-          >
-            Zakaži
-          </motion.button>
-        )}
-      </AnimatePresence>
+      {/* Always rendered; `invisible` removes it from focus/clicks while hidden. */}
+      <button
+        onClick={() => setIsOpen(true)}
+        className={`cursor-pointer fixed bottom-6 left-1/2 -translate-x-1/2 z-40 font-poppins font-semibold text-base px-10 py-3.5 rounded-full bg-pink text-black tracking-wide transition-[opacity,translate,scale,visibility] duration-300 ease-out hover:scale-106 active:scale-97 ${
+          visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5 invisible"
+        }`}
+        style={{ animation: "floatingGlow 2.2s ease-in-out infinite" }}
+        aria-label="Zakaži tretman"
+      >
+        Zakaži
+      </button>
 
       {mounted && <BookingModal isOpen={isOpen} onClose={() => setIsOpen(false)} />}
     </>

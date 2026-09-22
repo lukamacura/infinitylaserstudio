@@ -1,19 +1,13 @@
 "use client";
 
-import { motion } from "framer-motion";
+import Reveal from "@/components/Reveal";
 
 interface Props { onOpen: () => void; }
 
 export default function CostComparison({ onOpen }: Props) {
   return (
     <section className="py-20 px-6 bg-cream">
-      <motion.div
-        className="max-w-3xl mx-auto"
-        initial={{ opacity: 0, y: 32 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: "-80px" }}
-        transition={{ duration: 0.7, ease: [0.25, 0.46, 0.45, 0.94] }}
-      >
+      <Reveal className="max-w-3xl mx-auto">
         {/* Eyebrow */}
         <div className="text-center mb-4">
           <span className="inline-flex items-center gap-2 font-poppins text-sm text-gray-500">
@@ -50,13 +44,14 @@ export default function CostComparison({ onOpen }: Props) {
               <span className="font-poppins text-sm font-semibold" style={{ color: "#C0627A" }}>500.000+ RSD</span>
             </div>
             <div className="h-4 bg-gray-100 rounded-full overflow-hidden">
-              <motion.div
+              <Reveal
                 className="h-full rounded-full"
                 style={{ backgroundColor: "#C0627A" }}
-                initial={{ width: "0%" }}
-                whileInView={{ width: "91%" }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.9, delay: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
+                from={{ width: "0%" }}
+                to={{ width: "91%" }}
+                margin="0px"
+                duration={0.9}
+                delay={0.3}
               />
             </div>
           </div>
@@ -68,12 +63,13 @@ export default function CostComparison({ onOpen }: Props) {
               <span className="font-poppins text-sm font-semibold text-teal">~8.500 RSD / tretman</span>
             </div>
             <div className="h-4 bg-gray-100 rounded-full overflow-hidden">
-              <motion.div
+              <Reveal
                 className="h-full rounded-full bg-teal"
-                initial={{ width: "0%" }}
-                whileInView={{ width: "2%" }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.9, delay: 0.5, ease: [0.25, 0.46, 0.45, 0.94] }}
+                from={{ width: "0%" }}
+                to={{ width: "2%" }}
+                margin="0px"
+                duration={0.9}
+                delay={0.5}
               />
             </div>
           </div>
@@ -102,7 +98,7 @@ export default function CostComparison({ onOpen }: Props) {
             Zakaži tretman i uštedi novac
           </button>
         </div>
-      </motion.div>
+      </Reveal>
     </section>
   );
 }

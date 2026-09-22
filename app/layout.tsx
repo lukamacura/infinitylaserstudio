@@ -6,9 +6,11 @@ import Navbar from "@/components/Navbar";
 import FloatingBookingButton from "@/components/FloatingBookingButton";
 import SocialProofToast from "@/components/SocialProofToast";
 
+// The hero headline (the LCP element) contains š/č, which live in latin-ext —
+// preload that subset too, or the headline re-paints late when it arrives.
 const dmSerif = DM_Serif_Display({
   variable: "--font-playfair",
-  subsets: ["latin"],
+  subsets: ["latin", "latin-ext"],
   weight: ["400"],
   display: "swap",
 });
@@ -16,7 +18,7 @@ const dmSerif = DM_Serif_Display({
 const poppins = Poppins({
   variable: "--font-poppins",
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
+  weight: ["400", "500", "600", "700"],
   display: "swap",
 });
 
