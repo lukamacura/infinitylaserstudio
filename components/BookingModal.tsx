@@ -728,7 +728,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     const t = setTimeout(() => {
       shownNoticesRef.current = [...shownNoticesRef.current, key];
       setActiveNotice(key);
-    }, 700);
+    }, 2000);
     return () => clearTimeout(t);
   }, [isOpen, step]);
 
