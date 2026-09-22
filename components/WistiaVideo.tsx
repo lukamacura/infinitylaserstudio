@@ -5,9 +5,8 @@ import Script from "next/script";
 import Reveal from "@/components/Reveal";
 
 export default function WistiaVideo() {
-  // The swatch is a third-party image far below the fold. Fetching it on page
-  // load opens a wistia.com connection that competes with the hero (LCP), so
-  // only point the placeholder at it once the section is getting close.
+  // Everything Wistia (swatch image + player scripts) is far below the fold,
+  // so load it only once the section is getting close.
   const sectionRef = useRef<HTMLElement>(null);
   const [near, setNear] = useState(false);
   useEffect(() => {
@@ -55,9 +54,15 @@ export default function WistiaVideo() {
             }
           `}</style>
           {/* Wistia ships these as ES modules - without type="module" the embed
-              script throws "Unexpected token 'export'" and its media data is lost. */}
-          <Script src="https://fast.wistia.com/player.js" strategy="lazyOnload" type="module" />
-          <Script src="https://fast.wistia.com/embed/vwpjkz1l7z.js" strategy="lazyOnload" type="module" />
+              script throws "Unexpected token 'export'" and its media data is lost.
+              Rendered only once the section is near: the player costs ~1.2s of
+              main-thread time on a mid-range phone. */}
+          {near && (
+            <>
+              <Script src="https://fast.wistia.com/player.js" strategy="afterInteractive" type="module" />
+              <Script src="https://fast.wistia.com/embed/vwpjkz1l7z.js" strategy="afterInteractive" type="module" />
+            </>
+          )}
           {/* @ts-expect-error - wistia-player is a web component */}
           <wistia-player media-id="vwpjkz1l7z" wistia-popover="true" aspect="0.5625" />
         </div>

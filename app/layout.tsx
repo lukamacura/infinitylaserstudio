@@ -83,33 +83,36 @@ export default function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(localBusinessSchema) }}
         />
-        <Script id="meta-pixel" strategy="lazyOnload">
+        {/* Meta Pixel + Clarity together cost ~0.6s of main-thread time on a
+            mid-range phone. Their command queues are set up immediately (so
+            PageView and any early fbq/clarity calls are queued, not lost), but
+            the scripts themselves download only on the first interaction or
+            5s after load — whichever comes first — keeping them out of the
+            page's loading phase. */}
+        <Script id="deferred-tracking" strategy="afterInteractive">
           {`
-            !function(f,b,e,v,n,t,s)
-            {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-            n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-            if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-            n.queue=[];t=b.createElement(e);t.async=!0;
-            t.src=v;s=b.getElementsByTagName(e)[0];
-            s.parentNode.insertBefore(t,s)}(window, document,'script',
-            'https://connect.facebook.net/en_US/fbevents.js');
-            fbq('init', '924353527086297');
-            fbq('track', 'PageView');
+            (function(w,d){
+              var n=w.fbq=w.fbq||function(){n.callMethod?
+              n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+              if(!w._fbq)w._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=n.queue||[];
+              fbq('init', '924353527086297');
+              fbq('track', 'PageView');
+              ${CLARITY_ID ? `w.clarity=w.clarity||function(){(w.clarity.q=w.clarity.q||[]).push(arguments)};` : ""}
+
+              var done=false, evts=['scroll','pointerdown','keydown','touchstart'];
+              function add(src){var t=d.createElement('script');t.async=true;t.src=src;d.head.appendChild(t);}
+              function load(){
+                if(done)return;done=true;
+                evts.forEach(function(e){w.removeEventListener(e,load)});
+                add('https://connect.facebook.net/en_US/fbevents.js');
+                ${CLARITY_ID ? `add('https://www.clarity.ms/tag/${CLARITY_ID}');` : ""}
+              }
+              evts.forEach(function(e){w.addEventListener(e,load,{once:true,passive:true})});
+              function later(){setTimeout(load,5000)}
+              if(d.readyState==='complete')later();else w.addEventListener('load',later);
+            })(window,document);
           `}
         </Script>
-        {CLARITY_ID && (
-          // lazyOnload = injected after window load, during browser idle time,
-          // so it never competes with hydration, LCP or the booking flow.
-          <Script id="ms-clarity" strategy="lazyOnload">
-            {`
-              (function(c,l,a,r,i,t,y){
-                c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
-                t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
-                y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
-              })(window, document, "clarity", "script", "${CLARITY_ID}");
-            `}
-          </Script>
-        )}
         <noscript>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
