@@ -302,12 +302,12 @@ type NoticeKey = "guarantee" | "plan" | "student";
 const NOTICES: Record<NoticeKey, { step: Step | null; message: string }> = {
   guarantee: {
     step: 2,
-    message: "Ako se ne rešiš 70–90% dlačica, vraćamo ti novac.",
+    message: "Ako se ne rešiš 70 do 90% dlačica, vraćamo ti novac.",
   },
   plan: {
     step: "plan",
     message:
-      "Za potpune rezultate telu treba 6–8, a licu 10 tretmana. Uzmi paket i uštedi - plaćaš jednom, dolaziš koliko ti treba.",
+      "Za potpune rezultate telu treba 6 do 8, a licu 10 tretmana. Uzmi paket i uštedi. Plaćaš jednom, a dolaziš koliko ti treba.",
   },
   student: {
     step: null,
