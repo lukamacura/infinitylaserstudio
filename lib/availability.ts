@@ -78,6 +78,8 @@ export async function fetchAvailability(): Promise<AvailabilityData> {
     supabase.from("weekly_schedule").select("weekday, windows"),
     supabase.from("availability_overrides").select("date, windows").gte("date", todayStr),
   ]);
+  // A failed read must not pass for "closed every day".
+  if (tplRes.error || ovrRes.error) throw new Error("availability load failed");
 
   const template: WeeklyTemplate = [[], [], [], [], [], [], []];
   for (const row of (tplRes.data ?? []) as { weekday: number; windows: unknown }[]) {

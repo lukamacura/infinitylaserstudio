@@ -1,10 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import BookingModal from "@/components/BookingModal";
+import dynamic from "next/dynamic";
+
+// Supabase + framer-motion stay out of the page bundle until the first open.
+const BookingModal = dynamic(() => import("@/components/BookingModal"), { ssr: false });
 
 export default function BookingCTA() {
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  if (open && !mounted) setMounted(true);
 
   return (
     <>
@@ -14,7 +19,7 @@ export default function BookingCTA() {
       >
         ZAKAŽI TERMIN
       </button>
-      <BookingModal isOpen={open} onClose={() => setOpen(false)} />
+      {mounted && <BookingModal isOpen={open} onClose={() => setOpen(false)} />}
     </>
   );
 }

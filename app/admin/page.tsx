@@ -454,7 +454,8 @@ export default function AdminPage() {
 
   // ── Working hours: load + edit ─────────────────────────────────────────────
   const fetchAvail = useCallback(async () => {
-    setAvailability(await fetchAvailability());
+    // On a failed load keep the schedule already on screen.
+    try { setAvailability(await fetchAvailability()); } catch { /* keep current */ }
   }, []);
 
   useEffect(() => {

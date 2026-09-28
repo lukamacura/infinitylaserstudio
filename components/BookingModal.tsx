@@ -108,26 +108,36 @@ function safeUUID(): string {
   });
 }
 
+/**
+ * Runs `fn` once the next frame is on screen. The Pixel does real main-thread
+ * work inside `fbq()`, and a tap must paint its new step before paying for it.
+ */
+function afterPaint(fn: () => void) {
+  requestAnimationFrame(() => setTimeout(fn, 0));
+}
+
 /** Meta Pixel + CAPI + Clarity. Tracking must never be able to break the booking flow. */
 function trackEvent(eventName: string, extra: Record<string, unknown> = {}, pixelParams: Record<string, unknown> = {}) {
-  try {
-    const eventId = safeUUID();
-    const w = window as Window & { fbq?: (...args: unknown[]) => void; clarity?: (...args: unknown[]) => void };
-    w.fbq?.("track", eventName, pixelParams, { eventID: eventId });
-    // Clarity custom event - lets recordings be filtered by funnel step. No-op until Clarity loads.
-    w.clarity?.("event", eventName);
-    fetch("/api/meta-capi", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      keepalive: true,
-      body: JSON.stringify({
-        event_name: eventName,
-        event_id: eventId,
-        event_source_url: window.location.href,
-        ...extra,
-      }),
-    }).catch(() => {});
-  } catch { /* ignore */ }
+  afterPaint(() => {
+    try {
+      const eventId = safeUUID();
+      const w = window as Window & { fbq?: (...args: unknown[]) => void; clarity?: (...args: unknown[]) => void };
+      w.fbq?.("track", eventName, pixelParams, { eventID: eventId });
+      // Clarity custom event - lets recordings be filtered by funnel step. No-op until Clarity loads.
+      w.clarity?.("event", eventName);
+      fetch("/api/meta-capi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        keepalive: true,
+        body: JSON.stringify({
+          event_name: eventName,
+          event_id: eventId,
+          event_source_url: window.location.href,
+          ...extra,
+        }),
+      }).catch(() => {});
+    } catch { /* ignore */ }
+  });
 }
 
 type SlotRow = { start_time: string; end_time: string; status: string };
@@ -139,6 +149,88 @@ type SlotRow = { start_time: string; end_time: string; status: string };
 // the list instantly instead of a spinner.
 const SERVICES_TTL_MS = 5 * 60 * 1000;
 const servicesCache = new Map<Gender, { at: number; data: Service[] }>();
+let servicesRequest: Promise<void> | null = null;
+
+function freshServices(gender: Gender): Service[] | null {
+  const cached = servicesCache.get(gender);
+  return cached && Date.now() - cached.at < SERVICES_TTL_MS ? cached.data : null;
+}
+
+/**
+ * Both genders in one request, shared by every caller while it is in flight.
+ * Started the moment the modal opens, so the list is usually already there
+ * when a gender is picked. Never rejects - a failure just leaves the cache cold.
+ */
+function loadAllServices(): Promise<void> {
+  if (servicesRequest) return servicesRequest;
+  const request: Promise<void> = Promise.resolve(
+    supabase.from("services").select("*").order("sort_order"),
+  ).then(
+    ({ data, error }) => {
+      if (error || !data) return;
+      const at = Date.now();
+      for (const g of ["zene", "muskarci"] as const) {
+        const list = data.filter((s) => s.gender === g);
+        if (list.length > 0) servicesCache.set(g, { at, data: list });
+      }
+    },
+    () => {},
+  ).then(() => { servicesRequest = null; });
+  servicesRequest = request;
+  return request;
+}
+
+// ── Busy-slots cache ──────────────────────────────────────────────────────────
+// One request covers the whole public horizon. It starts on the plan step, so
+// the date step has its answer on arrival, and the time step paints from the
+// same rows while it re-checks the chosen day. Short-lived on purpose: it only
+// decides what is *offered* - the database re-checks the slot on booking.
+const BUSY_TTL_MS = 30 * 1000;
+type BusyByDate = Map<string, SlotRow[]>;
+let busyRequest: { at: number; promise: Promise<BusyByDate | null> } | null = null;
+let busySnapshot: { at: number; byDate: BusyByDate } | null = null;
+
+/** Resolves to null when the reservations could not be loaded. */
+function loadBusyHorizon(): Promise<BusyByDate | null> {
+  if (busyRequest && Date.now() - busyRequest.at < BUSY_TTL_MS) return busyRequest.promise;
+  const from = new Date();
+  const to = new Date(from);
+  to.setDate(to.getDate() + PUBLIC_HORIZON_DAYS - 1);
+  const at = Date.now();
+  const promise: Promise<BusyByDate | null> = Promise.resolve(
+    supabase.rpc("public_busy_slots", { p_from: toDateStr(from), p_to: toDateStr(to) }),
+  ).then(
+    ({ data, error }) => {
+      if (error) return null;
+      const byDate: BusyByDate = new Map();
+      for (const row of data ?? []) {
+        const list = byDate.get(row.date) ?? [];
+        list.push({ start_time: row.start_time, end_time: row.end_time, status: row.status });
+        byDate.set(row.date, list);
+      }
+      busySnapshot = { at, byDate };
+      return byDate;
+    },
+    () => null,
+  ).then((result) => {
+    // A failed load must not be served again from the cache.
+    if (!result && busyRequest?.promise === promise) busyRequest = null;
+    return result;
+  });
+  busyRequest = { at, promise };
+  return promise;
+}
+
+/** Reservations for one day from the last horizon load, or null when stale. */
+function busySeed(date: string): SlotRow[] | null {
+  if (!busySnapshot || Date.now() - busySnapshot.at >= BUSY_TTL_MS) return null;
+  return busySnapshot.byDate.get(date) ?? [];
+}
+
+function invalidateBusy() {
+  busyRequest = null;
+  busySnapshot = null;
+}
 
 /** Per-gender social proof - shown on the services step and the date step. */
 const SOCIAL_PROOF: Record<Gender, { mark: string; line: string }> = {
@@ -276,6 +368,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
   /** Working-hours schedule (weekly template + overrides) loaded from the DB. */
   const [availability, setAvailability] = useState<AvailabilityData | null>(null);
+  /** Schedule failed to load - say so, instead of claiming there are no free days. */
+  const [availabilityError, setAvailabilityError] = useState(false);
+  const [availabilityReloadKey, setAvailabilityReloadKey] = useState(0);
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const selectedServices = services.filter((s) => selectedIds.includes(s.id));
@@ -384,11 +479,18 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
+    setAvailabilityError(false);
+    // Treatments for both genders travel alongside, so step 2 opens without a wait.
+    void loadAllServices();
     fetchAvailability()
       .then((data) => { if (!cancelled) setAvailability(data); })
-      .catch(() => { if (!cancelled) setAvailability(EMPTY_AVAILABILITY); });
+      .catch(() => {
+        if (cancelled) return;
+        setAvailability(EMPTY_AVAILABILITY);
+        setAvailabilityError(true);
+      });
     return () => { cancelled = true; };
-  }, [isOpen]);
+  }, [isOpen, availabilityReloadKey]);
 
   // Preselected treatments are women's regions - open straight into her list,
   // skipping the gender choice. A ?pol= link does the same with nothing selected.
@@ -409,9 +511,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     preloadRegionArt(gender);
     // A fresh copy from this page session skips the request entirely. A manual
     // retry (servicesReloadKey) only ever follows a failure, so it never hits this.
-    const cached = servicesCache.get(gender);
-    if (cached && Date.now() - cached.at < SERVICES_TTL_MS) {
-      setServices(cached.data);
+    const cached = freshServices(gender);
+    if (cached) {
+      setServices(cached);
       setServicesError(false);
       setLoadingServices(false);
       return;
@@ -420,26 +522,13 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     let cancelled = false;
     setLoadingServices(true);
     setServicesError(false);
-    supabase
-      .from("services")
-      .select("*")
-      .eq("gender", gender)
-      .order("sort_order")
-      .then(
-        ({ data, error }) => {
-          if (cancelled) return;
-          if (error || !data || data.length === 0) setServicesError(true);
-          else servicesCache.set(gender, { at: Date.now(), data });
-          setServices(data ?? []);
-          setLoadingServices(false);
-        },
-        () => {
-          if (cancelled) return;
-          setServicesError(true);
-          setServices([]);
-          setLoadingServices(false);
-        },
-      );
+    void loadAllServices().then(() => {
+      if (cancelled) return;
+      const data = freshServices(gender) ?? [];
+      setServicesError(data.length === 0);
+      setServices(data);
+      setLoadingServices(false);
+    });
     return () => { cancelled = true; };
   }, [gender, servicesReloadKey]);
 
@@ -471,9 +560,11 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   useEffect(() => {
     if (!selectedDate || step !== 4) return;
     let cancelled = false;
-    setLoadingSlots(true);
+    // The date step already loaded this day - paint from it, then re-check.
+    const seed = busySeed(selectedDate);
+    setLoadingSlots(seed === null);
     setSlotsError(false);
-    setDaySlots([]);
+    setDaySlots(seed ?? []);
     supabase
       .rpc("public_busy_slots", { p_from: selectedDate, p_to: selectedDate })
       .then(
@@ -518,39 +609,15 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       return;
     }
 
-    const dates = candidates.map((d) => d.date);
-    void (async () => {
-      let rows: { date: string; start_time: string; end_time: string; status: string }[] | null = null;
-      let loadError = false;
-      try {
-        const { data, error } = await supabase
-          .rpc("public_busy_slots", { p_from: dates[0], p_to: dates[dates.length - 1] });
-        if (error) loadError = true;
-        else rows = data ?? [];
-      } catch {
-        loadError = true;
-      }
-
+    void loadBusyHorizon().then((byDate) => {
       if (bookableDaysFetchIdRef.current !== fetchId) return;
 
       const now = new Date();
       const todayStr = toDateStr(now);
       const minStartToday = now.getHours() * 60 + now.getMinutes() + 120;
 
-      const byDate = new Map<string, { start_time: string; end_time: string; status: string }[]>();
-      if (rows) {
-        for (const row of rows) {
-          const list = byDate.get(row.date) ?? [];
-          list.push({
-            start_time: row.start_time,
-            end_time: row.end_time,
-            status: row.status,
-          });
-          byDate.set(row.date, list);
-        }
-      }
-
-      const filtered = loadError
+      // Reservations unavailable: offer every open day, the time step re-checks.
+      const filtered = !byDate
         ? candidates
         : candidates.filter((day) => {
             const windows = resolveWindows(day.date, availability);
@@ -562,12 +629,18 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
       setBookableDayOptions(filtered);
       setLoadingBookableDays(false);
-    })();
+    });
 
     return () => {
       bookableDaysFetchIdRef.current += 1;
     };
   }, [isOpen, step, slotDuration, availability]);
+
+  // Reservations are requested while the plan is being chosen, so the date
+  // step usually has them on arrival.
+  useEffect(() => {
+    if (isOpen && step === "plan") void loadBusyHorizon();
+  }, [isOpen, step]);
 
   useEffect(() => {
     if (!selectedDate || bookableDayOptions.length === 0) return;
@@ -694,7 +767,11 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     setSelectedIds([]);
     setSelectedDate(""); setSelectedTime("");
     setStep(2);
-    (window as Window & { fbq?: (...args: unknown[]) => void }).fbq?.("track", "ViewContent");
+    afterPaint(() => {
+      try {
+        (window as Window & { fbq?: (...args: unknown[]) => void }).fbq?.("track", "ViewContent");
+      } catch { /* ignore */ }
+    });
   }
 
   function toggleService(id: string) {
@@ -942,6 +1019,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     const endTime = result.end_time ?? minutesToTime(timeToMinutes(selectedTime) + durationForReservation);
 
     pendingBookingRef.current = null;
+    invalidateBusy(); // this booking just changed the calendar
     const bookingRefValue = reservationId.slice(-8).toUpperCase();
     setBookingRef(bookingRefValue);
 
@@ -991,6 +1069,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
   /** The picked time was taken (or passed) while the form was open. */
   function sendBackToTimes() {
+    invalidateBusy();
     setSelectedTime("");
     setSlotTaken(true);
     setSlotsReloadKey((k) => k + 1);
@@ -1045,7 +1124,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     >
       {/* Backdrop */}
       <div
-        className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${isAnimating ? "opacity-100" : "opacity-0"}`}
+        className={`absolute inset-0 bg-black/60 transition-opacity duration-300 ${isAnimating ? "opacity-100" : "opacity-0"}`}
         onClick={handleClose}
       />
 
@@ -1070,7 +1149,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               onDragEnd={(_, info) => {
                 if (info.offset.y < -32 || info.velocity.y < -450) setActiveNotice(null);
               }}
-              className="pointer-events-auto relative w-full max-w-[430px] sm:max-w-[520px] rounded-[24px] sm:rounded-[28px] border border-foreground/10 bg-[var(--bm-surface)]/95 backdrop-blur-xl p-3.5 sm:p-5 pr-9 sm:pr-11 shadow-[0_16px_44px_-10px_rgba(0,0,0,0.7)] cursor-grab active:cursor-grabbing"
+              className="pointer-events-auto relative w-full max-w-[430px] sm:max-w-[520px] rounded-[24px] sm:rounded-[28px] border border-foreground/10 bg-[var(--bm-surface)] p-3.5 sm:p-5 pr-9 sm:pr-11 shadow-[0_16px_44px_-10px_rgba(0,0,0,0.7)] cursor-grab active:cursor-grabbing"
             >
               <button
                 type="button"
@@ -1510,6 +1589,18 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                       <Skeleton className="h-3 sm:h-3.5 w-2/5 rounded" />
                     </div>
                   ))}
+                </div>
+              ) : availabilityError ? (
+                <div className="flex flex-col items-center gap-3 p-5 rounded-xl sm:rounded-2xl bg-foreground/5 text-foreground/60 text-sm sm:text-base font-poppins text-center">
+                  <span className="flex items-center gap-2"><AlertCircle size={16} />Kalendar trenutno ne može da se učita.</span>
+                  <button
+                    type="button"
+                    onClick={() => { setAvailability(null); setAvailabilityReloadKey((k) => k + 1); }}
+                    className="px-5 py-2 rounded-full text-sm font-semibold font-poppins bm-metal cursor-pointer"
+                    style={{ backgroundColor: accent.hex }}
+                  >
+                    Pokušaj ponovo
+                  </button>
                 </div>
               ) : bookableDayOptions.length === 0 ? (
                 <div className="flex items-center gap-2 sm:gap-3 p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-foreground/5 text-foreground/50 text-sm sm:text-base font-poppins">
@@ -2067,7 +2158,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
           {/* ── Sticky footer: primary CTA always visible while scrolling ───────── */}
           {(step === 2 || step === 3 || step === 4 || step === 5 || step === "success" || step === "preparation") && (
-            <div className="shrink-0 sm:border-t sm:border-foreground/10 bg-[var(--bm-bg)]/90 backdrop-blur-md px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pt-5 sm:pb-5 shadow-[0_-12px_24px_-12px_rgba(0,0,0,0.6)]">
+            <div className="shrink-0 sm:border-t sm:border-foreground/10 bg-[var(--bm-bg)] px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pt-5 sm:pb-5 shadow-[0_-12px_24px_-12px_rgba(0,0,0,0.6)]">
               <div className={COL_W}>
               {step === 2 && (
                 <div className="flex flex-col gap-2">

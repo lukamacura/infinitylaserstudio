@@ -39,19 +39,33 @@ export default function FloatingBookingButton() {
   return (
     <>
       <style>{`
+        /* The shadow is painted once and only its opacity breathes: animating
+           box-shadow itself repaints on every frame, for as long as the page is open. */
         @keyframes floatingGlow {
-          0%, 100% { box-shadow: 0 0 16px 4px rgba(230,100,140,0.35), 0 0 32px 8px rgba(230,100,140,0.15); }
-          50% { box-shadow: 0 0 28px 10px rgba(230,100,140,0.55), 0 0 56px 18px rgba(230,100,140,0.25); }
+          0%, 100% { opacity: 0.55; }
+          50% { opacity: 1; }
+        }
+        .floating-glow::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          border-radius: inherit;
+          pointer-events: none;
+          box-shadow: 0 0 28px 10px rgba(230,100,140,0.55), 0 0 56px 18px rgba(230,100,140,0.25);
+          animation: floatingGlow 2.2s ease-in-out infinite;
+          will-change: opacity;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .floating-glow::before { animation: none; }
         }
       `}</style>
 
       {/* Always rendered; `invisible` removes it from focus/clicks while hidden. */}
       <button
         onClick={() => setIsOpen(true)}
-        className={`cursor-pointer fixed bottom-6 left-1/2 -translate-x-1/2 z-40 font-poppins font-semibold text-base px-10 py-3.5 rounded-full bg-pink text-black tracking-wide transition-[opacity,translate,scale,visibility] duration-300 ease-out hover:scale-106 active:scale-97 ${
+        className={`floating-glow cursor-pointer fixed bottom-6 left-1/2 -translate-x-1/2 z-40 font-poppins font-semibold text-base px-10 py-3.5 rounded-full bg-pink text-black tracking-wide transition-[opacity,translate,scale,visibility] duration-300 ease-out hover:scale-106 active:scale-97 ${
           visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5 invisible"
         }`}
-        style={{ animation: "floatingGlow 2.2s ease-in-out infinite" }}
         aria-label="Zakaži tretman"
       >
         Zakaži
