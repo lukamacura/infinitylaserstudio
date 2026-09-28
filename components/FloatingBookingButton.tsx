@@ -19,6 +19,23 @@ export default function FloatingBookingButton() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  // Warm the booking-modal chunk (modal + Supabase client) once the page has
+  // settled, so the first tap on any "Zakaži" button opens instantly instead of
+  // waiting on a network round-trip. Kept off the critical path: a few seconds
+  // after load, and only when the browser is idle.
+  useEffect(() => {
+    let idleId: number | undefined;
+    const warm = () => { void import("./BookingModal"); };
+    const t = setTimeout(() => {
+      if ("requestIdleCallback" in window) idleId = window.requestIdleCallback(warm, { timeout: 3000 });
+      else warm();
+    }, 3000);
+    return () => {
+      clearTimeout(t);
+      if (idleId !== undefined) window.cancelIdleCallback(idleId);
+    };
+  }, []);
+
   return (
     <>
       <style>{`

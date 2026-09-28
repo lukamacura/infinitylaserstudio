@@ -37,7 +37,7 @@ export const metadata: Metadata = {
     siteName: "Infinity Laser Studio",
     images: [
       {
-        url: "/og-image.jpg",
+        url: "/brand/og-image.jpg",
         width: 1200,
         height: 630,
         alt: "Infinity Laser Studio — Laserska epilacija Novi Sad",

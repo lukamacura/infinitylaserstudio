@@ -1,12 +1,10 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
+import type { CSSProperties } from "react";
 import {
-  X, ScanFace, Hand, Footprints,
-  Flower2, Minus, Target, Shirt, ArrowLeft,
-  PersonStanding, Loader2, CheckCircle2, AlertCircle, FileText,
+  X, ArrowLeft, Loader2, CheckCircle2, AlertCircle, FileText,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import {
   supabase, calcBookingDuration, calcTotalDuration, getAvailableSlots,
   minutesToTime, timeToMinutes,
@@ -18,68 +16,30 @@ import {
 import type { Service } from "@/lib/database.types";
 import { parseBundlePromo, bundleRedeemCode } from "@/lib/bundles";
 import { STUDENT_PROMO_CODE, isStudentPromoCode } from "@/lib/pricing";
+import {
+  type Gender, type DayOption,
+  getIcon, getRegionArt, preloadRegionArt, RegionThumb, THUMB_SIZES, HERO_THUMB_SIZES,
+  SR_DAYS_FULL, SR_MONTHS_SHORT, monIdx, toDateStr, formatDateFull, formatPrice, EMAIL_REGEX,
+  lockBodyScroll, unlockBodyScroll,
+  isFullBody, isAllowedWithFullBody, applyComboRules, orderPickableServices,
+  ACCENTS, GENDER_OPTIONS, COL_W, cascade, Skeleton, PREPARATION_STEPS,
+} from "@/components/booking/shared";
+
+/*
+ * Admin flavour of the booking flow. Same look as the public BookingModal
+ * (both build on components/booking/shared.tsx and the `.bm-*` theme in
+ * globals.css) but with the staff rules: no plan/bundle step, a much longer
+ * booking horizon, no 2-hour notice, `ils-` promo codes, an internal note and
+ * no cancellation-policy consent.
+ */
 
 interface AdminReservationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
-  preselectedNames?: string[];
 }
 
 type Step = 1 | 2 | 3 | 4 | 5 | "success" | "preparation";
-type Gender = "zene" | "muskarci";
-
-// ── Icon mapping ──────────────────────────────────────────────────────────────
-function getIcon(name: string): LucideIcon {
-  const n = name.toLowerCase();
-  if (n.includes("nausnice")) return ScanFace;
-  if (n.includes("lice") || n.includes("lica") || n.includes("brada")) return ScanFace;
-  if (n.includes("intimna") || n.includes("intima")) return Flower2;
-  if (n.includes("pazuh")) return Hand;
-  if (n.includes("ruk")) return Hand;
-  if (n.includes("linija")) return Minus;
-  if (n.includes("stomak")) return Target;
-  if (n.includes("nog")) return Footprints;
-  if (n.includes("telo")) return PersonStanding;
-  if (n.includes("grudi")) return Shirt;
-  if (n.includes("leđ") || n.includes("ledj")) return PersonStanding;
-  return Target;
-}
-
-// ── Date & day helpers ────────────────────────────────────────────────────────
-const SR_DAYS_FULL = [
-  "Ponedeljak", "Utorak", "Sreda", "Četvrtak", "Petak", "Subota", "Nedelja",
-];
-const SR_MONTHS = [
-  "januar", "februar", "mart", "april", "maj", "jun",
-  "jul", "avgust", "septembar", "oktobar", "novembar", "decembar",
-];
-const SR_MONTHS_SHORT = [
-  "jan", "feb", "mar", "apr", "maj", "jun",
-  "jul", "avg", "sep", "okt", "nov", "dec",
-];
-
-/** Returns Monday-index (0=Mon, 6=Sun) for a JS Date */
-function monIdx(d: Date) { return (d.getDay() + 6) % 7; }
-
-function toDateStr(d: Date) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function formatDateFull(dateStr: string) {
-  const d = new Date(`${dateStr}T00:00:00`);
-  return `${SR_DAYS_FULL[monIdx(d)]}, ${d.getDate()}. ${SR_MONTHS[d.getMonth()]} ${d.getFullYear()}.`;
-}
-
-interface DayOption {
-  date: string;       // YYYY-MM-DD
-  label: string;      // "Ponedeljak"
-  shortDate: string;  // "24. feb"
-  isToday: boolean;
-}
 
 /**
  * Build bookable days for Admin. Unlike the public site (2-week horizon), admin can
@@ -119,83 +79,17 @@ function buildAdminDayOptions(totalDuration: number, availability: AvailabilityD
   return days;
 }
 
-function formatPrice(price: number): string {
-  return price.toLocaleString("sr-RS");
-}
-
 /** Promo codes: `ils-` + any non-empty suffix (e.g. ils-leyla). Case-insensitive. */
 function isIlsPromoCode(raw: string): boolean {
   return /^ils-.+$/i.test(raw.trim());
 }
-
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-// ── Combo detection ───────────────────────────────────────────────────────────
-interface ComboRule {
-  parts: string[];   // lowercase substrings that identify the component services
-  comboKey: string;  // lowercase substring that identifies the combo service
-}
-
-const COMBO_RULES: ComboRule[] = [
-  { parts: ["nausnice", "brada"],  comboKey: "nausnice i brada" },
-  { parts: ["noge", "intima"],     comboKey: "noge + intima" },
-  { parts: ["stomak", "grudi"],    comboKey: "stomak + grudi" },
-];
-
-function isComboService(name: string): boolean {
-  const n = name.toLowerCase();
-  return COMBO_RULES.some((r) => n.includes(r.comboKey));
-}
-
-function applyComboRules(
-  selected: Service[],
-  all: Service[]
-): { effective: Service[]; appliedCombos: Service[] } {
-  let effective = [...selected];
-  const appliedCombos: Service[] = [];
-
-  for (const rule of COMBO_RULES) {
-    const matchedParts = rule.parts
-      .map((part) => effective.find((s) => s.name.toLowerCase().includes(part)))
-      .filter((s): s is Service => s !== undefined);
-
-    if (matchedParts.length === rule.parts.length) {
-      const combo = all.find((s) => s.name.toLowerCase().includes(rule.comboKey));
-      if (combo) {
-        effective = effective.filter((s) => !matchedParts.includes(s));
-        effective.push(combo);
-        appliedCombos.push(combo);
-      }
-    }
-  }
-
-  return { effective, appliedCombos };
-}
-
-// ── Accent theme ──────────────────────────────────────────────────────────────
-const ACCENTS = {
-  zene: {
-    hex: "#E85D8A",
-    border: "border-pink",
-    bg: "bg-pink",
-    bgLight: "bg-pink/8",
-    bgMed: "bg-pink/25",
-  },
-  muskarci: {
-    hex: "#0D9488",
-    border: "border-teal",
-    bg: "bg-teal",
-    bgLight: "bg-teal/8",
-    bgMed: "bg-teal/25",
-  },
-} as const;
 
 const STEP_LABELS: Record<Step, [string, string]> = {
   1: ["KORAK 1 OD 4", "Za koga zakazuješ?"],
   2: ["KORAK 1 OD 4", "Odaberi regije za tretman"],
   3: ["KORAK 2 OD 4", "Izaberi datum"],
   4: ["KORAK 3 OD 4", "Izaberi vreme"],
-  5: ["KORAK 4 OD 4", "Vaši podaci"],
+  5: ["KORAK 4 OD 4", "Podaci o klijentu"],
   success: ["POTVRĐENO", "Rezervacija je kreirana"],
   preparation: ["PRE TRETMANA", "Šta klijent treba da uradi?"],
 };
@@ -205,20 +99,25 @@ export default function AdminReservationModal({
   isOpen,
   onClose,
   onSuccess,
-  preselectedNames,
 }: AdminReservationModalProps) {
   const [isAnimating, setIsAnimating] = useState(false);
   const [step, setStep]               = useState<Step>(1);
-  const [gender, setGender]           = useState<Gender | null>("zene");
+  const [gender, setGender]           = useState<Gender | null>(null);
   const [services, setServices]       = useState<Service[]>([]);
-  const [loadingServices, setLoadingServices] = useState(false);
+  /** Which request the current `services` answer - loading until it matches the request key. */
+  const [servicesFor, setServicesFor] = useState<string | null>(null);
+  const [servicesError, setServicesError] = useState(false);
+  const [servicesReloadKey, setServicesReloadKey] = useState(0);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   // Step 3 state
   const [selectedDate, setSelectedDate]   = useState("");
   const [selectedTime, setSelectedTime]   = useState("");
   const [daySlots, setDaySlots]           = useState<{ start_time: string; end_time: string; status: string }[]>([]);
-  const [loadingSlots, setLoadingSlots]   = useState(false);
+  /** Which request the current `daySlots` answer - loading until it matches the request key. */
+  const [slotsFor, setSlotsFor]           = useState<string | null>(null);
+  const [slotsError, setSlotsError]       = useState(false);
+  const [slotsReloadKey, setSlotsReloadKey] = useState(0);
   const [form, setForm]                   = useState({ name: "", email: "", phone: "", notes: "" });
   const [fieldErrors, setFieldErrors]     = useState({ name: false, email: false });
   const [submitting, setSubmitting]       = useState(false);
@@ -229,10 +128,14 @@ export default function AdminReservationModal({
   const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null);
   const [promoKind, setPromoKind]               = useState<"none" | "ils" | "bundle_redeem" | "student">("none");
   const [checkingPromo, setCheckingPromo]       = useState(false);
-  const [displayedPrice, setDisplayedPrice]   = useState(0);
+  /** Success tile count-down value; null until the first animation frame lands. */
+  const [displayedPrice, setDisplayedPrice]   = useState<number | null>(null);
   const animFrameRef = useRef<number>(0);
-  const appliedPreselect = useRef(false);
   const emailCheckSeqRef = useRef(0);
+  /** Scrollable step body - reset to top on every step change */
+  const scrollBodyRef = useRef<HTMLDivElement>(null);
+  /** The dialog sheet - receives focus on open so keyboard handling works. */
+  const sheetRef = useRef<HTMLDivElement>(null);
 
   /** null = not checked yet for current email; true = exists in reservations */
   const [isReturningCustomer, setIsReturningCustomer] = useState<boolean | null>(null);
@@ -243,6 +146,8 @@ export default function AdminReservationModal({
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const selectedServices = services.filter((s) => selectedIds.includes(s.id));
+  /** Whole body is selected - lock out every region except earrings, chin & whole face. */
+  const fullBodySelected = selectedServices.some((s) => isFullBody(s.name));
   const { effective: effectiveServices, appliedCombos } = applyComboRules(selectedServices, services);
   /** With 10 min consultation — used for day/slot picking so first-time bookings always fit. */
   const slotDuration =
@@ -256,6 +161,11 @@ export default function AdminReservationModal({
         : calcBookingDuration(selectedServices);
   const totalPrice       = effectiveServices.reduce((sum, s) => sum + s.price, 0);
   const accent           = ACCENTS[gender ?? "zene"];
+  const pickableServices = orderPickableServices(services);
+  const servicesKey      = gender ? `${gender}:${servicesReloadKey}` : null;
+  const loadingServices  = servicesKey !== null && servicesFor !== servicesKey;
+  const slotsKey         = selectedDate ? `${selectedDate}:${slotsReloadKey}` : null;
+  const loadingSlots     = slotsKey !== null && slotsFor !== slotsKey;
 
   // Discounts are mutually exclusive: bundle redemption > ils promo > student.
   const redeemActive =
@@ -265,6 +175,7 @@ export default function AdminReservationModal({
     appliedPromoCode != null && isIlsPromoCode(appliedPromoCode);
   const studentActive =
     !redeemActive && !ilsPromoActive && promoKind === "student" && promoStatus === "valid";
+  const anyDiscount = redeemActive || ilsPromoActive || studentActive;
   const finalPrice = redeemActive
     ? 0
     : ilsPromoActive
@@ -272,19 +183,17 @@ export default function AdminReservationModal({
       : studentActive
         ? Math.round(totalPrice * 0.8)
         : totalPrice;
+  const savingsVsList = totalPrice - finalPrice;
+  /** Success tile: counts down from list to final price; no discount = nothing to animate. */
+  const priceShown = totalPrice === finalPrice ? finalPrice : (displayedPrice ?? totalPrice);
 
   // Day options rebuild whenever slot duration (incl. consultation) or schedule changes
-  const dayOptions = useMemo(
-    () => buildAdminDayOptions(slotDuration, availability),
-    [slotDuration, availability],
-  );
+  const dayOptions = buildAdminDayOptions(slotDuration, availability);
 
-  const nowMinutes = useMemo(() => {
-    const now = new Date();
-    return now.getHours() * 60 + now.getMinutes();
-  }, []);
-
-  const isToday = dayOptions.find((d) => d.date === selectedDate)?.isToday ?? false;
+  // Read the clock on every render - the modal stays mounted between opens.
+  const nowDate = new Date();
+  const nowMinutes = nowDate.getHours() * 60 + nowDate.getMinutes();
+  const isToday = selectedDate !== "" && selectedDate === toDateStr(nowDate);
   // For Admin: no 2-hour buffer
   const minStart = isToday ? nowMinutes : undefined;
 
@@ -295,14 +204,17 @@ export default function AdminReservationModal({
 
   // ── Side-effects ──────────────────────────────────────────────────────────
   useEffect(() => {
-    if (isOpen) {
-      requestAnimationFrame(() => setIsAnimating(true));
-      document.body.style.overflow = "hidden";
-    } else {
-      setIsAnimating(false);
-      document.body.style.overflow = "";
+    if (!isOpen) {
+      unlockBodyScroll();
+      return;
     }
-    return () => { document.body.style.overflow = ""; };
+    lockBodyScroll();
+    const raf = requestAnimationFrame(() => {
+      setIsAnimating(true);
+      // Focus moves into the dialog so Escape and Tab work from the start.
+      sheetRef.current?.focus({ preventScroll: true });
+    });
+    return () => { cancelAnimationFrame(raf); unlockBodyScroll(); };
   }, [isOpen]);
 
   // Load the working-hours schedule once per open (fresh each time the modal opens).
@@ -315,23 +227,40 @@ export default function AdminReservationModal({
     return () => { cancelled = true; };
   }, [isOpen]);
 
+  // Always a fresh services fetch here (no session cache): prices can be edited
+  // from the admin panel and this modal must reflect them right away.
   useEffect(() => {
-    if (!gender) return;
-    setLoadingServices(true);
+    if (!servicesKey || !gender) return;
+    preloadRegionArt(gender);
+    let cancelled = false;
     supabase
       .from("services")
       .select("*")
       .eq("gender", gender)
       .order("sort_order")
-      .then(({ data }) => { setServices(data ?? []); setLoadingServices(false); });
-  }, [gender]);
+      .then(
+        ({ data, error }) => {
+          if (cancelled) return;
+          if (error || !data || data.length === 0) setServicesError(true);
+          setServices(data ?? []);
+          setServicesFor(servicesKey);
+        },
+        () => {
+          if (cancelled) return;
+          setServicesError(true);
+          setServices([]);
+          setServicesFor(servicesKey);
+        },
+      );
+    return () => { cancelled = true; };
+  }, [gender, servicesKey]);
 
+  // ── Animated price count-down on success screen ───────────────────────────
   useEffect(() => {
     if (step !== "success") return;
     const target = finalPrice;
     const from   = totalPrice;
-
-    if (from === target) { setDisplayedPrice(target); return; }
+    if (from === target) return; // nothing to count down - `priceShown` uses the final price
 
     const DURATION = 900;
     const startTime = performance.now();
@@ -346,49 +275,48 @@ export default function AdminReservationModal({
 
     animFrameRef.current = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(animFrameRef.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, finalPrice, totalPrice]);
 
+  // Reservations for the chosen day - refetched every time the time step opens,
+  // so coming back to a day never shows slots that were booked in the meantime.
   useEffect(() => {
-    if (!selectedDate) return;
-    setLoadingSlots(true);
-    setSelectedTime("");
+    if (!slotsKey || !selectedDate || step !== 4) return;
+    let cancelled = false;
     supabase
       .from("reservations")
       .select("start_time, end_time, status")
       .eq("date", selectedDate)
-      .then(({ data }) => { setDaySlots(data ?? []); setLoadingSlots(false); });
-  }, [selectedDate]);
+      .then(
+        ({ data, error }) => {
+          if (cancelled) return;
+          if (error) setSlotsError(true);
+          else setDaySlots(data ?? []);
+          setSlotsFor(slotsKey);
+        },
+        () => {
+          if (cancelled) return;
+          setSlotsError(true);
+          setSlotsFor(slotsKey);
+        },
+      );
+    return () => { cancelled = true; };
+  }, [selectedDate, step, slotsKey]);
 
+  // Every step starts at the top - otherwise a long previous step (services)
+  // leaves the next one scrolled past its opening.
   useEffect(() => {
-    if (!isOpen) {
-      appliedPreselect.current = false;
-      return;
-    }
-    if (appliedPreselect.current) return;
-    if (!preselectedNames || preselectedNames.length === 0) {
-      appliedPreselect.current = true;
-      return;
-    }
-    if (services.length === 0) return;
-    const matchedIds = services
-      .filter((s) => !isComboService(s.name))
-      .filter((s) => preselectedNames.some((kw) => s.name.toLowerCase().includes(kw)))
-      .map((s) => s.id);
-    if (matchedIds.length > 0) {
-      setSelectedIds(matchedIds);
-      setStep(2);
-    }
-    appliedPreselect.current = true;
-  }, [isOpen, preselectedNames, services]);
+    scrollBodyRef.current?.scrollTo({ top: 0 });
+  }, [step]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   function resetAll() {
-    setStep(1); setGender("zene"); setSelectedIds([]);
-    setSelectedDate(""); setSelectedTime(""); setDaySlots([]);
+    setIsAnimating(false);
+    setStep(1); setGender(null); setSelectedIds([]);
+    setSelectedDate(""); setSelectedTime(""); setDaySlots([]); setSlotsFor(null);
+    setSlotsError(false); setServicesError(false); setServicesFor(null);
     setForm({ name: "", email: "", phone: "", notes: "" });
     setFieldErrors({ name: false, email: false });
-    setSubmitError(null); setBookingRef(null);
+    setSubmitError(null); setBookingRef(null); setDisplayedPrice(null);
     setPromoCode(""); setPromoStatus("idle"); setAppliedPromoCode(null);
     setPromoKind("none"); setCheckingPromo(false);
     emailCheckSeqRef.current += 1;
@@ -402,21 +330,59 @@ export default function AdminReservationModal({
   }
 
   function handleBack() {
-    if (step === 2) { setStep(1); }
+    if (step === 1) { handleClose(); }
+    else if (step === 2) { setStep(1); setGender(null); setServicesError(false); setSelectedIds([]); }
     else if (step === 3) { setStep(2); setSelectedDate(""); setSelectedTime(""); }
     else if (step === 4) { setStep(3); setSelectedTime(""); }
     else if (step === 5) { setStep(4); }
     else if (step === "preparation") { setStep("success"); }
   }
 
+  function handleGenderSelect(g: Gender) {
+    setGender(g);
+    setServicesError(false);
+    setSelectedIds([]);
+    setSelectedDate(""); setSelectedTime("");
+    setStep(2);
+  }
+
   function toggleService(id: string) {
+    const svc = services.find((s) => s.id === id);
+    if (!svc) return;
+    const isSelected = selectedIds.includes(id);
+    // Block adding regions that are already covered by a selected "Celo telo".
+    if (fullBodySelected && !isSelected && !isAllowedWithFullBody(svc.name)) {
+      return;
+    }
+    // Selecting "Celo telo" itself drops any already-selected regions it now covers.
+    if (!isSelected && isFullBody(svc.name)) {
+      setSelectedIds((prev) => [
+        ...prev.filter((pid) => {
+          const s = services.find((x) => x.id === pid);
+          return s ? isAllowedWithFullBody(s.name) : false;
+        }),
+        id,
+      ]);
+      return;
+    }
     setSelectedIds((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
   }
 
   function handleDaySelect(date: string) {
-    if (date === selectedDate) return;
-    setSelectedDate(date);
-    setSelectedTime("");
+    if (date !== selectedDate) {
+      setSelectedDate(date);
+      setSelectedTime("");
+      setDaySlots([]);
+    }
+    // Always a fresh fetch when the time step opens (see the slots effect).
+    setSlotsError(false);
+    setSlotsReloadKey((k) => k + 1);
+    setStep(4);
+  }
+
+  function handleTimeSelect(slot: string) {
+    setSelectedTime(slot);
+    setStep(5);
   }
 
   async function runReturningEmailCheck(email: string) {
@@ -512,7 +478,11 @@ export default function AdminReservationModal({
   async function handleSubmit() {
     const errors = { name: !form.name.trim(), email: !form.email.trim() };
     setFieldErrors(errors);
-    if (errors.name || errors.email || !selectedDate || !selectedTime) return;
+    if (errors.name || errors.email) return;
+    if (!selectedDate || !selectedTime) {
+      setStep(selectedDate ? 4 : 3);
+      return;
+    }
 
     setSubmitting(true);
     setSubmitError(null);
@@ -627,68 +597,90 @@ export default function AdminReservationModal({
 
   const [stepLabel, stepSub] = STEP_LABELS[step];
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <style>{`
-        @keyframes nastaviGlow {
-          0%, 100% { box-shadow: 0 0 14px rgba(232,93,138,0.45), 0 4px 14px rgba(232,93,138,0.25); }
-          50% { box-shadow: 0 0 28px rgba(232,93,138,0.75), 0 6px 22px rgba(232,93,138,0.45); }
-        }
-      `}</style>
+    <div
+      className={`bm-theme ${gender ? `bm-theme-${gender}` : ""} fixed inset-0 z-50 flex items-center justify-center`}
+      onKeyDown={(e) => {
+        if (e.key !== "Escape") return;
+        e.stopPropagation();
+        if (!submitting) handleClose();
+      }}
+    >
+      {/* Backdrop */}
       <div
-        className={`absolute inset-0 bg-foreground/40 backdrop-blur-sm transition-opacity duration-300 ${isAnimating ? "opacity-100" : "opacity-0"}`}
+        className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${isAnimating ? "opacity-100" : "opacity-0"}`}
         onClick={handleClose}
       />
 
+      {/* Modal shell */}
       <div
-        className={`relative bg-white rounded-3xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col overflow-hidden transition-all duration-300 ${isAnimating ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-95 translate-y-4"}`}
+        ref={sheetRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="arm-title"
+        tabIndex={-1}
+        /* The open/close transition lives in `.bm-sheet` (globals.css). */
+        className={`bm-sheet relative shadow-2xl w-full h-full flex flex-col overflow-hidden outline-none ${isAnimating ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-95 translate-y-4"}`}
       >
-        <div className="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
+        {/* Header - from sm up, content lives in the centered COL_W column */}
+        <div className={`flex items-center justify-between px-4 sm:px-6 pt-4 sm:pt-6 pb-2 sm:pb-4 shrink-0 ${COL_W}`}>
           <div className="flex items-center gap-3">
-            {(step === 2 || step === 3 || step === 4 || step === 5 || step === "preparation") && (
-              <button onClick={handleBack} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-foreground/5 transition-colors cursor-pointer" aria-label="Nazad">
-                <ArrowLeft size={18} />
+            {(step === 1 || step === 2 || step === 3 || step === 4 || step === 5 || step === "preparation") && (
+              <button onClick={handleBack} className="w-9 h-9 sm:w-11 sm:h-11 flex items-center justify-center rounded-full hover:bg-foreground/5 transition-colors cursor-pointer" aria-label="Nazad">
+                <ArrowLeft size={18} className="sm:w-[22px] sm:h-[22px]" />
               </button>
             )}
-            <h2 className="text-2xl font-bold font-playfair">Nova rezervacija</h2>
+            <h2 id="arm-title" className={`text-2xl sm:text-3xl md:text-4xl font-bold font-playfair ${gender ? "bm-metal-text" : ""}`}>Nova rezervacija</h2>
           </div>
-          <button onClick={handleClose} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-foreground/5 transition-colors cursor-pointer" aria-label="Zatvori">
-            <X size={20} />
+          <button onClick={handleClose} className="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center rounded-full hover:bg-foreground/5 transition-colors cursor-pointer" aria-label="Zatvori">
+            <X size={20} className="sm:w-6 sm:h-6" />
           </button>
         </div>
 
-        <div className="px-6 pb-4 shrink-0">
-          <p className="text-xs text-foreground/50 tracking-[3px] font-semibold font-poppins">{stepLabel}</p>
-          <p className="text-sm text-foreground/60 font-poppins mt-1">{stepSub}</p>
+        {/* Step indicator */}
+        <div className={`px-4 sm:px-6 pb-3 sm:pb-6 shrink-0 ${COL_W}`}>
+          <p
+            className="text-xs sm:text-[13px] text-foreground/50 tracking-[3px] font-semibold font-poppins"
+            style={gender ? { color: accent.hex } : undefined}
+          >
+            {stepLabel}
+          </p>
+          <p className="text-sm sm:text-base text-foreground/60 font-poppins mt-1">{stepSub}</p>
         </div>
 
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-6 pb-2">
+          {/* Scrollable content - primary actions live in sticky footer below */}
+          <div ref={scrollBodyRef} className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain px-4 sm:px-6 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:pb-2 ${COL_W}`}>
 
           {/* ══ STEP 1: Gender ══════════════════════════════════════════════ */}
           {step === 1 && (
-            <div className="flex flex-col gap-4">
-              <p className="text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-1">ZA KOGA JE REZERVACIJA?</p>
-              <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-3 py-2">
+              {GENDER_OPTIONS.map((opt) => (
                 <button
-                  onClick={() => { setGender("zene"); setStep(2); }}
-                  className={`flex flex-col items-center gap-3 p-6 rounded-3xl border-2 transition-all cursor-pointer ${gender === "zene" ? "border-pink bg-pink/5" : "border-foreground/10 hover:border-foreground/20"}`}
+                  key={opt.key}
+                  type="button"
+                  onClick={() => handleGenderSelect(opt.key)}
+                  onPointerEnter={() => preloadRegionArt(opt.key)}
+                  onFocus={() => preloadRegionArt(opt.key)}
+                  className="flex items-center gap-4 sm:gap-5 w-full p-5 sm:p-6 rounded-2xl sm:rounded-3xl border-2 hover:brightness-125 active:scale-[0.99] transition-all text-left cursor-pointer"
+                  style={{ backgroundImage: opt.surface, borderColor: `${opt.hex}40` }}
                 >
-                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${gender === "zene" ? "bg-pink text-white" : "bg-foreground/5 text-foreground/40"}`}>
-                    <ScanFace size={28} />
+                  <div
+                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl flex items-center justify-center shrink-0 border"
+                    style={{ backgroundColor: `${opt.hex}1A`, borderColor: `${opt.hex}33` }}
+                  >
+                    <opt.Icon size={28} style={{ color: opt.hex }} className="sm:w-8 sm:h-8" />
                   </div>
-                  <span className="font-poppins font-bold">ŽENE</span>
-                </button>
-                <button
-                  onClick={() => { setGender("muskarci"); setStep(2); }}
-                  className={`flex flex-col items-center gap-3 p-6 rounded-3xl border-2 transition-all cursor-pointer ${gender === "muskarci" ? "border-teal bg-teal/5" : "border-foreground/10 hover:border-foreground/20"}`}
-                >
-                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${gender === "muskarci" ? "bg-teal text-white" : "bg-foreground/5 text-foreground/40"}`}>
-                    <PersonStanding size={28} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-base sm:text-lg font-bold font-playfair tracking-wide" style={{ color: opt.hex }}>{opt.label}</p>
+                    <p className="text-xs sm:text-sm text-foreground/50 font-poppins mt-0.5">{opt.sub}</p>
                   </div>
-                  <span className="font-poppins font-bold">MUŠKARCI</span>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={opt.hex} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 sm:w-6 sm:h-6">
+                    <path d="M9 18l6-6-6-6" />
+                  </svg>
                 </button>
-              </div>
+              ))}
             </div>
           )}
 
@@ -696,34 +688,132 @@ export default function AdminReservationModal({
           {step === 2 && (
             <div className="flex flex-col gap-2">
               {loadingServices ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 size={28} className="animate-spin text-foreground/30" />
+                /* Same grid as the real list: one full-width hero card, then
+                   thumbnail + two lines per region. */
+                <div className="flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:gap-3" role="status" aria-label="Učitavanje tretmana">
+                  <Skeleton className="sm:col-span-2 mt-2 sm:mt-2.5 h-[104px] sm:h-[124px] rounded-2xl" />
+                  {Array.from({ length: 8 }, (_, i) => (
+                    <div key={i} className="flex items-center gap-3 sm:gap-4 p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border-2 border-foreground/8">
+                      <Skeleton className="w-16 h-16 sm:w-20 sm:h-20 rounded-full shrink-0" />
+                      <div className="flex-1 flex flex-col gap-2">
+                        <Skeleton className="h-3.5 sm:h-4 w-2/3 rounded" />
+                        <Skeleton className="h-3 w-1/3 rounded" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ) : services.filter((s) => !isComboService(s.name)).map((service) => {
+              ) : servicesError ? (
+                <div className="flex flex-col items-center gap-3 p-5 rounded-xl sm:rounded-2xl bg-foreground/5 text-foreground/60 text-sm sm:text-base font-poppins text-center">
+                  <span className="flex items-center gap-2"><AlertCircle size={16} />Tretmani trenutno ne mogu da se učitaju.</span>
+                  <button
+                    type="button"
+                    onClick={() => { setServicesError(false); setServicesReloadKey((k) => k + 1); }}
+                    className="px-5 py-2 rounded-full text-sm font-semibold font-poppins bm-metal cursor-pointer"
+                    style={{ backgroundColor: accent.hex }}
+                  >
+                    Pokušaj ponovo
+                  </button>
+                </div>
+              ) : (
+              <div className="flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:gap-3">
+              {pickableServices.map((service, index) => {
+                const enterDelay = Math.min(index, 9) * 45;
+                const enterStyle = { animationDelay: `${enterDelay}ms` } as CSSProperties;
                 const isSelected = selectedIds.includes(service.id);
+                const isBlocked = fullBodySelected && !isSelected && !isAllowedWithFullBody(service.name);
                 const Icon = getIcon(service.name);
+                const art = gender ? getRegionArt(service.name, gender) : null;
+
+                /* "Celo telo" gets the hero treatment: full width, always in the
+                   accent colour and softly glowing so it reads as the best deal. */
+                if (isFullBody(service.name)) {
+                  return (
+                    <div
+                      key={service.id}
+                      className="bm-card-in glow-halo relative sm:col-span-2 mt-2 sm:mt-2.5 rounded-2xl"
+                      style={{ "--glow": accent.hex, ...enterStyle } as CSSProperties}
+                    >
+                      <span
+                        className="absolute -top-2 sm:-top-2.5 left-4 sm:left-5 z-10 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] sm:text-[11px] font-bold font-poppins tracking-widest bm-metal"
+                        style={{ backgroundColor: accent.hex }}
+                      >
+                        NAJISPLATIVIJE
+                      </span>
+                      <button
+                        onClick={() => toggleService(service.id)}
+                        className={`group glow-card relative overflow-hidden flex items-center gap-3 sm:gap-4 w-full p-4 sm:p-5 rounded-2xl border-2 ${accent.border} ${isSelected ? accent.bgLight : "bg-transparent"} transition-all text-left cursor-pointer`}
+                      >
+                        <span className="shimmer-sweep" aria-hidden="true" />
+                        {art ? (
+                          <RegionThumb
+                            art={art}
+                            selected={isSelected}
+                            sizes={HERO_THUMB_SIZES}
+                            revealDelay={enterDelay + 180}
+                            className="w-24 h-24 sm:w-28 sm:h-28 -my-2 -ml-1"
+                          />
+                        ) : (
+                          <div className={`relative w-12 h-12 sm:w-14 sm:h-14 rounded-xl flex items-center justify-center shrink-0 ${accent.bgMed}`}>
+                            <Icon size={24} style={{ color: accent.hex }} className="sm:w-7 sm:h-7" />
+                          </div>
+                        )}
+                        <div className="relative flex-1 min-w-0">
+                          <p className="text-base sm:text-lg font-bold font-poppins">{service.name}</p>
+                          <span className="block text-[11px] sm:text-[13px] text-foreground/50 font-poppins leading-snug mt-0.5">
+                            Sve regije u jednom tretmanu - najbolji odnos cene i rezultata
+                          </span>
+                          <span className="block text-sm sm:text-base font-bold font-poppins mt-1" style={{ color: accent.hex }}>
+                            {formatPrice(service.price)} RSD
+                          </span>
+                        </div>
+                        <div className={`relative w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg border-2 flex items-center justify-center transition-all shrink-0 ${isSelected ? `${accent.border} ${accent.bg}` : "border-foreground/20"}`}>
+                          {isSelected && (
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={accent.onHex} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="sm:w-3.5 sm:h-3.5">
+                              <path d="M20 6L9 17l-5-5" />
+                            </svg>
+                          )}
+                        </div>
+                      </button>
+                    </div>
+                  );
+                }
+
                 return (
                   <button
                     key={service.id}
                     onClick={() => toggleService(service.id)}
-                    className={`flex items-center gap-3 w-full p-3.5 rounded-xl border-2 transition-all text-left cursor-pointer ${
-                      isSelected
-                        ? `${accent.border} ${accent.bgLight}`
-                        : "border-foreground/8 hover:border-foreground/20"
+                    disabled={isBlocked}
+                    style={enterStyle}
+                    className={`bm-card-in group flex items-center gap-3 sm:gap-4 w-full ${art ? "p-2.5 sm:p-3" : "p-3.5 sm:p-4"} rounded-xl sm:rounded-2xl border-2 transition-all text-left ${
+                      isBlocked
+                        ? "border-foreground/8 opacity-40 cursor-not-allowed"
+                        : isSelected
+                          ? `${accent.border} ${accent.bgLight} cursor-pointer`
+                          : "border-foreground/8 hover:border-foreground/20 cursor-pointer"
                     }`}
                   >
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 transition-colors ${isSelected ? accent.bgMed : "bg-foreground/5"}`}>
-                      <Icon size={20} style={{ color: isSelected ? accent.hex : undefined }} className={isSelected ? "" : "text-foreground/40"} />
-                    </div>
+                    {art ? (
+                      <RegionThumb
+                        art={art}
+                        selected={isSelected}
+                        sizes={THUMB_SIZES}
+                        revealDelay={enterDelay + 180}
+                        className="w-20 h-20 sm:w-24 sm:h-24 -my-2 -ml-1"
+                      />
+                    ) : (
+                      <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl flex items-center justify-center shrink-0 transition-colors ${isSelected ? accent.bgMed : "bg-foreground/5"}`}>
+                        <Icon size={20} style={{ color: isSelected ? accent.hex : undefined }} className={`sm:w-6 sm:h-6 ${isSelected ? "" : "text-foreground/40"}`} />
+                      </div>
+                    )}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold font-poppins">{service.name}</p>
-                      <span className="text-xs text-foreground/40 font-poppins mt-0.5">
+                      <p className="text-sm sm:text-base font-semibold font-poppins">{service.name}</p>
+                      <span className="text-xs sm:text-sm text-foreground/40 font-poppins mt-0.5">
                         {formatPrice(service.price)} RSD
                       </span>
                     </div>
-                    <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all shrink-0 ${isSelected ? `${accent.border} ${accent.bg}` : "border-foreground/20"}`}>
+                    <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg border-2 flex items-center justify-center transition-all shrink-0 ${isSelected ? `${accent.border} ${accent.bg}` : "border-foreground/20"}`}>
                       {isSelected && (
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={accent.onHex} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="sm:w-3.5 sm:h-3.5">
                           <path d="M20 6L9 17l-5-5" />
                         </svg>
                       )}
@@ -731,27 +821,30 @@ export default function AdminReservationModal({
                   </button>
                 );
               })}
+              </div>
+              )}
             </div>
           )}
 
           {/* ══ STEP 3: Date only ══════════════════════════════════════════════ */}
           {step === 3 && (
             <div className="flex flex-col gap-4">
-              <p className="text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-1">IZABERI DAN</p>
+              <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/40 font-poppins mb-1">IZABERI DAN</p>
               {dayOptions.length === 0 ? (
-                <div className="flex items-center gap-2 p-4 rounded-xl bg-foreground/5 text-foreground/50 text-sm font-poppins">
+                <div className="flex items-center gap-2 sm:gap-3 p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-foreground/5 text-foreground/50 text-sm sm:text-base font-poppins">
                   <AlertCircle size={16} />
                   Nema dostupnih dana.
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  {dayOptions.map((day) => {
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
+                  {dayOptions.map((day, index) => {
                     const isSelected = selectedDate === day.date;
                     return (
                       <button
                         key={day.date}
                         onClick={() => handleDaySelect(day.date)}
-                        className={`relative flex flex-col items-start p-4 rounded-2xl border-2 text-left cursor-pointer transition-all ${
+                        style={cascade(index, 45, 8)}
+                        className={`bm-card-in relative flex flex-col items-start p-4 sm:p-5 rounded-2xl sm:rounded-3xl border-2 text-left cursor-pointer transition-all ${
                           isSelected
                             ? `${accent.border} ${accent.bgLight}`
                             : "border-foreground/8 hover:border-foreground/20"
@@ -759,19 +852,19 @@ export default function AdminReservationModal({
                       >
                         {day.isToday && (
                           <span
-                            className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md text-[10px] font-bold font-poppins text-white"
+                            className="absolute top-2 right-2 sm:top-3 sm:right-3 px-1.5 sm:px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-bold font-poppins bm-metal"
                             style={{ backgroundColor: accent.hex }}
                           >
                             DANAS
                           </span>
                         )}
                         <p
-                          className="text-sm font-bold font-poppins leading-tight"
+                          className="text-sm sm:text-base md:text-lg font-bold font-poppins leading-tight"
                           style={isSelected ? { color: accent.hex } : undefined}
                         >
                           {day.label}
                         </p>
-                        <p className="text-xs text-foreground/50 font-poppins mt-0.5">{day.shortDate}</p>
+                        <p className="text-xs sm:text-sm text-foreground/50 font-poppins mt-0.5">{day.shortDate}</p>
                       </button>
                     );
                   })}
@@ -783,29 +876,44 @@ export default function AdminReservationModal({
           {/* ══ STEP 4: Time only ══════════════════════════════════════════════ */}
           {step === 4 && (
             <div className="flex flex-col gap-4">
-              <p className="text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-1">SLOBODNI TERMINI</p>
+              <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/40 font-poppins mb-1">SLOBODNI TERMINI</p>
               {loadingSlots ? (
-                <div className="flex justify-center py-6">
-                  <Loader2 size={22} className="animate-spin text-foreground/30" />
+                <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-1.5 sm:gap-2.5" role="status" aria-label="Učitavanje termina">
+                  {Array.from({ length: 12 }, (_, i) => (
+                    <Skeleton key={i} className="h-[42px] sm:h-[52px] rounded-lg sm:rounded-xl" />
+                  ))}
+                </div>
+              ) : slotsError ? (
+                <div className="flex flex-col items-center gap-3 p-5 rounded-xl sm:rounded-2xl bg-foreground/5 text-foreground/60 text-sm sm:text-base font-poppins text-center">
+                  <span className="flex items-center gap-2"><AlertCircle size={16} />Termini trenutno ne mogu da se učitaju.</span>
+                  <button
+                    type="button"
+                    onClick={() => { setSlotsError(false); setSlotsReloadKey((k) => k + 1); }}
+                    className="px-5 py-2 rounded-full text-sm font-semibold font-poppins bm-metal cursor-pointer"
+                    style={{ backgroundColor: accent.hex }}
+                  >
+                    Pokušaj ponovo
+                  </button>
                 </div>
               ) : availableSlots.length === 0 ? (
-                <div className="flex items-center gap-2 p-4 rounded-xl bg-foreground/5 text-foreground/50 text-sm font-poppins">
+                <div className="flex items-center gap-2 sm:gap-3 p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-foreground/5 text-foreground/50 text-sm sm:text-base font-poppins">
                   <AlertCircle size={16} />
                   Nema slobodnih termina za ovaj datum.
                 </div>
               ) : (
-                <div className="grid grid-cols-4 gap-1.5">
-                  {availableSlots.map((slot) => (
+                <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-1.5 sm:gap-2.5">
+                  {availableSlots.map((slot, index) => (
                     <button
                       key={slot}
                       type="button"
-                      onClick={() => setSelectedTime(slot)}
-                      className="py-2.5 rounded-lg text-sm font-semibold font-poppins transition-all cursor-pointer"
-                      style={
-                        selectedTime === slot
-                          ? { backgroundColor: accent.hex, color: "white" }
-                          : { backgroundColor: "rgba(0,0,0,0.05)", color: "rgba(0,0,0,0.6)" }
-                      }
+                      onClick={() => handleTimeSelect(slot)}
+                      className="bm-card-in py-2.5 sm:py-3.5 rounded-lg sm:rounded-xl text-sm sm:text-base font-semibold font-poppins transition-colors cursor-pointer"
+                      style={{
+                        ...cascade(index, 25, 17),
+                        ...(selectedTime === slot
+                          ? { backgroundColor: accent.hex, color: accent.onHex }
+                          : { backgroundColor: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.75)" }),
+                      }}
                     >
                       {slot}
                     </button>
@@ -815,29 +923,42 @@ export default function AdminReservationModal({
             </div>
           )}
 
-          {/* ══ STEP 5: Vaši podaci only ══════════════════════════════════════════════ */}
+          {/* ══ STEP 5: Podaci o klijentu ═══════════════════════════════════════════ */}
           {step === 5 && (
-            <div className="flex flex-col gap-4">
-              <p className="text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-1">PODACI O KLIJENTU</p>
+            <div className="flex flex-col gap-4 sm:gap-6">
+              <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/40 font-poppins mb-1">PODACI O KLIJENTU</p>
 
               <div>
-                <label className="block text-xs text-foreground/50 font-poppins mb-1">Ime i prezime *</label>
+                <label htmlFor="arm-name" className="block text-xs sm:text-sm text-foreground/50 font-poppins mb-1 sm:mb-1.5">Ime i prezime *</label>
                 <input
+                  id="arm-name"
+                  name="name"
                   type="text"
+                  autoComplete="off"
+                  autoCapitalize="words"
+                  enterKeyHint="next"
                   placeholder="Ana Marković"
                   value={form.name}
                   onChange={(e) => { setForm((p) => ({ ...p, name: e.target.value })); setFieldErrors((p) => ({ ...p, name: false })); }}
-                  className={`w-full px-4 py-3 rounded-xl border-2 focus:outline-none font-poppins text-sm transition-colors ${fieldErrors.name ? "border-red-400 bg-red-50" : "border-foreground/10"}`}
+                  className={`w-full px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl border-2 focus:outline-none font-poppins text-sm sm:text-base transition-colors ${fieldErrors.name ? "border-red-400/70 bg-red-500/10" : "border-foreground/10"}`}
                   onFocus={(e) => { if (!fieldErrors.name) e.target.style.borderColor = accent.hex; }}
                   onBlur={(e) => { e.target.style.borderColor = ""; }}
                 />
-                {fieldErrors.name && <p className="text-xs text-red-500 font-poppins mt-1">Unesite ime i prezime.</p>}
+                {fieldErrors.name && <p className="text-xs text-red-400 font-poppins mt-1">Unesite ime i prezime.</p>}
               </div>
 
               <div>
-                <label className="block text-xs text-foreground/50 font-poppins mb-1">Email *</label>
+                <label htmlFor="arm-email" className="block text-xs sm:text-sm text-foreground/50 font-poppins mb-1 sm:mb-1.5">Email *</label>
                 <input
+                  id="arm-email"
+                  name="email"
                   type="email"
+                  inputMode="email"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  enterKeyHint="next"
                   placeholder="ana@primer.rs"
                   value={form.email}
                   onChange={(e) => {
@@ -846,14 +967,14 @@ export default function AdminReservationModal({
                     setFieldErrors((p) => ({ ...p, email: false }));
                     setIsReturningCustomer(null);
                   }}
-                  className={`w-full px-4 py-3 rounded-xl border-2 focus:outline-none font-poppins text-sm transition-colors ${fieldErrors.email ? "border-red-400 bg-red-50" : "border-foreground/10"}`}
+                  className={`w-full px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl border-2 focus:outline-none font-poppins text-sm sm:text-base transition-colors ${fieldErrors.email ? "border-red-400/70 bg-red-500/10" : "border-foreground/10"}`}
                   onFocus={(e) => { if (!fieldErrors.email) e.target.style.borderColor = accent.hex; }}
                   onBlur={(e) => {
                     e.target.style.borderColor = "";
                     void runReturningEmailCheck(e.target.value);
                   }}
                 />
-                {fieldErrors.email && <p className="text-xs text-red-500 font-poppins mt-1">Unesite email adresu.</p>}
+                {fieldErrors.email && <p className="text-xs text-red-400 font-poppins mt-1">Unesite email adresu.</p>}
                 {checkingReturningEmail && (
                   <p className="text-xs text-foreground/45 font-poppins mt-1.5">Proveravamo istoriju zakazivanja…</p>
                 )}
@@ -865,41 +986,61 @@ export default function AdminReservationModal({
               </div>
 
               <div>
-                <label className="block text-xs text-foreground/50 font-poppins mb-1">Telefon</label>
+                <label htmlFor="arm-phone" className="block text-xs sm:text-sm text-foreground/50 font-poppins mb-1 sm:mb-1.5">Telefon <span className="text-foreground/35">(opcionalno)</span></label>
                 <input
+                  id="arm-phone"
+                  name="tel"
                   type="tel"
-                  placeholder="+381 60 123 4567"
+                  inputMode="tel"
+                  autoComplete="off"
+                  enterKeyHint="next"
+                  placeholder="065 373 8991"
                   value={form.phone}
                   onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
-                  className="w-full px-4 py-3 rounded-xl border-2 border-foreground/10 focus:outline-none font-poppins text-sm transition-colors"
+                  className="w-full px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl border-2 border-foreground/10 focus:outline-none font-poppins text-sm sm:text-base transition-colors"
                   onFocus={(e) => (e.target.style.borderColor = accent.hex)}
                   onBlur={(e) => (e.target.style.borderColor = "")}
                 />
               </div>
 
               <div>
-                <label className="block text-xs text-foreground/50 font-poppins mb-1 flex items-center gap-1.5">
-                  <FileText size={12} />
+                <label htmlFor="arm-note" className="flex items-center gap-1.5 text-xs sm:text-sm text-foreground/50 font-poppins mb-1 sm:mb-1.5">
+                  <FileText size={12} className="sm:w-3.5 sm:h-3.5" />
                   Napomena (admin)
                 </label>
                 <textarea
+                  id="arm-note"
+                  name="note"
+                  autoComplete="off"
                   placeholder="Interna napomena..."
                   value={form.notes}
                   onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
                   rows={2}
-                  className="w-full px-4 py-3 rounded-xl border-2 border-foreground/10 focus:outline-none font-poppins text-sm transition-colors resize-none"
+                  className="w-full px-4 sm:px-5 py-2.5 sm:py-3.5 rounded-xl sm:rounded-2xl border-2 border-foreground/10 focus:outline-none font-poppins text-sm sm:text-base transition-colors resize-none"
                   onFocus={(e) => (e.target.style.borderColor = accent.hex)}
                   onBlur={(e) => (e.target.style.borderColor = "")}
                 />
               </div>
 
               <div>
-                <p className="text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-2">PROMO KOD</p>
+                <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/40 font-poppins mb-2">PROMO KOD</p>
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    placeholder="npr. promokod ili paket kod"
+                    name="promo"
+                    autoComplete="off"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    enterKeyHint="done"
+                    placeholder="npr. ils-ime, student ili kod paketa"
+                    aria-label="Promo kod"
                     value={promoCode}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter") return;
+                      e.preventDefault();
+                      if (promoCode.trim() && !checkingReturningEmail && !checkingPromo) void handleApplyPromo();
+                    }}
                     onChange={(e) => {
                       setPromoCode(e.target.value);
                       setPromoStatus("idle");
@@ -907,7 +1048,7 @@ export default function AdminReservationModal({
                       setPromoKind("none");
                     }}
                     disabled={checkingReturningEmail || checkingPromo}
-                    className="flex-1 min-w-0 px-4 py-3 rounded-xl border-2 border-foreground/10 focus:outline-none font-poppins text-sm transition-colors disabled:opacity-60"
+                    className="flex-1 min-w-0 px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl border-2 border-foreground/10 focus:outline-none font-poppins text-sm sm:text-base transition-colors disabled:opacity-60"
                     onFocus={(e) => (e.target.style.borderColor = accent.hex)}
                     onBlur={(e) => (e.target.style.borderColor = "")}
                   />
@@ -915,89 +1056,105 @@ export default function AdminReservationModal({
                     type="button"
                     onClick={handleApplyPromo}
                     disabled={!promoCode.trim() || checkingReturningEmail || checkingPromo}
-                    className="shrink-0 px-4 py-3 rounded-xl text-sm font-semibold tracking-wide font-poppins text-white transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="shrink-0 px-4 sm:px-7 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl text-sm sm:text-base font-semibold tracking-wide font-poppins bm-metal transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{ backgroundColor: accent.hex }}
                   >
-                    {checkingPromo ? <Loader2 size={16} className="animate-spin" /> : "Primeni"}
+                    {checkingPromo ? "…" : "Primeni"}
                   </button>
                 </div>
                 {promoStatus === "valid" && ilsPromoActive && (
-                  <p className="text-xs text-green-600 font-poppins mt-2">
-                    Kod primenjen — −10% popusta.
+                  <p className="text-xs text-emerald-400 font-poppins mt-2">
+                    Kod primenjen - −10% popusta.
                   </p>
                 )}
                 {promoStatus === "valid" && redeemActive && (
-                  <p className="text-xs text-green-600 font-poppins mt-2">
-                    Paket kod primenjen — tretman iz paketa (već plaćen).
+                  <p className="text-xs text-emerald-400 font-poppins mt-2">
+                    Paket potvrđen - ovaj tretman je već plaćen. Cena: 0 RSD.
                   </p>
                 )}
-                {promoStatus === "valid" && studentActive && (
-                  <div className="flex items-start gap-2 mt-2 p-2.5 rounded-xl bg-amber-50 border-2 border-amber-300">
-                    <AlertCircle size={16} className="text-amber-600 shrink-0 mt-px" />
+                {/* Deliberately amber, not green: the discount is conditional and
+                    the condition is the whole point of the message. */}
+                {studentActive && (
+                  <div className="flex items-start gap-2.5 mt-2 p-3 sm:p-3.5 rounded-xl bg-amber-400/10 border-2 border-amber-400/50">
+                    <AlertCircle size={18} className="text-amber-400 shrink-0 mt-px" />
                     <div className="min-w-0">
-                      <p className="text-xs font-poppins text-amber-900 font-semibold leading-snug">
-                        Studentski popust −20%. Traži indeks pri dolasku — bez njega naplati punu cenu.
+                      <p className="text-xs sm:text-sm font-bold font-poppins text-amber-200">
+                        Studentski popust −20% primenjen
+                      </p>
+                      <p className="text-[11px] sm:text-xs font-poppins text-amber-300 leading-snug mt-0.5">
+                        Traži indeks pri dolasku - bez njega naplati punu cenu.
                       </p>
                       {/* The public form refuses this outright; here it only warns, so
                           Ana can still make an exception when she means to. */}
                       {isReturningCustomer === true && (
-                        <p className="text-xs font-poppins text-red-600 font-bold leading-snug mt-1.5">
-                          Pažnja: ovo nije prvi tretman — klijent već postoji u bazi.
+                        <p className="text-[11px] sm:text-xs font-poppins text-red-300 font-bold leading-snug mt-1.5">
+                          Pažnja: ovo nije prvi tretman - klijent već postoji u bazi.
                         </p>
                       )}
                     </div>
                   </div>
                 )}
                 {promoStatus === "invalid" && (
-                  <p className="text-xs text-red-500 font-poppins mt-2">
+                  <p className="text-xs text-red-400 font-poppins mt-2">
                     Nevažeći promo kod.
                   </p>
                 )}
               </div>
 
-              {/* Price summary */}
+              {/* Price summary with savings */}
               {selectedIds.length > 0 && (
-                <div className="rounded-2xl bg-foreground/4 p-4">
-                  <p className="text-[10px] font-semibold tracking-widest text-foreground/40 font-poppins mb-2">PREGLED CENE</p>
+                <div className="rounded-2xl sm:rounded-3xl bg-foreground/4 p-4 sm:p-6">
+                  <p className="text-[10px] sm:text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-2 sm:mb-3">PREGLED CENE</p>
                   <div className="mb-3">
                     {effectiveServices.map((s) => (
                       <div key={s.id} className="flex justify-between items-center py-0.5">
-                        <span className="text-xs font-poppins text-foreground/60">{s.name}</span>
-                        <span className="text-xs font-poppins text-foreground/40">{formatPrice(s.price)} RSD</span>
+                        <span className="text-xs sm:text-sm font-poppins text-foreground/60">{s.name}</span>
+                        <span className="text-xs sm:text-sm font-poppins text-foreground/40">{formatPrice(s.price)} RSD</span>
                       </div>
                     ))}
                   </div>
                   <div className="border-t border-foreground/10 pt-2.5">
                     <div className="flex justify-between items-center">
-                      <span className="text-sm font-poppins text-foreground/50">Redovna cena</span>
-                      <span className={`text-sm font-poppins font-semibold ${ilsPromoActive || redeemActive || studentActive ? "text-foreground/40 line-through" : "font-bold text-foreground"}`}>
+                      <span className="text-sm sm:text-base font-poppins text-foreground/50">Redovna cena</span>
+                      <span className={`text-sm sm:text-base font-poppins font-semibold ${anyDiscount ? "text-foreground/40 line-through" : "font-bold text-foreground"}`}>
                         {formatPrice(totalPrice)} RSD
                       </span>
                     </div>
                     {studentActive && (
                       <div className="flex justify-between items-center mt-1.5">
-                        <span className="text-sm font-poppins text-green-800 font-semibold">Studentski popust (−20%)</span>
-                        <span className="text-sm font-poppins font-bold text-green-800">{formatPrice(finalPrice)} RSD</span>
+                        <span className="text-sm sm:text-base font-poppins text-emerald-300 font-semibold">Studentski popust (−20%)</span>
+                        <span className="text-sm sm:text-base font-poppins font-bold text-emerald-300">{formatPrice(finalPrice)} RSD</span>
                       </div>
                     )}
                     {ilsPromoActive && (
                       <div className="flex justify-between items-center mt-1.5">
-                        <span className="text-sm font-poppins text-green-800 font-semibold">Sa promo kodom (−10%)</span>
-                        <span className="text-sm font-poppins font-bold text-green-800">{formatPrice(finalPrice)} RSD</span>
+                        <span className="text-sm sm:text-base font-poppins text-emerald-300 font-semibold">Sa promo kodom (−10%)</span>
+                        <span className="text-sm sm:text-base font-poppins font-bold text-emerald-300">{formatPrice(finalPrice)} RSD</span>
                       </div>
                     )}
                     {redeemActive && (
                       <div className="flex justify-between items-center mt-1.5">
-                        <span className="text-sm font-poppins text-green-800 font-semibold">Tretman iz paketa (već plaćen)</span>
-                        <span className="text-sm font-poppins font-bold text-green-800">0 RSD</span>
+                        <span className="text-sm sm:text-base font-poppins text-emerald-300 font-semibold">Plaćeno u paketu</span>
+                        <span className="text-sm sm:text-base font-poppins font-bold text-emerald-300">0 RSD</span>
                       </div>
+                    )}
+                    {savingsVsList > 0 && (
+                      <div className="flex justify-between items-center mt-1 pt-2 border-t border-foreground/8">
+                        <span className="text-xs sm:text-sm font-poppins text-foreground/40">Ušteda</span>
+                        <span className="text-xs sm:text-sm font-poppins font-semibold" style={{ color: accent.hex }}>{formatPrice(savingsVsList)} RSD</span>
+                      </div>
+                    )}
+                    {studentActive && (
+                      <p className="text-[11px] sm:text-[13px] font-poppins text-amber-300 font-semibold leading-snug mt-2.5 pt-2.5 border-t border-foreground/8">
+                        Ova cena važi uz indeks. Bez njega se naplaćuje {formatPrice(totalPrice)} RSD.
+                      </p>
                     )}
                   </div>
                 </div>
               )}
 
               {submitError && (
-                <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 text-red-600 text-sm font-poppins">
+                <div className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-red-500/10 text-red-300 text-sm sm:text-base font-poppins">
                   <AlertCircle size={15} />
                   {submitError}
                 </div>
@@ -1007,55 +1164,87 @@ export default function AdminReservationModal({
 
           {/* ══ SUCCESS ════════════════════════════════════════════════════ */}
           {step === "success" && (
-            <div className="flex flex-col items-center text-center py-4">
-              <div className="w-20 h-20 rounded-full bg-green-50 flex items-center justify-center mb-5">
-                <CheckCircle2 size={44} className="text-green-500" strokeWidth={1.5} />
+            <div className="flex flex-col items-center text-center py-4 sm:py-6">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-emerald-400/10 flex items-center justify-center mb-5 sm:mb-6">
+                <CheckCircle2 size={44} className="text-emerald-400 sm:w-13 sm:h-13" strokeWidth={1.5} />
               </div>
-              <h3 className="text-2xl font-bold font-playfair mb-2">Rezervacija kreirana!</h3>
-              <p className="text-sm text-foreground/50 font-poppins mb-6">Potvrda je poslata na {form.email}</p>
+              <h3 className="text-2xl sm:text-3xl md:text-4xl font-bold font-playfair mb-2 sm:mb-3">Rezervacija kreirana!</h3>
+              <p className="text-sm sm:text-base text-foreground/50 font-poppins mb-6 sm:mb-8">Potvrda je poslata na {form.email}</p>
 
-              <div className="grid grid-cols-2 gap-3 w-full mb-4">
-                <div className="flex flex-col items-center justify-center bg-foreground/5 rounded-2xl py-4 px-3">
-                  <p className="text-[10px] font-semibold tracking-widest text-foreground/40 font-poppins mb-1">TRAJANJE</p>
-                  <p className="text-3xl font-bold font-poppins leading-none">{reservationDuration}</p>
-                  <p className="text-xs text-foreground/40 font-poppins mt-1">min</p>
+              {/* ── Stats banner: duration + animated price ── */}
+              <div className="grid grid-cols-2 gap-3 sm:gap-4 w-full mb-4 sm:mb-6">
+                <div className="flex flex-col items-center justify-center bg-foreground/5 rounded-2xl sm:rounded-3xl py-4 sm:py-7 px-3">
+                  <p className="text-[10px] sm:text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-1 sm:mb-2">TRAJANJE</p>
+                  <p className="text-3xl sm:text-5xl font-bold font-poppins leading-none">{reservationDuration}</p>
+                  <p className="text-xs sm:text-sm text-foreground/40 font-poppins mt-1 sm:mt-2">min</p>
                 </div>
 
                 <div
-                  className="flex flex-col items-center justify-center rounded-2xl py-4 px-3 relative overflow-hidden"
+                  className="flex flex-col items-center justify-center rounded-2xl sm:rounded-3xl py-4 sm:py-7 px-3 relative overflow-hidden"
                   style={{ backgroundColor: `${accent.hex}12` }}
                 >
-                  <p className="text-[10px] font-semibold tracking-widest text-foreground/40 font-poppins mb-1">CENA</p>
-                  <p className="text-3xl font-bold font-poppins leading-none tabular-nums" style={{ color: accent.hex }}>
-                    {formatPrice(displayedPrice)}
+                  <p className="text-[10px] sm:text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-1 sm:mb-2">CENA</p>
+                  {anyDiscount && (
+                    <p className="text-xs sm:text-sm text-foreground/35 font-poppins line-through leading-none mb-0.5">
+                      {formatPrice(totalPrice)} RSD
+                    </p>
+                  )}
+                  <p className="text-3xl sm:text-5xl font-bold font-poppins leading-none tabular-nums" style={{ color: accent.hex }}>
+                    {formatPrice(priceShown)}
                   </p>
-                  <p className="text-xs font-semibold font-poppins mt-1" style={{ color: accent.hex }}>RSD</p>
+                  <p className="text-xs sm:text-sm font-semibold font-poppins mt-1 sm:mt-2" style={{ color: accent.hex }}>RSD</p>
+                  {redeemActive ? (
+                    <span className="mt-2 sm:mt-3 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-poppins text-white bg-green-500">
+                      PLAĆENO U PAKETU
+                    </span>
+                  ) : ilsPromoActive ? (
+                    <span className="mt-2 sm:mt-3 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-poppins text-white bg-green-500">
+                      PROMO −10%
+                    </span>
+                  ) : studentActive ? (
+                    <span className="mt-2 sm:mt-3 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-poppins text-white bg-amber-500">
+                      STUDENT −20% · UZ INDEKS
+                    </span>
+                  ) : (
+                    <span className="mt-2 sm:mt-3 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-poppins text-foreground/70 bg-foreground/10">
+                      Redovna cena
+                    </span>
+                  )}
                 </div>
               </div>
 
-              <div className="w-full bg-foreground/4 rounded-2xl p-5 text-left space-y-3">
+              {/* ── Detailed summary card ── */}
+              <div className="w-full bg-foreground/4 rounded-2xl sm:rounded-3xl p-5 sm:p-7 text-left space-y-3 sm:space-y-4">
                 {[
                   ["Datum", selectedDate ? formatDateFull(selectedDate) : ""],
                   ["Vreme", `${selectedTime} – ${minutesToTime(timeToMinutes(selectedTime) + reservationDuration)}`],
                 ].map(([label, value]) => (
-                  <div key={label} className="flex justify-between text-sm font-poppins">
+                  <div key={label} className="flex justify-between text-sm sm:text-base font-poppins">
                     <span className="text-foreground/50">{label}</span>
                     <span className="font-semibold">{value}</span>
                   </div>
                 ))}
+                {studentActive && (
+                  <div className="flex items-start gap-2.5 p-3 sm:p-3.5 rounded-xl bg-amber-400/10 border-2 border-amber-400/50">
+                    <AlertCircle size={18} className="text-amber-400 shrink-0 mt-px" />
+                    <p className="text-[11px] sm:text-xs font-poppins text-amber-200 font-semibold leading-snug">
+                      Proveri indeks pri dolasku. Bez njega studentski popust ne važi i naplaćuje se puna cena od {formatPrice(totalPrice)} RSD.
+                    </p>
+                  </div>
+                )}
                 <div className="border-t border-foreground/10 pt-3">
-                  <p className="text-xs text-foreground/40 font-poppins mb-1.5">USLUGE</p>
+                  <p className="text-xs sm:text-sm text-foreground/40 font-poppins mb-1.5 sm:mb-2">USLUGE</p>
                   {!isReturningCustomer && (
-                    <p className="text-sm font-poppins font-semibold text-foreground/50">Konsultacija (10 min)</p>
+                    <p className="text-sm sm:text-base font-poppins font-semibold text-foreground/50">Konsultacija (10 min)</p>
                   )}
                   {effectiveServices.map((s) => (
-                    <p key={s.id} className="text-sm font-poppins font-semibold">{s.name}</p>
+                    <p key={s.id} className="text-sm sm:text-base font-poppins font-semibold">{s.name}</p>
                   ))}
                 </div>
                 {bookingRef && (
                   <div className="border-t border-foreground/10 pt-3">
-                    <p className="text-xs text-foreground/40 font-poppins mb-1">REF. BROJ</p>
-                    <p className="text-sm font-mono font-bold tracking-wider" style={{ color: accent.hex }}>
+                    <p className="text-xs sm:text-sm text-foreground/40 font-poppins mb-1">REF. BROJ</p>
+                    <p className="text-sm sm:text-lg font-mono font-bold tracking-wider" style={{ color: accent.hex }}>
                       #{bookingRef}
                     </p>
                   </div>
@@ -1066,19 +1255,14 @@ export default function AdminReservationModal({
 
           {/* ══ PREPARATION ═══════════════════════════════════════════════ */}
           {step === "preparation" && (
-            <div className="flex flex-col gap-6 py-2">
-              {[
-                { num: "01", text: "Pre prvog tretmana mora proći minimum mesec dana od poslednjeg čupanja dlačica bilo koje vrste." },
-                { num: "02", text: "Dlačice uklanjati isključivo brijačem ili kremom za depilaciju — nikako čupanjem." },
-                { num: "03", text: "Dan pre dolaska na tretman obrijati dlačice ili ih ukloniti depilacijskom kremom." },
-                { num: "04", text: "Na dan tretmana na kožu ne nanositi nikakve preparate (kreme, ulja, dezodorans)." },
-              ].map((step) => (
-                <div key={step.num} className="flex items-start gap-5">
-                  <span className="font-playfair text-3xl leading-none shrink-0 w-10 text-right" style={{ color: `${accent.hex}99` }}>
-                    {step.num}
+            <div className="flex flex-col gap-6 sm:gap-8 py-2 sm:py-4">
+              {PREPARATION_STEPS.map((item) => (
+                <div key={item.num} className="flex items-start gap-5 sm:gap-7">
+                  <span className="font-playfair text-3xl sm:text-5xl leading-none shrink-0 w-10 sm:w-16 text-right" style={{ color: `${accent.hex}99` }}>
+                    {item.num}
                   </span>
-                  <div className="border-l-2 pl-5 py-0.5" style={{ borderColor: `${accent.hex}4D` }}>
-                    <p className="font-poppins text-sm text-foreground/60 leading-relaxed">{step.text}</p>
+                  <div className="border-l-2 pl-5 sm:pl-7 py-0.5 sm:py-1" style={{ borderColor: `${accent.hex}4D` }}>
+                    <p className="font-poppins text-sm sm:text-base md:text-lg text-foreground/60 leading-relaxed">{item.text}</p>
                   </div>
                 </div>
               ))}
@@ -1086,63 +1270,40 @@ export default function AdminReservationModal({
           )}
           </div>
 
-          {(step === 1 || step === 2 || step === 3 || step === 4 || step === 5 || step === "success" || step === "preparation") && (
-            <div className="shrink-0 border-t border-foreground/10 bg-white px-4 pt-3 pb-3 shadow-[0_-8px_24px_-4px_rgba(0,0,0,0.08)]">
-              {step === 1 && (
-                 <p className="text-center text-[10px] font-poppins text-foreground/40 py-2">Izaberite pol za nastavak</p>
-              )}
-
+          {/* ── Sticky footer: primary CTA always visible while scrolling ───────── */}
+          {(step === 2 || step === 5 || step === "success" || step === "preparation") && (
+            <div className="shrink-0 sm:border-t sm:border-foreground/10 bg-[var(--bm-bg)]/90 backdrop-blur-md px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pt-5 sm:pb-5 shadow-[0_-12px_24px_-12px_rgba(0,0,0,0.6)]">
+              <div className={COL_W}>
               {step === 2 && (
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex flex-col min-w-0">
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-col items-center text-center">
                     {selectedIds.length > 0 ? (
                       <>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-base font-bold font-poppins leading-none" style={{ color: accent.hex }}>{formatPrice(totalPrice)} RSD</span>
-                          <span className="text-[10px] text-foreground/40 font-poppins">· {slotDuration} min</span>
+                        <div className="flex items-center justify-center gap-2 flex-wrap">
+                          <span className="text-base sm:text-xl font-bold font-poppins leading-none" style={{ color: accent.hex }}>{formatPrice(totalPrice)} RSD</span>
+                          <span className="text-[10px] sm:text-xs text-foreground/40 font-poppins">· {slotDuration} min</span>
                         </div>
+                        {appliedCombos.length > 0 && (
+                          <div className="flex items-center justify-center gap-1 mt-1">
+                            <span className="px-1.5 sm:px-2 py-0.5 rounded text-[9px] sm:text-[11px] font-bold font-poppins bm-metal" style={{ backgroundColor: accent.hex }}>COMBO</span>
+                            <span className="text-[10px] sm:text-xs font-poppins text-foreground/40">paket popust uračunat</span>
+                          </div>
+                        )}
                       </>
                     ) : (
-                      <p className="text-xs text-foreground/45 font-poppins pr-2">Odaberite usluge.</p>
+                      <p className="text-xs sm:text-sm text-foreground/45 font-poppins">Odaberite bar jednu uslugu za nastavak.</p>
                     )}
                   </div>
                   <button
                     type="button"
                     onClick={() => setStep(3)}
                     disabled={selectedIds.length === 0}
-                    className="shrink-0 px-5 py-3 rounded-full text-sm font-semibold tracking-widest font-poppins text-white active:scale-95 transition-transform cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
-                    style={{
-                      backgroundColor: accent.hex,
-                      animation: selectedIds.length > 0 ? "nastaviGlow 2s ease-in-out infinite" : undefined,
-                    }}
+                    className={`${selectedIds.length > 0 ? "glow-halo" : ""} relative w-full py-3.5 sm:py-4.5 rounded-full text-sm sm:text-base font-semibold tracking-widest font-poppins bm-metal active:scale-95 transition-transform cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed`}
+                    style={{ backgroundColor: accent.hex, "--glow": accent.hex } as CSSProperties}
                   >
                     NASTAVI
                   </button>
                 </div>
-              )}
-
-              {step === 3 && (
-                <button
-                  type="button"
-                  onClick={() => setStep(4)}
-                  disabled={!selectedDate}
-                  className="w-full py-3.5 rounded-full text-sm font-semibold tracking-widest font-poppins text-white active:scale-95 transition-transform cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-                  style={{ backgroundColor: accent.hex, animation: selectedDate ? "nastaviGlow 2s ease-in-out infinite" : undefined }}
-                >
-                  NASTAVI
-                </button>
-              )}
-
-              {step === 4 && (
-                <button
-                  type="button"
-                  onClick={() => setStep(5)}
-                  disabled={!selectedTime}
-                  className="w-full py-3.5 rounded-full text-sm font-semibold tracking-widest font-poppins text-white active:scale-95 transition-transform cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-                  style={{ backgroundColor: accent.hex, animation: selectedTime ? "nastaviGlow 2s ease-in-out infinite" : undefined }}
-                >
-                  NASTAVI
-                </button>
               )}
 
               {step === 5 && (
@@ -1150,12 +1311,12 @@ export default function AdminReservationModal({
                   type="button"
                   onClick={handleSubmit}
                   disabled={submitting}
-                  className="w-full py-3.5 rounded-full text-sm font-semibold tracking-widest font-poppins text-white transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="w-full py-3.5 sm:py-4.5 rounded-full text-sm sm:text-base font-semibold tracking-widest font-poppins bm-metal transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                   style={{ backgroundColor: accent.hex }}
                 >
                   {submitting ? (
                     <span className="flex items-center justify-center gap-2">
-                      <Loader2 size={16} className="animate-spin" />
+                      <Loader2 size={16} className="animate-spin sm:w-5 sm:h-5" />
                       Kreiranje...
                     </span>
                   ) : "KREIRAJ REZERVACIJU"}
@@ -1167,7 +1328,7 @@ export default function AdminReservationModal({
                   <button
                     type="button"
                     onClick={() => setStep("preparation")}
-                    className="w-full py-3 rounded-full text-sm font-semibold tracking-widest font-poppins border-2 cursor-pointer transition-all hover:opacity-80"
+                    className="w-full py-3 sm:py-4 rounded-full text-sm sm:text-base font-semibold tracking-widest font-poppins border-2 cursor-pointer transition-all hover:opacity-80"
                     style={{ borderColor: accent.hex, color: accent.hex }}
                   >
                     PRE-TRETMAN UPUTSTVA
@@ -1175,7 +1336,7 @@ export default function AdminReservationModal({
                   <button
                     type="button"
                     onClick={handleClose}
-                    className="w-full py-3 rounded-full text-sm font-semibold tracking-widest font-poppins text-white cursor-pointer transition-opacity hover:opacity-90"
+                    className="w-full py-3 sm:py-4 rounded-full text-sm sm:text-base font-semibold tracking-widest font-poppins bm-metal cursor-pointer transition-opacity hover:opacity-90"
                     style={{ backgroundColor: accent.hex }}
                   >
                     ZATVORI
@@ -1187,17 +1348,20 @@ export default function AdminReservationModal({
                 <button
                   type="button"
                   onClick={handleClose}
-                  className="w-full py-3.5 rounded-full text-sm font-semibold tracking-widest font-poppins text-white cursor-pointer transition-opacity hover:opacity-90"
+                  className="w-full py-3.5 sm:py-4.5 rounded-full text-sm sm:text-base font-semibold tracking-widest font-poppins bm-metal cursor-pointer transition-opacity hover:opacity-90"
                   style={{ backgroundColor: accent.hex }}
                 >
                   ZATVORI
                 </button>
               )}
+              </div>
             </div>
           )}
         </div>
 
-        <div className="h-1 bg-linear-to-r from-teal via-pink to-rose shrink-0" />
+        {/* Bottom accent bar - desktop only; on phones it read as a stray border
+            against the home indicator. */}
+        <div className="hidden sm:block h-1 bm-metal shrink-0" />
       </div>
     </div>
   );

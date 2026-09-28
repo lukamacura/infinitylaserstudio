@@ -3,8 +3,8 @@
 import { getImageProps } from "next/image";
 
 const common = { alt: "", fill: true, sizes: "100vw", fetchPriority: "high", loading: "eager" } as const;
-const { props: { srcSet: desktopSrcSet } } = getImageProps({ ...common, src: "/desktop.webp", quality: 70 });
-const { props: mobileImg } = getImageProps({ ...common, src: "/phone.webp", quality: 65 });
+const { props: { srcSet: desktopSrcSet } } = getImageProps({ ...common, src: "/hero/desktop.webp", quality: 70 });
+const { props: mobileImg } = getImageProps({ ...common, src: "/hero/phone.webp", quality: 65 });
 
 const steps = [
   { dot: "bg-rose-300", phase: "Danas",         label: "Svaki dan se briješ" },

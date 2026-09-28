@@ -34,7 +34,7 @@ const services: ServiceCard[] = [
     price: "6000 rsd",
     keywords: ["noge", "intima"],
     type: "photo",
-    photo: "/intime.webp",
+    photo: "/services/intime.webp",
   },
   {
     name: "Nausnice + brada",
@@ -42,7 +42,7 @@ const services: ServiceCard[] = [
     price: "1800 rsd",
     keywords: ["nausnice", "brada"],
     type: "photo",
-    photo: "/face.webp",
+    photo: "/services/face.webp",
   },
 
 ];

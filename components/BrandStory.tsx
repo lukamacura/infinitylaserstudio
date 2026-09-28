@@ -63,7 +63,7 @@ export default function BrandStory() {
         {/* Image */}
         <div className="relative flex justify-center order-first md:order-last">
           <Image
-            src="/ana.webp"
+            src="/team/ana.webp"
             alt="Ana Kasap, osnivač Infinity Laser Studio"
             width={400}
             height={500}

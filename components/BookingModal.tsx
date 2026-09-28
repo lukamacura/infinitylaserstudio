@@ -5,11 +5,8 @@ import type { CSSProperties } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
-  X, ScanFace, Hand, Footprints,
-  Flower2, Minus, Target, Shirt, ArrowLeft,
-  PersonStanding, Loader2, CheckCircle2, AlertCircle, Info, MapPin,
+  X, ArrowLeft, Loader2, CheckCircle2, AlertCircle, Info, MapPin,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import {
   supabase, calcBookingDuration, calcTotalDuration, getAvailableSlots,
   minutesToTime, timeToMinutes,
@@ -24,6 +21,14 @@ import {
   bundlePurchaseCode, bundleRedeemCode, type BundleResult,
 } from "@/lib/bundles";
 import { STUDENT_PROMO_CODE, isStudentPromoCode } from "@/lib/pricing";
+import {
+  type Gender, type DayOption,
+  getIcon, getRegionArt, preloadRegionArt, RegionThumb, THUMB_SIZES, HERO_THUMB_SIZES,
+  SR_DAYS_FULL, SR_MONTHS_SHORT, monIdx, toDateStr, formatDateFull, formatPrice, EMAIL_REGEX,
+  lockBodyScroll, unlockBodyScroll,
+  isComboService, isFullBody, isAllowedWithFullBody, applyComboRules,
+  ACCENTS, GENDER_OPTIONS, COL_W, cascade, Skeleton, PREPARATION_STEPS,
+} from "@/components/booking/shared";
 
 interface BookingModalProps {
   isOpen: boolean;
@@ -37,59 +42,6 @@ interface BookingModalProps {
 
 type Step = 1 | 2 | "plan" | 3 | 4 | 5 | "success" | "preparation";
 type BookingMode = "single" | "bundle";
-type Gender = "zene" | "muskarci";
-
-// ── Icon mapping ──────────────────────────────────────────────────────────────
-function getIcon(name: string): LucideIcon {
-  const n = name.toLowerCase();
-  if (n.includes("nausnice")) return ScanFace;
-  if (n.includes("lice") || n.includes("lica") || n.includes("brada")) return ScanFace;
-  if (n.includes("intimna") || n.includes("intima")) return Flower2;
-  if (n.includes("pazuh")) return Hand;
-  if (n.includes("ruk")) return Hand;
-  if (n.includes("linija")) return Minus;
-  if (n.includes("stomak")) return Target;
-  if (n.includes("nog")) return Footprints;
-  if (n.includes("telo")) return PersonStanding;
-  if (n.includes("grudi")) return Shirt;
-  if (n.includes("leđ") || n.includes("ledj")) return PersonStanding;
-  return Target;
-}
-
-// ── Date & day helpers ────────────────────────────────────────────────────────
-const SR_DAYS_FULL = [
-  "Ponedeljak", "Utorak", "Sreda", "Četvrtak", "Petak", "Subota", "Nedelja",
-];
-const SR_MONTHS = [
-  "januar", "februar", "mart", "april", "maj", "jun",
-  "jul", "avgust", "septembar", "oktobar", "novembar", "decembar",
-];
-const SR_MONTHS_SHORT = [
-  "jan", "feb", "mar", "apr", "maj", "jun",
-  "jul", "avg", "sep", "okt", "nov", "dec",
-];
-
-/** Returns Monday-index (0=Mon, 6=Sun) for a JS Date */
-function monIdx(d: Date) { return (d.getDay() + 6) % 7; }
-
-function toDateStr(d: Date) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function formatDateFull(dateStr: string) {
-  const d = new Date(`${dateStr}T00:00:00`);
-  return `${SR_DAYS_FULL[monIdx(d)]}, ${d.getDate()}. ${SR_MONTHS[d.getMonth()]} ${d.getFullYear()}.`;
-}
-
-interface DayOption {
-  date: string;       // YYYY-MM-DD
-  label: string;      // "Ponedeljak"
-  shortDate: string;  // "24. feb"
-  isToday: boolean;
-}
 
 /**
  * Candidate days within the rolling public horizon where the booking duration fits
@@ -130,16 +82,10 @@ function buildDayOptions(totalDuration: number, availability: AvailabilityData):
   return days;
 }
 
-function formatPrice(price: number): string {
-  return price.toLocaleString("sr-RS");
-}
-
 /* `ils-` promo codes (−10%) are deliberately NOT honoured here. They are an
    admin-only discount, applied from the admin panel when creating/editing a
    reservation - see AdminReservationModal. The public form accepts bundle
    codes only. */
-
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** A reachable phone number has at least 8 digits (e.g. 065 373 8991, +381…). */
 function isValidPhone(phone: string): boolean {
@@ -186,96 +132,17 @@ function trackEvent(eventName: string, extra: Record<string, unknown> = {}, pixe
 
 type SlotRow = { start_time: string; end_time: string; status: string };
 
-// ── Combo detection ───────────────────────────────────────────────────────────
-interface ComboRule {
-  parts: string[];   // lowercase substrings that identify the component services
-  comboKey: string;  // lowercase substring that identifies the combo service
-}
-
-const COMBO_RULES: ComboRule[] = [
-  { parts: ["nausnice", "brada"],  comboKey: "nausnice i brada" },
-  { parts: ["noge", "intima"],     comboKey: "noge + intima" },
-  { parts: ["stomak", "grudi"],    comboKey: "stomak + grudi" },
-];
-
-/** Returns true if this service is a combo product (should be hidden from the list) */
-function isComboService(name: string): boolean {
-  const n = name.toLowerCase();
-  return COMBO_RULES.some((r) => n.includes(r.comboKey));
-}
-
-// ── "Celo telo" exclusivity ─────────────────────────────────────────────────
-// When the whole body is selected, only earrings, chin and whole face may be
-// added alongside it - every other region is already covered by "Celo telo".
-const FULL_BODY_KEY = "celo telo";
-const FULL_BODY_ALLOWED = ["nausnice", "brada", "celo lice"];
-
-function isFullBody(name: string): boolean {
-  return name.toLowerCase().includes(FULL_BODY_KEY);
-}
-
-/** Services that may stay selectable when "Celo telo" is chosen. */
-function isAllowedWithFullBody(name: string): boolean {
-  const n = name.toLowerCase();
-  return isFullBody(name) || FULL_BODY_ALLOWED.some((k) => n.includes(k));
-}
-
-/**
- * Given the currently selected services and all loaded services,
- * returns the effective list for price/duration calculation:
- * combo component pairs are replaced with the combo service.
- * Also returns which combos were applied (for UI badge).
- */
-function applyComboRules(
-  selected: Service[],
-  all: Service[]
-): { effective: Service[]; appliedCombos: Service[] } {
-  let effective = [...selected];
-  const appliedCombos: Service[] = [];
-
-  for (const rule of COMBO_RULES) {
-    const matchedParts = rule.parts
-      .map((part) => effective.find((s) => s.name.toLowerCase().includes(part)))
-      .filter((s): s is Service => s !== undefined);
-
-    if (matchedParts.length === rule.parts.length) {
-      const combo = all.find((s) => s.name.toLowerCase().includes(rule.comboKey));
-      if (combo) {
-        effective = effective.filter((s) => !matchedParts.includes(s));
-        effective.push(combo);
-        appliedCombos.push(combo);
-      }
-    }
-  }
-
-  return { effective, appliedCombos };
-}
-
-// ── Accent theme ──────────────────────────────────────────────────────────────
-// Both genders run on a dark sheet (see `.bm-theme-*` in globals.css):
-// zene = midnight plum + rose gold, muskarci = obsidian + antique gold.
-const ACCENTS = {
-  zene: {
-    hex: "#DCA8A6",
-    onHex: "#1E1017",
-    border: "border-[#DCA8A6]",
-    bg: "bg-[#DCA8A6]",
-    bgLight: "bg-[#DCA8A6]/10",
-    bgMed: "bg-[#DCA8A6]/20",
-  },
-  muskarci: {
-    hex: "#D4AF67",
-    onHex: "#0B0B0C",
-    border: "border-[#D4AF67]",
-    bg: "bg-[#D4AF67]",
-    bgLight: "bg-[#D4AF67]/10",
-    bgMed: "bg-[#D4AF67]/20",
-  },
-} as const;
+// ── Services cache ────────────────────────────────────────────────────────────
+// The treatment list barely changes and every price is re-checked by the
+// database on booking, so a per-gender copy is kept for the page session:
+// reopening the modal, or going back and picking the same gender again, shows
+// the list instantly instead of a spinner.
+const SERVICES_TTL_MS = 5 * 60 * 1000;
+const servicesCache = new Map<Gender, { at: number; data: Service[] }>();
 
 /** Per-gender social proof - shown on the services step and the date step. */
 const SOCIAL_PROOF: Record<Gender, { mark: string; line: string }> = {
-  zene: { mark: "♥", line: "Preko 2000 ljudi se uspešno rešilo dlačica" },
+  zene: { mark: "♥", line: "Preko 2000 žena se uspešno rešilo dlačica" },
   muskarci: { mark: "◆", line: "Preko 2000 ljudi se uspešno rešilo dlačica" },
 };
 
@@ -316,13 +183,6 @@ const NOTICES: Record<NoticeKey, { step: Step | null; message: string }> = {
   },
 };
 const NOTICE_ORDER = Object.keys(NOTICES) as NoticeKey[];
-
-/**
- * The modal is full-screen on every device, so on desktop the content would
- * otherwise stretch across the whole viewport. Header, body and footer all share
- * this centered column - mobile is untouched (max-width kicks in only from sm).
- */
-const COL_W = "w-full sm:max-w-[680px] md:max-w-[760px] sm:mx-auto";
 
 /** Bundle-size illustrations (gift-box stacks matching the tier size). */
 const BUNDLE_IMAGES: Record<number, string> = {
@@ -392,6 +252,10 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   const appliedPreselect = useRef(false);
   /** Scrollable step body - reset to top on every step change */
   const scrollBodyRef = useRef<HTMLDivElement>(null);
+  /** The dialog sheet - receives focus on open so keyboard handling works. */
+  const sheetRef = useRef<HTMLDivElement>(null);
+  /** Step 1 map embed - mounted late, see the effect below. */
+  const [mapReady, setMapReady] = useState(false);
 
   // iOS-style notifications from Ana - each fires once per modal session.
   // "Already shown" lives in a ref, not state: as a dependency of the scheduling
@@ -482,15 +346,39 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
   // ── Side-effects ──────────────────────────────────────────────────────────
   useEffect(() => {
-    if (isOpen) {
-      requestAnimationFrame(() => setIsAnimating(true));
-      document.body.style.overflow = "hidden";
-    } else {
+    if (!isOpen) {
       setIsAnimating(false);
-      document.body.style.overflow = "";
+      unlockBodyScroll();
+      return;
     }
-    return () => { document.body.style.overflow = ""; };
+    lockBodyScroll();
+    const raf = requestAnimationFrame(() => {
+      setIsAnimating(true);
+      // Focus moves into the dialog so Escape and Tab work from the start.
+      sheetRef.current?.focus({ preventScroll: true });
+    });
+    return () => { cancelAnimationFrame(raf); unlockBodyScroll(); };
   }, [isOpen]);
+
+  // The Google Maps embed on step 1 is heavy (its own scripts and tiles). It
+  // waits until the modal has settled and the browser is idle, so it never
+  // competes with the treatment list and artwork - and anyone who picks a
+  // gender within that second never pays for it at all.
+  useEffect(() => {
+    if (!isOpen || step !== 1) return;
+    let idleId: number | undefined;
+    const t = setTimeout(() => {
+      if ("requestIdleCallback" in window) {
+        idleId = window.requestIdleCallback(() => setMapReady(true), { timeout: 1500 });
+      } else {
+        setMapReady(true);
+      }
+    }, 1000);
+    return () => {
+      clearTimeout(t);
+      if (idleId !== undefined) window.cancelIdleCallback(idleId);
+    };
+  }, [isOpen, step]);
 
   // Load the working-hours schedule once per open - one query for the whole horizon.
   useEffect(() => {
@@ -518,6 +406,16 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
   useEffect(() => {
     if (!gender) return;
+    preloadRegionArt(gender);
+    // A fresh copy from this page session skips the request entirely. A manual
+    // retry (servicesReloadKey) only ever follows a failure, so it never hits this.
+    const cached = servicesCache.get(gender);
+    if (cached && Date.now() - cached.at < SERVICES_TTL_MS) {
+      setServices(cached.data);
+      setServicesError(false);
+      setLoadingServices(false);
+      return;
+    }
     // Ignore a late response for the other gender (quick back + switch).
     let cancelled = false;
     setLoadingServices(true);
@@ -531,6 +429,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
         ({ data, error }) => {
           if (cancelled) return;
           if (error || !data || data.length === 0) setServicesError(true);
+          else servicesCache.set(gender, { at: Date.now(), data });
           setServices(data ?? []);
           setLoadingServices(false);
         },
@@ -1135,7 +1034,15 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   // ── Render ────────────────────────────────────────────────────────────────
   // z-80: iznad SocialProofToast (z-60), da guarantee banner nikad ne ostane ispod njega
   return (
-    <div className={`bm-theme ${gender ? `bm-theme-${gender}` : ""} fixed inset-0 z-80 flex items-center justify-center`}>
+    <div
+      className={`bm-theme ${gender ? `bm-theme-${gender}` : ""} fixed inset-0 z-80 flex items-center justify-center`}
+      onKeyDown={(e) => {
+        if (e.key !== "Escape") return;
+        e.stopPropagation();
+        if (showPolicyInfo) { setShowPolicyInfo(false); return; }
+        if (!submitting) handleClose();
+      }}
+    >
       {/* Backdrop */}
       <div
         className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${isAnimating ? "opacity-100" : "opacity-0"}`}
@@ -1176,7 +1083,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
               <div className="flex items-start gap-3">
                 <div className="relative w-11 h-11 sm:w-14 sm:h-14 rounded-[14px] sm:rounded-[18px] overflow-hidden shrink-0 ring-1 ring-white/10 shadow-sm">
-                  <Image src="/ana.webp" alt="Ana" fill sizes="(max-width: 640px) 44px, 56px" className="object-cover" />
+                  <Image src="/team/ana.webp" alt="Ana" fill sizes="(max-width: 640px) 44px, 56px" className="object-cover" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline gap-2">
@@ -1197,7 +1104,13 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
       {/* Modal shell */}
       <div
-        className={`bm-sheet relative shadow-2xl w-full h-full flex flex-col overflow-hidden transition-all duration-300 ${isAnimating ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-95 translate-y-4"}`}
+        ref={sheetRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bm-title"
+        tabIndex={-1}
+        /* The open/close transition lives in `.bm-sheet` (globals.css). */
+        className={`bm-sheet relative shadow-2xl w-full h-full flex flex-col overflow-hidden outline-none ${isAnimating ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-95 translate-y-4"}`}
       >
         {/* Header - from sm up, content lives in the centered COL_W column */}
         <div className={`flex items-center justify-between px-4 sm:px-6 pt-4 sm:pt-6 pb-2 sm:pb-4 shrink-0 ${COL_W}`}>
@@ -1207,7 +1120,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                 <ArrowLeft size={18} className="sm:w-[22px] sm:h-[22px]" />
               </button>
             )}
-            <h2 className={`text-2xl sm:text-3xl md:text-4xl font-bold font-playfair ${gender ? "bm-metal-text" : ""}`}>Zakaži tretman</h2>
+            <h2 id="bm-title" className={`text-2xl sm:text-3xl md:text-4xl font-bold font-playfair ${gender ? "bm-metal-text" : ""}`}>Zakaži tretman</h2>
           </div>
           <button onClick={handleClose} className="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center rounded-full hover:bg-foreground/5 transition-colors cursor-pointer" aria-label="Zatvori">
             <X size={20} className="sm:w-6 sm:h-6" />
@@ -1227,20 +1140,21 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
           {/* Scrollable content - primary actions live in sticky footer below */}
-          <div ref={scrollBodyRef} className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 sm:px-6 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:pb-2 ${COL_W}`}>
+          {/* overscroll-contain: reaching the end of the list never scrolls or
+              rubber-bands the page underneath. */}
+          <div ref={scrollBodyRef} className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain px-4 sm:px-6 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:pb-2 ${COL_W}`}>
 
 
           {/* ══ STEP 1: Gender ══════════════════════════════════════════════ */}
           {step === 1 && (
             <div className="flex flex-col gap-3 py-2">
-              {([
-                { key: "zene",     label: "Žene",      sub: "Tretmani za žene",      Icon: Flower2,         hex: ACCENTS.zene.hex,     surface: "linear-gradient(120deg, #1E1017 0%, #120A0E 100%)" },
-                { key: "muskarci", label: "Muškarci",  sub: "Tretmani za muškarce",  Icon: PersonStanding,  hex: ACCENTS.muskarci.hex, surface: "linear-gradient(120deg, #161616 0%, #0B0B0C 100%)" },
-              ] as const).map((opt) => (
+              {GENDER_OPTIONS.map((opt) => (
                 <button
                   key={opt.key}
                   type="button"
                   onClick={() => handleGenderSelect(opt.key)}
+                  onPointerEnter={() => preloadRegionArt(opt.key)}
+                  onFocus={() => preloadRegionArt(opt.key)}
                   className="flex items-center gap-4 sm:gap-5 w-full p-5 sm:p-6 rounded-2xl sm:rounded-3xl border-2 hover:brightness-125 active:scale-[0.99] transition-all text-left cursor-pointer"
                   style={{ backgroundImage: opt.surface, borderColor: `${opt.hex}40` }}
                 >
@@ -1266,15 +1180,22 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                   <MapPin size={16} className="text-foreground/40 shrink-0 sm:w-5 sm:h-5" />
                   <p className="text-sm sm:text-base font-semibold font-poppins">Novi Sad, Miloja Čiplića 51</p>
                 </div>
-                <div className="relative w-full aspect-[16/10] sm:aspect-[16/8] rounded-2xl sm:rounded-3xl overflow-hidden border-2 border-foreground/8">
-                  <iframe
-                    src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2808.952530282901!2d19.795792112493817!3d45.248752670950566!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x475b116b6f148971%3A0xbae20345f88572f7!2sInfinity%20Laser%20Studio!5e0!3m2!1sen!2srs!4v1775850629842!5m2!1sen!2srs"
-                    className="absolute inset-0 w-full h-full"
-                    style={{ border: 0 }}
-                    loading="lazy"
-                    referrerPolicy="no-referrer-when-downgrade"
-                    title="Lokacija Infinity Laser Studio — Miloja Čiplića 51, Novi Sad"
-                  />
+                <div className="relative w-full aspect-[16/10] sm:aspect-[16/8] rounded-2xl sm:rounded-3xl overflow-hidden border-2 border-foreground/8 bg-foreground/4">
+                  {mapReady ? (
+                    <iframe
+                      src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2808.952530282901!2d19.795792112493817!3d45.248752670950566!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x475b116b6f148971%3A0xbae20345f88572f7!2sInfinity%20Laser%20Studio!5e0!3m2!1sen!2srs!4v1775850629842!5m2!1sen!2srs"
+                      className="absolute inset-0 w-full h-full animate-[fadeInUp_0.4s_ease-out]"
+                      style={{ border: 0 }}
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                      title="Lokacija Infinity Laser Studio — Miloja Čiplića 51, Novi Sad"
+                    />
+                  ) : (
+                    /* Same box, so nothing shifts when the map lands. */
+                    <div className="absolute inset-0 flex items-center justify-center" aria-hidden="true">
+                      <MapPin size={28} className="text-foreground/15" />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1297,8 +1218,19 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                 </div>
               </div>
               {loadingServices ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 size={28} className="animate-spin text-foreground/30" />
+                /* Same grid as the real list: one full-width hero card, then
+                   thumbnail + two lines per region. */
+                <div className="flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:gap-3" role="status" aria-label="Učitavanje tretmana">
+                  <Skeleton className="sm:col-span-2 mt-2 sm:mt-2.5 h-[104px] sm:h-[124px] rounded-2xl" />
+                  {Array.from({ length: 8 }, (_, i) => (
+                    <div key={i} className="flex items-center gap-3 sm:gap-4 p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border-2 border-foreground/8">
+                      <Skeleton className="w-16 h-16 sm:w-20 sm:h-20 rounded-full shrink-0" />
+                      <div className="flex-1 flex flex-col gap-2">
+                        <Skeleton className="h-3.5 sm:h-4 w-2/3 rounded" />
+                        <Skeleton className="h-3 w-1/3 rounded" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : servicesError ? (
                 <div className="flex flex-col items-center gap-3 p-5 rounded-xl sm:rounded-2xl bg-foreground/5 text-foreground/60 text-sm sm:text-base font-poppins text-center">
@@ -1316,10 +1248,15 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               /* Two columns from sm - the list is long enough that one column
                  wastes the horizontal room a desktop viewport gives us. */
               <div className="flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:gap-3">
-              {pickableServices.map((service) => {
+              {pickableServices.map((service, index) => {
+                // Cascade: each card lands 45ms after the previous, capped so a
+                // long list never keeps the user waiting.
+                const enterDelay = Math.min(index, 9) * 45;
+                const enterStyle = { animationDelay: `${enterDelay}ms` } as CSSProperties;
                 const isSelected = selectedIds.includes(service.id);
                 const isBlocked = fullBodySelected && !isSelected && !isAllowedWithFullBody(service.name);
                 const Icon = getIcon(service.name);
+                const art = gender ? getRegionArt(service.name, gender) : null;
 
                 /* "Celo telo" gets the hero treatment: full width, always in the
                    accent colour and softly glowing so it reads as the best deal. */
@@ -1327,8 +1264,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                   return (
                     <div
                       key={service.id}
-                      className="glow-halo relative sm:col-span-2 mt-2 sm:mt-2.5 rounded-2xl"
-                      style={{ "--glow": accent.hex } as CSSProperties}
+                      className="bm-card-in glow-halo relative sm:col-span-2 mt-2 sm:mt-2.5 rounded-2xl"
+                      style={{ "--glow": accent.hex, ...enterStyle } as CSSProperties}
                     >
                       <span
                         className="absolute -top-2 sm:-top-2.5 left-4 sm:left-5 z-10 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] sm:text-[11px] font-bold font-poppins tracking-widest bm-metal"
@@ -1338,12 +1275,22 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                       </span>
                       <button
                         onClick={() => toggleService(service.id)}
-                        className={`glow-card relative overflow-hidden flex items-center gap-3 sm:gap-4 w-full p-4 sm:p-5 rounded-2xl border-2 ${accent.border} ${isSelected ? accent.bgLight : "bg-transparent"} transition-all text-left cursor-pointer`}
+                        className={`group glow-card relative overflow-hidden flex items-center gap-3 sm:gap-4 w-full p-4 sm:p-5 rounded-2xl border-2 ${accent.border} ${isSelected ? accent.bgLight : "bg-transparent"} transition-all text-left cursor-pointer`}
                       >
                         <span className="shimmer-sweep" aria-hidden="true" />
-                        <div className={`relative w-12 h-12 sm:w-14 sm:h-14 rounded-xl flex items-center justify-center shrink-0 ${accent.bgMed}`}>
-                          <Icon size={24} style={{ color: accent.hex }} className="sm:w-7 sm:h-7" />
-                        </div>
+                        {art ? (
+                          <RegionThumb
+                            art={art}
+                            selected={isSelected}
+                            sizes={HERO_THUMB_SIZES}
+                            revealDelay={enterDelay + 180}
+                            className="w-24 h-24 sm:w-28 sm:h-28 -my-2 -ml-1"
+                          />
+                        ) : (
+                          <div className={`relative w-12 h-12 sm:w-14 sm:h-14 rounded-xl flex items-center justify-center shrink-0 ${accent.bgMed}`}>
+                            <Icon size={24} style={{ color: accent.hex }} className="sm:w-7 sm:h-7" />
+                          </div>
+                        )}
                         <div className="relative flex-1 min-w-0">
                           <p className="text-base sm:text-lg font-bold font-poppins">{service.name}</p>
                           <span className="block text-[11px] sm:text-[13px] text-foreground/50 font-poppins leading-snug mt-0.5">
@@ -1370,7 +1317,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                     key={service.id}
                     onClick={() => toggleService(service.id)}
                     disabled={isBlocked}
-                    className={`flex items-center gap-3 sm:gap-4 w-full p-3.5 sm:p-4 rounded-xl sm:rounded-2xl border-2 transition-all text-left ${
+                    style={enterStyle}
+                    className={`bm-card-in group flex items-center gap-3 sm:gap-4 w-full ${art ? "p-2.5 sm:p-3" : "p-3.5 sm:p-4"} rounded-xl sm:rounded-2xl border-2 transition-all text-left ${
                       isBlocked
                         ? "border-foreground/8 opacity-40 cursor-not-allowed"
                         : isSelected
@@ -1378,9 +1326,19 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                           : "border-foreground/8 hover:border-foreground/20 cursor-pointer"
                     }`}
                   >
-                    <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl flex items-center justify-center shrink-0 transition-colors ${isSelected ? accent.bgMed : "bg-foreground/5"}`}>
-                      <Icon size={20} style={{ color: isSelected ? accent.hex : undefined }} className={`sm:w-6 sm:h-6 ${isSelected ? "" : "text-foreground/40"}`} />
-                    </div>
+                    {art ? (
+                      <RegionThumb
+                        art={art}
+                        selected={isSelected}
+                        sizes={THUMB_SIZES}
+                        revealDelay={enterDelay + 180}
+                        className="w-20 h-20 sm:w-24 sm:h-24 -my-2 -ml-1"
+                      />
+                    ) : (
+                      <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl flex items-center justify-center shrink-0 transition-colors ${isSelected ? accent.bgMed : "bg-foreground/5"}`}>
+                        <Icon size={20} style={{ color: isSelected ? accent.hex : undefined }} className={`sm:w-6 sm:h-6 ${isSelected ? "" : "text-foreground/40"}`} />
+                      </div>
+                    )}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm sm:text-base font-semibold font-poppins">{service.name}</p>
                       <span className="text-xs sm:text-sm text-foreground/40 font-poppins mt-0.5">
@@ -1545,8 +1503,13 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
             <div className="flex flex-col gap-4">
               <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/40 font-poppins mb-1">IZABERI DAN</p>
               {loadingBookableDays ? (
-                <div className="flex justify-center py-6">
-                  <Loader2 size={22} className="animate-spin text-foreground/30" />
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3" role="status" aria-label="Učitavanje slobodnih dana">
+                  {Array.from({ length: 6 }, (_, i) => (
+                    <div key={i} className="flex flex-col items-start gap-2 p-4 sm:p-5 rounded-2xl sm:rounded-3xl border-2 border-foreground/8">
+                      <Skeleton className="h-4 sm:h-5 w-3/5 rounded" />
+                      <Skeleton className="h-3 sm:h-3.5 w-2/5 rounded" />
+                    </div>
+                  ))}
                 </div>
               ) : bookableDayOptions.length === 0 ? (
                 <div className="flex items-center gap-2 sm:gap-3 p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-foreground/5 text-foreground/50 text-sm sm:text-base font-poppins">
@@ -1555,13 +1518,14 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                 </div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
-                  {bookableDayOptions.map((day) => {
+                  {bookableDayOptions.map((day, index) => {
                     const isSelected = selectedDate === day.date;
                     return (
                       <button
                         key={day.date}
                         onClick={() => handleDaySelect(day.date)}
-                        className={`relative flex flex-col items-start p-4 sm:p-5 rounded-2xl sm:rounded-3xl border-2 text-left cursor-pointer transition-all ${
+                        style={cascade(index, 45, 8)}
+                        className={`bm-card-in relative flex flex-col items-start p-4 sm:p-5 rounded-2xl sm:rounded-3xl border-2 text-left cursor-pointer transition-all ${
                           isSelected
                             ? `${accent.border} ${accent.bgLight}`
                             : "border-foreground/8 hover:border-foreground/20"
@@ -1601,8 +1565,10 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                 </div>
               )}
               {loadingSlots ? (
-                <div className="flex justify-center py-6">
-                  <Loader2 size={22} className="animate-spin text-foreground/30" />
+                <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-1.5 sm:gap-2.5" role="status" aria-label="Učitavanje termina">
+                  {Array.from({ length: 12 }, (_, i) => (
+                    <Skeleton key={i} className="h-[42px] sm:h-[52px] rounded-lg sm:rounded-xl" />
+                  ))}
                 </div>
               ) : slotsError ? (
                 <div className="flex flex-col items-center gap-3 p-5 rounded-xl sm:rounded-2xl bg-foreground/5 text-foreground/60 text-sm sm:text-base font-poppins text-center">
@@ -1623,17 +1589,18 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                 </div>
               ) : (
                 <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-1.5 sm:gap-2.5">
-                  {availableSlots.map((slot) => (
+                  {availableSlots.map((slot, index) => (
                     <button
                       key={slot}
                       type="button"
                       onClick={() => handleTimeSelect(slot)}
-                      className="py-2.5 sm:py-3.5 rounded-lg sm:rounded-xl text-sm sm:text-base font-semibold font-poppins transition-all cursor-pointer"
-                      style={
-                        selectedTime === slot
+                      className="bm-card-in py-2.5 sm:py-3.5 rounded-lg sm:rounded-xl text-sm sm:text-base font-semibold font-poppins transition-colors cursor-pointer"
+                      style={{
+                        ...cascade(index, 25, 17),
+                        ...(selectedTime === slot
                           ? { backgroundColor: accent.hex, color: accent.onHex }
-                          : { backgroundColor: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.75)" }
-                      }
+                          : { backgroundColor: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.75)" }),
+                      }}
                     >
                       {slot}
                     </button>
@@ -1651,9 +1618,14 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/40 font-poppins mb-1">VAŠI PODACI</p>
 
               <div>
-                <label className="block text-xs sm:text-sm text-foreground/50 font-poppins mb-1 sm:mb-1.5">Ime i prezime *</label>
+                <label htmlFor="bm-name" className="block text-xs sm:text-sm text-foreground/50 font-poppins mb-1 sm:mb-1.5">Ime i prezime *</label>
                 <input
+                  id="bm-name"
+                  name="name"
                   type="text"
+                  autoComplete="name"
+                  autoCapitalize="words"
+                  enterKeyHint="next"
                   placeholder="Ana Marković"
                   value={form.name}
                   onChange={(e) => { setForm((p) => ({ ...p, name: e.target.value })); setFieldErrors((p) => ({ ...p, name: false })); }}
@@ -1665,9 +1637,17 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               </div>
 
               <div>
-                <label className="block text-xs sm:text-sm text-foreground/50 font-poppins mb-1 sm:mb-1.5">Email *</label>
+                <label htmlFor="bm-email" className="block text-xs sm:text-sm text-foreground/50 font-poppins mb-1 sm:mb-1.5">Email *</label>
                 <input
+                  id="bm-email"
+                  name="email"
                   type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  enterKeyHint="next"
                   placeholder="ana@primer.rs"
                   value={form.email}
                   onChange={(e) => {
@@ -1702,9 +1682,14 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               </div>
 
               <div>
-                <label className="block text-xs sm:text-sm text-foreground/50 font-poppins mb-1 sm:mb-1.5">Telefon *</label>
+                <label htmlFor="bm-phone" className="block text-xs sm:text-sm text-foreground/50 font-poppins mb-1 sm:mb-1.5">Telefon *</label>
                 <input
+                  id="bm-phone"
+                  name="tel"
                   type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  enterKeyHint="next"
                   placeholder="065 373 8991"
                   value={form.phone}
                   onChange={(e) => {
@@ -1719,8 +1704,11 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               </div>
 
               <div>
-                <label className="block text-xs sm:text-sm text-foreground/50 font-poppins mb-1 sm:mb-1.5">Zdravstvena napomena <span className="text-foreground/35">(opcionalno)</span></label>
+                <label htmlFor="bm-note" className="block text-xs sm:text-sm text-foreground/50 font-poppins mb-1 sm:mb-1.5">Zdravstvena napomena <span className="text-foreground/35">(opcionalno)</span></label>
                 <textarea
+                  id="bm-note"
+                  name="note"
+                  autoComplete="off"
                   value={customerNote}
                   onChange={(e) => setCustomerNote(e.target.value)}
                   placeholder="Hronične bolesti, alergije ili lekovi"
@@ -1739,8 +1727,20 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                   <div className="flex gap-2">
                     <input
                       type="text"
+                      name="promo"
+                      autoComplete="off"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      enterKeyHint="done"
                       placeholder="Unesi kod"
+                      aria-label="Promo ili kod paketa"
                       value={promoCode}
+                      onKeyDown={(e) => {
+                        if (e.key !== "Enter") return;
+                        e.preventDefault();
+                        if (promoCode.trim() && !checkingReturningEmail && !checkingPromo) void handleApplyPromo();
+                      }}
                       onChange={(e) => {
                         setPromoCode(e.target.value);
                         setPromoStatus("idle");
@@ -2051,12 +2051,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
           {/* ══ PREPARATION ═══════════════════════════════════════════════ */}
           {step === "preparation" && (
             <div className="flex flex-col gap-6 sm:gap-8 py-2 sm:py-4">
-              {[
-                { num: "01", text: "Pre prvog tretmana mora proći minimum mesec dana od poslednjeg čupanja dlačica bilo koje vrste." },
-                { num: "02", text: "Dlačice uklanjati isključivo brijačem ili kremom za depilaciju - nikako čupanjem." },
-                { num: "03", text: "Dan pre dolaska na tretman obrijati dlačice ili ih ukloniti depilacijskom kremom." },
-                { num: "04", text: "Na dan tretmana na kožu ne nanositi nikakve preparate (kreme, ulja, dezodorans)." },
-              ].map((step) => (
+              {PREPARATION_STEPS.map((step) => (
                 <div key={step.num} className="flex items-start gap-5 sm:gap-7">
                   <span className="font-playfair text-3xl sm:text-5xl leading-none shrink-0 w-10 sm:w-16 text-right" style={{ color: `${accent.hex}99` }}>
                     {step.num}

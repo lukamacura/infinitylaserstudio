@@ -87,7 +87,50 @@ body {
   animation: shimmerSweep 3.6s ease-in-out infinite;
 }
 
+/* ── Booking modal: treatment cards cascade in ────────────────────────────────
+   Only a `from` frame, so each card eases into its own resting style (a
+   blocked card lands on its dimmed opacity instead of snapping to it).
+   `backwards` holds the start frame through the stagger delay. Opacity and
+   transform only - both stay on the compositor. */
+@keyframes bmCardIn {
+  from { opacity: 0; transform: translateY(14px) scale(0.985); }
+}
+
+.bm-card-in {
+  animation: bmCardIn 560ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+/* ── Booking modal: skeleton placeholders ─────────────────────────────────────
+   Shape-matched stand-ins shown while treatments, days or times load, so the
+   grid is already "there" and the real cards cascade into it. A soft light
+   sweep instead of a pulse - transform only, stays on the compositor. */
+@keyframes bmSkeletonSweep {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
+}
+
+.bm-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+}
+
+.bm-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 20%,
+    color-mix(in srgb, var(--foreground) 6%, transparent) 50%,
+    transparent 80%
+  );
+  animation: bmSkeletonSweep 1.6s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .bm-card-in { animation: none; }
+  .bm-skeleton::after { animation: none; }
   .glow-halo::before { animation: none; opacity: 0.5; }
   .shimmer-sweep, .bm-shine { display: none; }
   [data-reveal] { transition: none !important; }
@@ -145,7 +188,15 @@ body {
 .bm-sheet {
   background-color: var(--bm-bg);
   background-image: var(--bm-bg-image);
-  transition: background-color 0.4s ease;
+  /* This unlayered rule outranks Tailwind's layered `transition-*` utilities,
+     so the open/close animation is declared here too. Tailwind v4 drives
+     `scale-*` / `translate-*` through the individual properties, not
+     `transform`, hence those names. */
+  transition:
+    background-color 0.4s ease,
+    opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    scale 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    translate 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Metallic fill for primary CTAs and badges. */
