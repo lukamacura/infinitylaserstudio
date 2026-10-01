@@ -75,7 +75,7 @@ export const LOCATIONS: readonly StudioLocation[] = [
     id: "sombor",
     name: "Sombor",
     cityLocative: "u Somboru",
-    address: "Milete Protića 27",
+    address: "JNA 30",
     image: "/lokacije/sombor.webp",
     mapEmbed: null,
     marketingFee: 0,
