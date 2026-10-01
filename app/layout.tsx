@@ -25,7 +25,7 @@ const poppins = Poppins({
   display: "swap",
 });
 
-// The hero's numbers (2000+, 5 god., 99%). One weight only - never put a bold
+// The hero's numbers (2000+, 5 god., 97%). One weight only - never put a bold
 // class on it, the browser would fake it.
 const instrumentSerif = Instrument_Serif({
   variable: "--font-instrument",

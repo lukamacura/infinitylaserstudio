@@ -2013,26 +2013,26 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                     </div>
                     {studentActive && (
                       <div className="flex justify-between items-center mt-1.5">
-                        <span className="text-sm sm:text-base font-poppins text-emerald-300 font-semibold">Studentski popust (−20%)</span>
-                        <span className="text-sm sm:text-base font-poppins font-bold text-emerald-300">{formatPrice(finalPrice)} RSD</span>
+                        <span className="flex items-center gap-2 text-sm sm:text-base font-poppins text-foreground/85 font-semibold">Studentska cena<span className="text-[10px] sm:text-xs font-poppins font-semibold text-emerald-300 bg-emerald-400/15 rounded-full px-2 py-0.5">−20%</span></span>
+                        <span className="text-base sm:text-lg font-poppins font-bold text-foreground">{formatPrice(finalPrice)} RSD</span>
                       </div>
                     )}
                     {bundleActive && (
                       <div className="flex justify-between items-center mt-1.5">
-                        <span className="text-sm sm:text-base font-poppins text-emerald-300 font-semibold">Cena paketa (−{bundleResult!.blendedPct}%)</span>
-                        <span className="text-sm sm:text-base font-poppins font-bold text-emerald-300">{formatPrice(finalPrice)} RSD</span>
+                        <span className="flex items-center gap-2 text-sm sm:text-base font-poppins text-foreground/85 font-semibold">Cena paketa<span className="text-[10px] sm:text-xs font-poppins font-semibold text-emerald-300 bg-emerald-400/15 rounded-full px-2 py-0.5">−{bundleResult!.blendedPct}%</span></span>
+                        <span className="text-base sm:text-lg font-poppins font-bold text-foreground">{formatPrice(finalPrice)} RSD</span>
                       </div>
                     )}
                     {redeemActive && (
                       <div className="flex justify-between items-center mt-1.5">
-                        <span className="text-sm sm:text-base font-poppins text-emerald-300 font-semibold">Plaćeno u paketu</span>
-                        <span className="text-sm sm:text-base font-poppins font-bold text-emerald-300">0 RSD</span>
+                        <span className="flex items-center gap-2 text-sm sm:text-base font-poppins text-foreground/85 font-semibold">Plaćeno u paketu</span>
+                        <span className="text-base sm:text-lg font-poppins font-bold text-foreground">0 RSD</span>
                       </div>
                     )}
                     {savingsVsList > 0 && (
-                      <div className="flex justify-between items-center mt-1 pt-2 border-t border-foreground/8">
-                        <span className="text-xs sm:text-sm font-poppins text-foreground/40">Ušteda</span>
-                        <span className="text-xs sm:text-sm font-poppins font-semibold" style={{ color: accent.hex }}>{formatPrice(savingsVsList)} RSD</span>
+                      <div className="flex justify-between items-center mt-2.5 px-3 py-2 rounded-xl bg-emerald-400/10 border border-emerald-400/20">
+                        <span className="text-xs sm:text-sm font-poppins font-semibold text-emerald-300">Ušteda</span>
+                        <span className="text-sm sm:text-base font-poppins font-bold text-emerald-300">{formatPrice(savingsVsList)} RSD</span>
                       </div>
                     )}
                     {studentActive && (

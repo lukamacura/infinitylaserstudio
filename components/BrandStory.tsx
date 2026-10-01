@@ -48,7 +48,7 @@ export default function BrandStory() {
             {[
               { value: "2000+", label: "Zadovoljnih klijenata" },
               { value: "20+", label: "Godina iskustva" },
-              { value: "99%", label: "Klijenata koji se vraćaju" },
+              { value: "97%", label: "Klijenata koji se vraćaju" },
             ].map((stat) => (
               <div key={stat.label}>
                 <p className="font-playfair text-2xl text-foreground">{stat.value}</p>

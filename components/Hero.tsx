@@ -24,7 +24,7 @@ const steps = [
 const stats = [
   { value: "2000+",  label: "Klijenata" },
   { value: "5 god.", label: "Iskustva" },
-  { value: "99%",    label: "Zadovoljnih" },
+  { value: "97%",    label: "Zadovoljnih" },
 ] as const;
 
 export default function Hero({ onOpen }: { onOpen: () => void }) {

@@ -304,12 +304,12 @@ export default function BundlePhoneDemo() {
                         <span className="text-xs font-semibold text-foreground/40 line-through">{formatPrice(picked.originalTotal)} RSD</span>
                       </div>
                       <div className="flex justify-between items-center mt-1.5">
-                        <span className="text-xs text-emerald-300 font-semibold">Cena paketa (−{picked.blendedPct}%)</span>
-                        <span className="text-xs font-bold text-emerald-300">{formatPrice(picked.finalTotal)} RSD</span>
+                        <span className="flex items-center gap-1.5 text-xs text-foreground/85 font-semibold">Cena paketa<span className="text-[9px] font-semibold text-emerald-300 bg-emerald-400/15 rounded-full px-1.5 py-0.5">−{picked.blendedPct}%</span></span>
+                        <span className="text-sm font-bold text-foreground">{formatPrice(picked.finalTotal)} RSD</span>
                       </div>
-                      <div className="flex justify-between items-center mt-1 pt-2 border-t border-foreground/8">
-                        <span className="text-[11px] text-foreground/40">Ušteda</span>
-                        <span className="text-[11px] font-semibold text-accent">{formatPrice(picked.savings)} RSD</span>
+                      <div className="flex justify-between items-center mt-2 px-2.5 py-1.5 rounded-lg bg-emerald-400/10 border border-emerald-400/20">
+                        <span className="text-[11px] font-semibold text-emerald-300">Ušteda</span>
+                        <span className="text-xs font-bold text-emerald-300">{formatPrice(picked.savings)} RSD</span>
                       </div>
                       <p className="text-[10px] text-foreground/45 leading-snug mt-2.5 pt-2.5 border-t border-foreground/8">
                         Ceo paket plaćaš na prvom tretmanu - svi preostali termini su ti zagarantovani.
