@@ -51,7 +51,7 @@ function Amount({ sign, value, className = "" }: { sign?: string; value: number;
 
 export default function CostComparison() {
   return (
-    <section className="section-y px-6 bg-background-alt">
+    <section className="section-y px-4 sm:px-6 bg-background-alt">
       <div className="max-w-3xl mx-auto">
         {/* Eyebrow */}
         <div data-rv className="text-center mb-4">
@@ -63,7 +63,7 @@ export default function CostComparison() {
         </div>
 
         {/* Headline */}
-        <h2 data-rv style={step(1)} className="font-playfair text-4xl md:text-5xl text-foreground text-center leading-tight section-head">
+        <h2 data-rv style={step(1)} className="font-playfair text-3xl sm:text-4xl md:text-5xl text-foreground text-center leading-tight section-head">
           Koliko te dlačice koštaju{" "}
           <span className="relative inline-block">
             za ceo život?
@@ -77,12 +77,12 @@ export default function CostComparison() {
             The outer div brings the sheet in; the inner one starts the writing
             once a good part of the page is on screen. */}
         <div data-rv="zoom" className="max-w-xl mx-auto mt-2">
-          <div className={`notes-paper ${caveat.className} px-5 pt-10 pb-8 sm:px-9 md:px-11 md:pt-12 md:pb-10`}>
+          <div className={`notes-paper ${caveat.className} px-4 pt-8 pb-6 sm:px-9 md:px-11 md:pt-12 md:pb-10`}>
             <span className="notes-tape" aria-hidden />
 
             <div data-rv="group" data-rv-ratio="0.35" className="notes-body">
               {/* Title */}
-              <p className="notes-write relative inline-block text-[1.75rem] md:text-[2rem] font-bold leading-none mb-7">
+              <p className="notes-write relative inline-block text-2xl md:text-[2rem] font-bold leading-none mb-5 md:mb-7">
                 Računica za {YEARS} godina
                 <svg className="absolute -bottom-2 left-0 w-full h-2" viewBox="0 0 200 8" fill="none" preserveAspectRatio="none" aria-hidden>
                   <path d="M2 5 Q40 1 90 4 T198 3" stroke="var(--pen)" strokeWidth="2.5" strokeLinecap="round" />
@@ -93,29 +93,32 @@ export default function CostComparison() {
               {YEARLY_COSTS.map((c, i) => (
                 <div
                   key={c.label}
-                  className={`notes-write flex items-end justify-between gap-3 ${i > 0 ? "mt-5" : ""}`}
+                  className={`notes-write grid grid-cols-[1fr_auto] items-end gap-x-3 ${i > 0 ? "mt-3 md:mt-5" : ""}`}
                   style={write(1 + i * 2)}
                 >
-                  <div className="min-w-0">
-                    <p className="text-2xl md:text-[1.75rem] font-semibold leading-tight">{c.label}</p>
-                    <p className="text-xl md:text-[1.35rem] leading-tight opacity-70">
-                      {formatPrice(c.perYear)} RSD × {YEARS} god.
-                    </p>
-                  </div>
-                  <Amount sign={i > 0 ? "+" : undefined} value={c.perYear * YEARS} className="text-[1.75rem] md:text-[2.25rem]" />
+                  {/* Phone: the label gets the full width, the working and the amount share the line under it */}
+                  <p className="col-span-2 md:col-span-1 text-xl md:text-[1.75rem] font-semibold leading-tight">{c.label}</p>
+                  <p className="col-start-1 text-xs md:text-[1.35rem] leading-tight opacity-70">
+                    {formatPrice(c.perYear)} RSD × {YEARS} god.
+                  </p>
+                  <Amount
+                    sign={i > 0 ? "+" : undefined}
+                    value={c.perYear * YEARS}
+                    className="text-2xl md:text-[2.25rem] md:col-start-2 md:row-start-1 md:row-span-2"
+                  />
                 </div>
               ))}
 
               {/* Red-pen remark */}
               <p
-                className="notes-write text-2xl md:text-[1.75rem] font-bold leading-none mt-2 -rotate-2 origin-left text-(--pen)"
+                className="notes-write text-xl md:text-[1.75rem] font-bold leading-none mt-2 -rotate-2 origin-left text-(--pen)"
                 style={write(YEARLY_COSTS.length * 2)}
               >
                 ↳ a dlake se uvek vrate!
               </p>
 
               {/* The line under the sum */}
-              <svg className="block w-full h-3 mt-4" viewBox="0 0 400 12" fill="none" preserveAspectRatio="none" aria-hidden>
+              <svg className="block w-full h-3 mt-3 md:mt-4" viewBox="0 0 400 12" fill="none" preserveAspectRatio="none" aria-hidden>
                 <path
                   className="notes-draw"
                   style={write(YEARLY_COSTS.length * 2 + 1)}
@@ -128,13 +131,13 @@ export default function CostComparison() {
               </svg>
 
               {/* The lifetime total */}
-              <div className="flex items-center justify-between gap-3 mt-4">
-                <p className="notes-write text-[1.75rem] md:text-[2rem] font-bold leading-none" style={write(YEARLY_COSTS.length * 2 + 2)}>
+              <div className="flex items-center justify-between gap-3 mt-3 md:mt-4">
+                <p className="notes-write text-2xl md:text-[2rem] font-bold leading-none" style={write(YEARLY_COSTS.length * 2 + 2)}>
                   Ukupno =
                 </p>
                 <span className="relative inline-block px-1">
                   <span className="notes-write inline-block" style={write(YEARLY_COSTS.length * 2 + 2)}>
-                    <Amount value={LIFETIME_TOTAL} className="text-[2.25rem] md:text-[2.75rem]" />
+                    <Amount value={LIFETIME_TOTAL} className="text-[1.75rem] md:text-[2.75rem]" />
                   </span>
                   {/* Circled in red */}
                   <svg
@@ -158,11 +161,11 @@ export default function CostComparison() {
               </div>
 
               {/* Side sums */}
-              <p className="notes-write text-[1.35rem] md:text-2xl leading-tight mt-9" style={write(YEARLY_COSTS.length * 2 + 6)}>
+              <p className="notes-write text-lg md:text-2xl leading-tight mt-6 md:mt-9" style={write(YEARLY_COSTS.length * 2 + 6)}>
                 + {HOURS_PER_YEAR} sati godišnje samo na brijanje ={" "}
                 <span className="font-bold">{lifetimeDays} dana</span> života
               </p>
-              <p className="notes-write text-[1.35rem] md:text-2xl leading-tight mt-1 text-(--pen)" style={write(YEARLY_COSTS.length * 2 + 7)}>
+              <p className="notes-write text-lg md:text-2xl leading-tight mt-1 text-(--pen)" style={write(YEARLY_COSTS.length * 2 + 7)}>
                 P.S. Laser ovo završava jednom zauvek.
               </p>
             </div>

@@ -131,7 +131,7 @@ export default function ServiceHighlights() {
             <span className="w-6 h-px bg-accent inline-block" />
           </span>
           <h2 className="font-playfair text-4xl md:text-5xl text-foreground">
-            Tehnologija iza epilacije.
+            Tip dlake je apsolutno <b>nebitan</b>.
           </h2>
         </div>
 
