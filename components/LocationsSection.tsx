@@ -43,7 +43,7 @@ export default function LocationsSection() {
           delay={0.15}
           margin="-60px"
         >
-          Ista tehnologija, ista nega i iste cene u oba studija. Izaberi grad koji ti je bliži.
+          Ista tehnologija i ista nega u oba studija. Izaberi grad koji ti je bliži.
         </Reveal>
 
         {/* Cards */}
