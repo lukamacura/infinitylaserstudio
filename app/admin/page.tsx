@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import Link from "next/link";
 import {
   ChevronLeft, ChevronRight, LogOut, X,
   Clock, User, Mail, Phone, Calendar, CalendarPlus,
@@ -1198,11 +1199,18 @@ export default function AdminPage() {
 
       {/* Header */}
       <header className="bg-surface border-b-2 border-accent/40 px-4 md:px-8 py-3 md:py-5 flex items-center justify-between gap-6 shrink-0 z-20 shadow-sm">
-        <div className="flex items-center gap-6">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 md:gap-6 min-w-0">
           <div className="hidden md:block border-r border-foreground/10 pr-6">
             <h1 className="text-xl font-bold font-playfair tracking-tight">Infinity Laser Studio</h1>
             <p className="text-[10px] text-foreground/50 font-bold font-poppins uppercase tracking-widest mt-0.5">Control Center</p>
           </div>
+
+          <nav className="flex items-center gap-1 bg-foreground/3 rounded-xl p-1 shrink-0">
+            <span className="px-2.5 md:px-3 py-1.5 rounded-lg bg-accent/15 text-[10px] md:text-xs font-bold font-poppins text-accent uppercase tracking-widest">Admin</span>
+            <Link href="/finances" className="px-2.5 md:px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-bold font-poppins text-foreground/50 hover:text-foreground/76 uppercase tracking-widest transition-colors">Finansije</Link>
+            <Link href="/stats" className="px-2.5 md:px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-bold font-poppins text-foreground/50 hover:text-foreground/76 uppercase tracking-widest transition-colors">Statistike</Link>
+            <Link href="/fnl" className="px-2.5 md:px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-bold font-poppins text-foreground/50 hover:text-foreground/76 uppercase tracking-widest transition-colors">Funnel</Link>
+          </nav>
 
           <AdminLocationSwitch value={location} onChange={handleLocationChange} />
 

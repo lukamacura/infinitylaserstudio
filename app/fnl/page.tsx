@@ -157,6 +157,7 @@ export default function FunnelPage() {
             <p className="text-[10px] text-foreground/50 font-bold font-poppins uppercase tracking-widest mt-0.5">Admin Panel</p>
           </div>
           <nav className="flex items-center gap-1 bg-foreground/3 rounded-xl p-1">
+            <Link href="/admin" className="px-3 py-1.5 rounded-lg text-xs font-bold font-poppins text-foreground/50 hover:text-foreground/76 uppercase tracking-widest transition-colors">Admin</Link>
             <Link href="/finances" className="px-3 py-1.5 rounded-lg text-xs font-bold font-poppins text-foreground/50 hover:text-foreground/76 uppercase tracking-widest transition-colors">Finansije</Link>
             <Link href="/stats" className="px-3 py-1.5 rounded-lg text-xs font-bold font-poppins text-foreground/50 hover:text-foreground/76 uppercase tracking-widest transition-colors">Statistike</Link>
             <span className="px-3 py-1.5 rounded-lg bg-accent/15 text-xs font-bold font-poppins text-accent uppercase tracking-widest">Funnel</span>

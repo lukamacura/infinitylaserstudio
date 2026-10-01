@@ -122,7 +122,7 @@ export default function FinancesPage() {
         .maybeSingle();
       if (!active) return;
       if (error) {
-        setAdSpendError("Iznos za oglase nije učitan. Osveži stranicu.");
+        setAdSpendError("Agency fee nije učitan. Osveži stranicu.");
         return;
       }
       setAdSpend(data?.amount ?? 0);
@@ -141,7 +141,7 @@ export default function FinancesPage() {
         { location, month: adSpendKey, amount: adSpend, updated_at: new Date().toISOString() },
         { onConflict: "location,month" },
       );
-    setAdSpendError(error ? "Iznos za oglase NIJE sačuvan. Pokušaj ponovo." : null);
+    setAdSpendError(error ? "Agency fee NIJE sačuvan. Pokušaj ponovo." : null);
   }
 
   /** Only the latest request may write to the screen. */
@@ -300,6 +300,7 @@ export default function FinancesPage() {
             <p className="text-[10px] text-foreground/50 font-bold font-poppins uppercase tracking-widest mt-0.5">Admin Panel</p>
           </div>
           <nav className="flex items-center gap-1 bg-foreground/3 rounded-xl p-1">
+            <Link href="/admin" className="px-3 py-1.5 rounded-lg text-xs font-bold font-poppins text-foreground/50 hover:text-foreground/76 uppercase tracking-widest transition-colors">Admin</Link>
             <span className="px-3 py-1.5 rounded-lg bg-accent/15 text-xs font-bold font-poppins text-accent uppercase tracking-widest">Finansije</span>
             <Link href="/stats" className="px-3 py-1.5 rounded-lg text-xs font-bold font-poppins text-foreground/50 hover:text-foreground/76 uppercase tracking-widest transition-colors">Statistike</Link>
             <Link href="/fnl" className="px-3 py-1.5 rounded-lg text-xs font-bold font-poppins text-foreground/50 hover:text-foreground/76 uppercase tracking-widest transition-colors">Funnel</Link>
@@ -389,7 +390,7 @@ export default function FinancesPage() {
         <div className="bg-surface rounded-3xl border border-foreground/5 shadow-sm px-6 py-4 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
           <div>
             <p className="text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-widest mb-0.5">Investicija u marketing</p>
-            <p className="text-sm font-bold font-poppins text-foreground/76">Jednokratno + oglasi (mesečno) · praćenje povrata</p>
+            <p className="text-sm font-bold font-poppins text-foreground/76">Jednokratno + agencija (mesečno) · praćenje povrata</p>
           </div>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-4 shrink-0">
             <div className="flex flex-col gap-2">
@@ -398,7 +399,7 @@ export default function FinancesPage() {
                 <p className="text-sm font-bold font-poppins text-foreground/82">{MARKETING_FEE.toLocaleString("sr-RS")} RSD</p>
               </div>
               <div className="flex items-center justify-between gap-4">
-                <p className="text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-widest">Oglasi (Ad spend)</p>
+                <p className="text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-widest">Marketing agency fee</p>
                 <div className="flex items-center gap-1.5 rounded-xl border-2 border-foreground/10 focus-within:border-accent/40 bg-foreground/2 px-3 py-1 transition-colors">
                   <input
                     type="text" inputMode="numeric"
