@@ -254,10 +254,10 @@ const SOCIAL_PROOF: Record<Gender, { mark: string; line: string }> = {
 };
 
 const STEP_LABELS: Record<Step, string> = {
-  location: "U kom studiju zakazuješ?",
-  1: "Za koga zakazuješ?",
+  location: "Koji grad ti je bliži?",
+  1: "Za koga je tretman?",
   2: "Odaberi regije za tretman",
-  plan: "Pojedinačno ili paket sa popustom?",
+  plan: "Da li želiš da uštediš?",
   3: "Izaberi datum",
   4: "Izaberi vreme",
   5: "Vaši podaci",
