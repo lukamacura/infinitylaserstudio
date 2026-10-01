@@ -3,25 +3,23 @@
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import Hero from "@/components/Hero";
-import FeaturedServices from "@/components/FeaturedServices";
-import BundleBuilderSection from "@/components/BundleBuilderSection";
 import BrandStory from "@/components/BrandStory";
 import ServiceHighlights from "@/components/ServiceHighlights";
 import StatsSection from "@/components/StatsSection";
 // import MenSection from "@/components/MenSection";
 import FAQSection from "@/components/FAQSection";
-import CostComparison from "@/components/CostComparison";
 import TeamSection from "@/components/TeamSection";
 import CommunitySection from "@/components/CommunitySection";
-import MapSection from "@/components/MapSection";
+import LocationsSection from "@/components/LocationsSection";
 import Footer from "@/components/Footer";
 import WistiaVideo from "@/components/WistiaVideo";
+import ScrollReveal from "@/components/ScrollReveal";
 
 // Heavy (Supabase + framer-motion) and never visible on first paint — load it on demand.
 const BookingModal = dynamic(() => import("@/components/BookingModal"), { ssr: false });
 
 // Region slug → service-name keywords (matched as substrings in BookingModal).
-// Combos map to their component parts, just like the FeaturedServices cards.
+// Combos map to their component parts.
 type Gender = "zene" | "muskarci";
 
 const REGION_SLUGS: Record<string, string[]> = {
@@ -83,12 +81,12 @@ export default function HomeClient() {
     }
     const pol = params.get("pol")?.toLowerCase();
     if (pol === "zene" || pol === "muskarci") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+       
       openWithGender(pol);
       return;
     }
     if (params.get("book") === "1") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+       
       open();
     }
   }, []);
@@ -113,19 +111,17 @@ export default function HomeClient() {
   return (
     <main>
       <Hero onOpen={open} />
-      <FeaturedServices onOpen={open} onOpenService={openWithPreselect} />
-      <BundleBuilderSection onOpen={open} onOpenBundle={openWithPreselect} />
-      <BrandStory />
-      <WistiaVideo />
-      <ServiceHighlights />
       <StatsSection />
-      <CostComparison onOpen={open} />
+      <ServiceHighlights />
+      <WistiaVideo />
+      <BrandStory />
       <TeamSection />
       {/* <MenSection onOpen={open} /> */}
 <CommunitySection onOpen={open} />
       <FAQSection />
-      <MapSection/>
+      <LocationsSection />
       <Footer onOpen={open} />
+      <ScrollReveal />
       {bookingMounted && <BookingModal
         isOpen={bookingOpen}
         onClose={() => { setBookingOpen(false); setPreselectedNames([]); setPreselectedBundle(undefined); setPreselectedGender(undefined); }}

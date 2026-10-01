@@ -26,20 +26,20 @@ export default function WistiaVideo() {
   }, []);
 
   return (
-    <section ref={sectionRef} className="py-16 md:py-20 px-6 bg-cream">
+    <section ref={sectionRef} className="section-y px-6 bg-background-alt">
       <Reveal className="max-w-lg mx-auto flex flex-col items-center gap-6">
-        <span className="inline-flex items-center gap-2 font-poppins text-sm text-gray-500">
-          <span className="w-6 h-px bg-teal inline-block" />
+        <span className="inline-flex items-center gap-2 font-poppins text-sm text-foreground/60">
+          <span className="w-6 h-px bg-accent inline-block" />
           Pogledajte video
-          <span className="w-6 h-px bg-teal inline-block" />
+          <span className="w-6 h-px bg-accent inline-block" />
         </span>
 
-        <h2 className="font-playfair text-3xl md:text-4xl text-gray-800 text-center leading-tight">
+        <h2 className="font-playfair text-4xl md:text-5xl text-foreground text-center leading-tight">
           Zašto baš{" "}
           <span className="relative inline-block">
             Infinity Laser?
             <svg className="absolute -bottom-1 left-0 w-full" viewBox="0 0 200 8" fill="none">
-              <path d="M2 6 Q50 1 100 5 Q150 9 198 4" stroke="#FCCAE2" strokeWidth="3" strokeLinecap="round" fill="none" />
+              <path d="M2 6 Q50 1 100 5 Q150 9 198 4" stroke="#DCA8A6" strokeWidth="3" strokeLinecap="round" fill="none" />
             </svg>
           </span>
         </h2>

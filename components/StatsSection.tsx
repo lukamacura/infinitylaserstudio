@@ -1,17 +1,28 @@
-const stats = [
-  { value: "2000+", label: "Zadovoljnih klijenata", sub: "koji su rekli zbogom brijaču" },
-  { value: "20+", label: "Zona tretmana", sub: "za svaki deo tela" },
-  { value: "70-90%", label: "Dlačica", sub: "uklonjeno zauvek" },
-];
+import type { CSSProperties } from "react";
+import Image from "next/image";
+import { ArrowUpRight, Sparkles, Star } from "lucide-react";
 
 // Ažurirati povremeno prema stvarnom stanju na Google profilu.
 // Poslednja provera: 20.07.2026.
 const GOOGLE_RATING = "5.0";
 
 // Otvara Google panel sa recenzijama direktno (#lrd = local reviews dialog).
-// ludocid / lrd koriste isti feature ID kao embed mape u MapSection.tsx.
+// ludocid / lrd koriste isti feature ID kao embed mape u lib/locations.ts.
 const GOOGLE_REVIEWS_URL =
   "https://www.google.com/search?q=Infinity+Laser+Studio+Novi+Sad&ludocid=13466329434848326391#lrd=0x475b116b6f148971:0xbae20345f88572f7,1";
+
+// Klijentkinjin video sa Instagrama. Naslovna slika je sačuvana lokalno
+// (Instagram CDN linkovi ističu), a klik vodi na objavu.
+const REEL_URL = "https://www.instagram.com/p/Dc8LbuGt-5B/";
+const REEL_COVER = "/ugc/reel-cover.jpg";
+
+// Posters live in /public/regije/zene/<slug>.webp
+const REGION_SLUGS = ["celo-telo", "noge", "intima", "pazuh", "ruke", "nausnice", "brada", "celo-lice", "pola-nogu", "pola-ruku"];
+
+const regions = REGION_SLUGS.map((slug) => ({
+  src: `/regije/zene/${slug}.webp`,
+  alt: slug.replace(/-/g, " "),
+}));
 
 const testimonials = [
   {
@@ -47,117 +58,234 @@ function GoogleG({ className }: { className?: string }) {
   );
 }
 
+function InstagramGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="2.5" y="2.5" width="19" height="19" rx="5.5" />
+      <circle cx="12" cy="12" r="4.2" />
+      <circle cx="17.4" cy="6.6" r="0.6" fill="currentColor" />
+    </svg>
+  );
+}
+
+function Stars({ size = "w-4 h-4" }: { size?: string }) {
+  return (
+    <div className="flex gap-0.5" role="img" aria-label="5 od 5 zvezdica">
+      {[...Array(5)].map((_, i) => (
+        <Star key={i} className={`${size} text-yellow-400`} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+      ))}
+    </div>
+  );
+}
+
+function step(i: number): CSSProperties {
+  return { "--rv-i": i } as CSSProperties;
+}
+
+const card = "relative overflow-hidden rounded-3xl border border-foreground/10 bg-surface";
+
 export default function StatsSection() {
   return (
-    <section className="py-20 px-6 bg-cream">
-      <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
-        {/* Left: text + stats */}
-        <div>
-          <span className="inline-flex items-center gap-2 font-poppins text-sm text-gray-500 mb-4">
-            <span className="w-6 h-px bg-teal inline-block" />
-            Brojke koje govore
+    <section className="section-y px-6 bg-background-alt">
+      {/* Heading */}
+      <div data-rv className="max-w-6xl mx-auto text-center section-head">
+        <span className="inline-flex items-center gap-2 font-poppins text-sm text-foreground/60 mb-4">
+          <span className="w-6 h-px bg-accent inline-block" />
+          Brojke koje govore
+          <span className="w-6 h-px bg-accent inline-block" />
+        </span>
+        <h2 className="font-playfair text-4xl md:text-5xl text-foreground leading-tight">
+          Rezultati koji{" "}
+          <span className="text-rose">ostaju na koži</span>
+        </h2>
+      </div>
+
+      {/* Bento: studio, numbers, zones and a client's video */}
+      <div className="max-w-6xl mx-auto grid grid-cols-2 lg:grid-cols-12 lg:grid-rows-[auto_auto] gap-4">
+        {/* 5 godina - the studio itself */}
+        <div data-rv="zoom" className={`${card} col-span-2 lg:col-span-5 min-h-[22rem] lg:min-h-[21rem] flex flex-col justify-end p-6`}>
+          <Image
+            src="/hero/phone.webp"
+            alt="Enterijer Infinity Laser Studija"
+            fill
+            sizes="(min-width: 1024px) 450px, 92vw"
+            className="object-cover object-[50%_55%]"
+          />
+          <div className="absolute inset-0 bg-linear-to-t from-surface from-20% via-surface/75 via-42% to-transparent to-65%" />
+
+          <span className="absolute top-5 right-5 inline-flex items-center rounded-full border border-foreground/15 bg-background/60 px-3 py-1 font-poppins text-[11px] font-semibold tracking-[0.18em] text-accent uppercase backdrop-blur-sm">
+            Od 2021.
           </span>
-          <h2 className="font-playfair text-4xl md:text-5xl text-gray-800 leading-tight mb-10">
-            Rezultati koji{" "}
-            <span className="text-rose">ostaju na koži</span>
-          </h2>
 
-          <div className="flex flex-col gap-8">
-            {stats.map((s) => (
-              <div key={s.label} className="flex items-start gap-5">
-                <div className="min-w-[5rem]">
-                  <p className="font-playfair text-4xl text-gray-800">{s.value}</p>
-                </div>
-                <div className="border-l-2 border-pink pl-5">
-                  <p className="font-poppins text-sm font-semibold text-gray-700">{s.label}</p>
-                  <p className="font-poppins text-xs text-gray-400 mt-0.5">{s.sub}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Right: visual */}
-        <div className="relative flex justify-center">
-          <div className="absolute top-0 right-0 w-48 h-48 rounded-full bg-teal opacity-25" />
-          <div className="absolute bottom-0 left-0 w-32 h-32 rounded-full bg-pink opacity-40" />
-
-          <div className="relative z-10 bg-white rounded-3xl shadow-lg p-10 flex flex-col items-center gap-4 w-72">
-            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-teal to-mint flex items-center justify-center">
-              <svg viewBox="0 0 40 40" fill="none" className="w-10 h-10">
-                <path d="M20 8l2 6h6l-5 3.6 1.9 6L20 20l-4.9 3.6L17 20l-5-3.6L18 14h6L20 8z" fill="white" opacity="0.9" />
-              </svg>
-            </div>
-            <p className="font-playfair text-2xl text-gray-800 text-center">5 godina postojanja</p>
-            <p className="font-poppins text-sm text-gray-500 text-center leading-relaxed">
+          <div className="relative">
+            <p className="font-playfair text-3xl text-foreground">5 godina postojanja</p>
+            <p className="font-poppins text-sm text-foreground/65 leading-relaxed mt-1.5 max-w-sm">
               Infinity Laser Studio je od 2021. prvi izbor za lasersku epilaciju u regionu.
             </p>
-            <div className="flex gap-1 mt-2">
-              {[...Array(5)].map((_, i) => (
-                <svg key={i} viewBox="0 0 16 16" className="w-4 h-4 text-yellow-400" fill="currentColor">
-                  <path d="M8 1l1.8 3.6L14 5.6l-3 2.9.7 4.1L8 10.5l-3.7 2.1.7-4.1L2 5.6l4.2-.9L8 1z" />
-                </svg>
-              ))}
+            <div className="flex items-center gap-2 mt-4">
+              <Stars />
+              <p className="font-poppins text-xs text-foreground/60">
+                <span className="font-semibold text-foreground/85">{GOOGLE_RATING}</span> prosečna ocena na Google-u
+              </p>
             </div>
-            <p className="font-poppins text-xs text-gray-400">
-              {GOOGLE_RATING} prosečna ocena na Google-u
-            </p>
           </div>
         </div>
+
+        {/* 2000+ */}
+        <div data-rv="zoom" style={step(1)} className={`${card} col-span-1 lg:col-span-3 flex flex-col p-5 sm:p-6`}>
+          {/* The studio's Google profile, edge to edge and uncropped - the box keeps the image's own ratio */}
+          <div className="relative -mx-5 -mt-5 sm:-mx-6 sm:-mt-6 aspect-[634/570]">
+            <Image
+              src="/services/google-profil.webp"
+              alt="Infinity Laser Studio na Google-u: ocena 5.0 i 102 recenzije"
+              fill
+              sizes="(min-width: 1024px) 280px, 46vw"
+              className="object-cover"
+            />
+            {/* Only the empty strip under the text melts into the card */}
+            <div className="absolute inset-x-0 bottom-0 h-[10%] bg-linear-to-t from-surface to-transparent" />
+          </div>
+
+          <p className="metal-text mt-auto pt-2 font-playfair text-[2.5rem] sm:text-6xl leading-none">2000+</p>
+          <p className="font-poppins text-sm font-semibold text-foreground/85 mt-4">Zadovoljnih klijenata</p>
+          <p className="font-poppins text-xs text-foreground/50 mt-0.5">koji su rekli zbogom brijaču</p>
+        </div>
+
+        {/* 70-90% */}
+        <div data-rv="zoom" style={step(2)} className={`${card} col-span-1 lg:col-span-3 flex flex-col p-5 sm:p-6`}>
+          <Image
+            src="/services/dlacice.webp"
+            alt="Laserska epilacija nogu u Infinity Laser Studiju"
+            fill
+            sizes="(min-width: 1024px) 520px, 90vw"
+            className="object-cover object-[56%_50%]"
+          />
+          <div className="absolute inset-0 bg-linear-to-t from-surface from-30% via-surface/80 via-52% to-transparent to-80%" />
+
+          <span className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-background/60 text-accent backdrop-blur-sm">
+            <Sparkles className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+          </span>
+          <p className="metal-text relative mt-auto pt-10 font-playfair text-[2rem] sm:text-5xl leading-none whitespace-nowrap">70-90%</p>
+          {/* The range, drawn: solid up to 70, lighter up to 90 */}
+          <div className="relative mt-4 h-1.5 rounded-full bg-foreground/10 overflow-hidden" aria-hidden="true">
+            <span className="absolute inset-y-0 left-0 w-[90%] rounded-full bg-accent/35" />
+            <span className="metal absolute inset-y-0 left-0 w-[70%] rounded-full" />
+          </div>
+          <p className="relative font-poppins text-sm font-semibold text-foreground/85 mt-4">Dlačica</p>
+          <p className="relative font-poppins text-xs text-foreground/50 mt-0.5">uklonjeno zauvek</p>
+        </div>
+
+        {/* 20+ zona - the region posters drift past */}
+        <div data-rv="zoom" style={step(3)} className={`${card} col-span-2 lg:col-span-5 flex flex-col justify-between gap-4 py-5`}>
+          <div className="flex items-center gap-5 px-6">
+            <p className="metal-text font-playfair text-5xl sm:text-6xl leading-none">20+</p>
+            <div className="border-l-2 border-rose pl-5">
+              <p className="font-poppins text-sm font-semibold text-foreground/85">Zona tretmana</p>
+              <p className="font-poppins text-xs text-foreground/50 mt-0.5">za svaki deo tela, za žene i muškarce</p>
+            </div>
+          </div>
+
+          <div className="overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_10%,black_90%,transparent)]">
+            <div className="region-marquee">
+              {/* Second copy only feeds the loop - hidden from assistive tech */}
+              {[0, 1].map((copy) => (
+                <ul key={copy} aria-hidden={copy === 1} className="flex shrink-0 gap-3 pr-3">
+                  {regions.map((r) => (
+                    <li key={r.src} className="w-32 sm:w-36 aspect-square shrink-0 rounded-full border-2 border-accent p-1">
+                      <div className="relative h-full w-full overflow-hidden rounded-full">
+                        <Image src={r.src} alt={copy === 0 ? r.alt : ""} fill sizes="144px" className="object-cover" />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Client video - opens the post on Instagram */}
+        <a
+          data-rv="zoom"
+          style={step(2)}
+          href={REEL_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Pogledaj video iskustvo klijentkinje na Instagramu"
+          className={`${card} group col-span-2 lg:col-span-4 lg:col-start-9 lg:row-start-1 lg:row-span-2 w-full max-w-sm lg:max-w-none mx-auto aspect-[5/7] lg:aspect-auto block focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent`}
+        >
+          <Image
+            src={REEL_COVER}
+            alt="Klijentkinja priča o svom iskustvu sa laserskom epilacijom"
+            fill
+            sizes="(min-width: 1024px) 360px, 384px"
+            className="object-cover transition-transform duration-700 ease-out group-hover:scale-105"
+          />
+          <div className="absolute inset-0 bg-linear-to-b from-black/55 via-transparent via-30% to-transparent" />
+          <div className="absolute inset-x-0 bottom-0 h-1/2 bg-linear-to-t from-black/85 to-transparent" />
+
+          <div className="absolute top-4 left-4 right-4 flex items-center gap-2.5">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-linear-to-tr from-[#F9CE34] via-[#EE2A7B] to-[#6228D7] text-white">
+              <InstagramGlyph className="w-5 h-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate font-poppins text-sm font-semibold text-white">@infinitylaserstudio</span>
+              <span className="block font-poppins text-[11px] text-white/70">Video · Instagram</span>
+            </span>
+          </div>
+
+          <div className="absolute inset-x-4 bottom-4">
+            <p className="font-playfair text-2xl text-white leading-tight">Iskustvo iz prve ruke</p>
+            <p className="font-poppins text-xs text-white/70 mt-1">Klijentkinja o svom tretmanu.</p>
+            <span className="mt-4 flex items-center justify-between gap-3 rounded-full bg-white/12 pl-5 pr-1.5 py-1.5 font-poppins text-sm font-semibold text-white ring-1 ring-white/20 backdrop-blur-md transition-colors duration-300 group-hover:bg-white/20">
+              Pogledaj na Instagramu
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-black transition-transform duration-300 ease-out group-hover:rotate-45">
+                <ArrowUpRight size={18} strokeWidth={2.2} />
+              </span>
+            </span>
+          </div>
+        </a>
       </div>
 
       {/* Testimonials */}
-      <div className="max-w-6xl mx-auto mt-20">
-        <div className="flex flex-col items-center text-center mb-8">
+      <div className="max-w-6xl mx-auto mt-14 md:mt-20">
+        <div data-rv className="flex flex-col items-center text-center mb-8">
           <GoogleG className="w-7 h-7 mb-3" />
-          <h3 className="font-playfair text-3xl text-gray-800">
+          <h3 className="font-playfair text-3xl text-foreground">
             Šta kažu <span className="text-rose">naše klijentkinje</span>
           </h3>
           <div className="flex items-center gap-2 mt-3">
-            <span className="font-poppins text-sm font-semibold text-gray-700">{GOOGLE_RATING}</span>
-            <div className="flex gap-0.5">
-              {[...Array(5)].map((_, i) => (
-                <svg key={i} viewBox="0 0 16 16" className="w-4 h-4 text-yellow-400" fill="currentColor">
-                  <path d="M8 1l1.8 3.6L14 5.6l-3 2.9.7 4.1L8 10.5l-3.7 2.1.7-4.1L2 5.6l4.2-.9L8 1z" />
-                </svg>
-              ))}
-            </div>
-            <span className="font-poppins text-sm text-gray-500">· prosečna ocena na Google-u</span>
+            <span className="font-poppins text-sm font-semibold text-foreground/85">{GOOGLE_RATING}</span>
+            <Stars />
+            <span className="font-poppins text-sm text-foreground/60">· prosečna ocena na Google-u</span>
           </div>
         </div>
 
-        <div className="columns-1 md:columns-2 gap-4 [column-fill:_balance]">
+        <div data-rv className="columns-1 md:columns-2 gap-4 [column-fill:_balance]">
           {testimonials.map((t) => (
             <div
               key={t.name}
-              className="break-inside-avoid mb-4 bg-white rounded-2xl shadow-sm border border-pink/20 px-5 py-5 flex flex-col gap-3"
+              className="break-inside-avoid mb-4 bg-surface rounded-2xl shadow-sm border border-foreground/8 px-5 py-5 flex flex-col gap-3"
             >
               <div className="flex items-center justify-between">
-                <div className="flex gap-0.5">
-                  {[...Array(5)].map((_, i) => (
-                    <svg key={i} viewBox="0 0 16 16" className="w-3.5 h-3.5 text-yellow-400" fill="currentColor">
-                      <path d="M8 1l1.8 3.6L14 5.6l-3 2.9.7 4.1L8 10.5l-3.7 2.1.7-4.1L2 5.6l4.2-.9L8 1z" />
-                    </svg>
-                  ))}
-                </div>
+                <Stars size="w-3.5 h-3.5" />
                 <GoogleG className="w-4 h-4 shrink-0 opacity-70" />
               </div>
-              <p className="font-poppins text-sm text-gray-700 leading-relaxed">{t.quote}</p>
-              <p className="font-poppins text-xs font-semibold text-gray-500">{t.name}</p>
+              <p className="font-poppins text-sm text-foreground/85 leading-relaxed">{t.quote}</p>
+              <p className="font-poppins text-xs font-semibold text-foreground/60">{t.name}</p>
             </div>
           ))}
         </div>
 
-        <div className="flex justify-center mt-8">
+        <div data-rv className="flex justify-center mt-8">
           <a
             href={GOOGLE_REVIEWS_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2.5 bg-white border border-gray-200 rounded-full px-6 py-3 font-poppins text-sm font-medium text-gray-700 shadow-sm transition hover:shadow-md hover:border-teal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal focus-visible:ring-offset-2"
+            className="inline-flex items-center gap-2.5 bg-surface border border-foreground/12 rounded-full px-6 py-3 font-poppins text-sm font-medium text-foreground/85 shadow-sm transition hover:shadow-md hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <GoogleG className="w-4 h-4" />
             Pogledaj sve recenzije na Google-u
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-foreground/50" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M6 3l5 5-5 5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </a>

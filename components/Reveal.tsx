@@ -6,7 +6,8 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 // An IntersectionObserver plus a CSS transition keeps ~48 KB of framer-motion
 // out of the homepage bundle — it now loads only with the booking modal.
 
-const EASE = "cubic-bezier(0.25, 0.46, 0.45, 0.94)";
+// Same curve as `--rv-ease` in globals.css, so both reveal systems move alike.
+const EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 
 type Props = {
   as?: "div" | "h2" | "p";

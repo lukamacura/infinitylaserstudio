@@ -1,25 +1,80 @@
 @import "tailwindcss";
 
+/* ── Palette ──────────────────────────────────────────────────────────────────
+   The whole app runs on the booking modal's women's theme: midnight plum with
+   rose gold (see `.bm-theme-zene` below - the values are the same on purpose).
+   `--accent` is the one colour that may change: the admin pages re-point it per
+   studio (see `locationTheme` in lib/locations.ts). `--rose` never changes. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-  --teal: #ACE6E4;
-  --mint: #C6F5E9;
-  --cream: #FCFAE5;
-  --pink: #FCD6ED;
-  --rose: #FCCAE2;
+  --background: #120A0E;
+  --background-alt: #180D13;
+  --surface: #1E1017;
+  --surface-raised: #2A1821;
+  --foreground: #F5E6E6;
+  --rose: #DCA8A6;
+  --accent: #DCA8A6;
+  --accent-soft: #EBC6C3;
+  --accent-deep: #9E6769;
+  --on-accent: #1E1017;
+  color-scheme: dark;
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-background-alt: var(--background-alt);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
   --color-foreground: var(--foreground);
-  --color-teal: var(--teal);
-  --color-mint: var(--mint);
-  --color-cream: var(--cream);
-  --color-pink: var(--pink);
   --color-rose: var(--rose);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-deep: var(--accent-deep);
+  --color-on-accent: var(--on-accent);
   --font-playfair: var(--font-playfair);
   --font-poppins: var(--font-poppins);
+}
+
+/* ── Vertical rhythm ──────────────────────────────────────────────────────────
+   Every landing section pads itself with half the gap, so two neighbours always
+   add up to one full gap (80px on phones, 112px from tablet up) no matter how
+   they are ordered. The backgrounds are too close in tone to read as a break,
+   so anything larger looks like an empty screen between sections.
+   `section-head` is the distance from a section's intro to its content. */
+:root {
+  --section-y: 2.5rem;
+  --section-head: 2.5rem;
+}
+
+@media (min-width: 48rem) {
+  :root {
+    --section-y: 3.5rem;
+    --section-head: 3rem;
+  }
+}
+
+@utility section-y {
+  padding-block: var(--section-y);
+}
+
+@utility section-head {
+  margin-bottom: var(--section-head);
+}
+
+/* Metallic fill for primary CTAs, and the same sheen clipped to text. */
+.metal {
+  background-image: linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 70%, #fff) 45%, var(--accent-deep) 100%);
+  color: var(--on-accent);
+}
+
+.metal-text {
+  background-image: linear-gradient(135deg, color-mix(in srgb, var(--accent) 75%, #fff) 0%, var(--accent) 45%, var(--accent-deep) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 html {
@@ -30,11 +85,6 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-poppins), Arial, Helvetica, sans-serif;
-}
-
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ── "Celo telo" highlight ────────────────────────────────────────────────────
@@ -128,12 +178,426 @@ body {
   animation: bmSkeletonSweep 1.6s ease-in-out infinite;
 }
 
+/* ── Hero highlighter ─────────────────────────────────────────────────────────
+   "70–90%" gets marked the way a real highlighter would do it: one stroke,
+   left to right, shortly after landing. `.marker-ink` is a copy of the text in
+   dark ink on top of the stroke; revealing it with clip-path wipes the stroke
+   in and turns the letters dark at the same edge. The plain text underneath is
+   what paints first, so the headline never waits for the animation. */
+.marker {
+  position: relative;
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.marker-ink {
+  position: absolute;
+  inset: -0.06em -0.1em;
+  padding: 0.06em 0.1em;
+  color: var(--on-accent);
+  clip-path: inset(0 0 0 0);
+  animation: markerDraw 1s cubic-bezier(0.65, 0, 0.35, 1) 0.6s backwards;
+}
+
+/* The stroke itself: a little tilted, uneven ends, denser where the pen lands */
+.marker-stroke {
+  position: absolute;
+  inset: 0.2em 0.03em 0.1em;
+  border-radius: 0.28em 0.12em 0.32em 0.16em / 0.2em 0.4em 0.16em 0.36em;
+  background: linear-gradient(100deg, var(--accent) 0%, var(--accent-soft) 35%, var(--accent) 70%, var(--accent-soft) 100%);
+  rotate: -1.2deg;
+}
+
+@keyframes markerDraw {
+  from { clip-path: inset(0 100% 0 0); }
+  to   { clip-path: inset(0 0 0 0); }
+}
+
+/* ── Hero CTA ─────────────────────────────────────────────────────────────────
+   A soft halo breathes behind the button and a light sweeps across it now and
+   then. The halo is painted once and only its opacity and scale move, so it
+   stays on the compositor (animating box-shadow repaints every frame). */
+@keyframes ctaBreathe {
+  0%, 100% { opacity: 0.45; scale: 0.96; }
+  50%      { opacity: 0.95; scale: 1.04; }
+}
+
+.cta-halo::before {
+  content: "";
+  position: absolute;
+  inset: -6px -2px -10px;
+  border-radius: 9999px;
+  background: var(--accent);
+  filter: blur(22px);
+  pointer-events: none;
+  animation: ctaBreathe 3.2s ease-in-out infinite;
+  will-change: opacity, scale;
+}
+
+@keyframes ctaSweep {
+  0%, 55% { translate: -180% 0; }
+  100%    { translate: 420% 0; }
+}
+
+.cta-sweep {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 32%;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  transform: skewX(-18deg);
+  animation: ctaSweep 4.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* ── Hero journey timeline ────────────────────────────────────────────────────
+   One loop: a light leaves "Danas", reaches "6-8 tretmana" at the midpoint and
+   "Zauvek" at the end, holds, then fades and starts over. Every part shares the
+   same duration, so the stops stay in step with the travelling light.
+   Without animation (reduced motion) the
+   resting styles are the finished state: line full, every step lit. */
+.journey {
+  --journey-time: 8s;
+  --journey-ease: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+.journey-track {
+  position: absolute;
+  left: 5px;
+  top: 6px;
+  bottom: calc(100% - 9rem - 6px);   /* two 4.5rem steps down: the last dot */
+  width: 1px;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  list-style: none;
+}
+
+.journey-fill {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, var(--accent-deep), var(--accent));
+  transform-origin: top left;
+  animation: journeyFillY var(--journey-time) linear infinite;
+}
+
+.journey-head {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  border-radius: 9999px;
+  background: #fff;
+  box-shadow: 0 0 10px 3px var(--accent), 0 0 24px 8px color-mix(in srgb, var(--accent) 55%, transparent);
+  opacity: 0;
+  animation: journeyHeadY var(--journey-time) linear infinite;
+}
+
+.journey-dot {
+  position: relative;
+  flex-shrink: 0;
+  width: 11px;
+  height: 11px;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  background: var(--surface);
+}
+
+.journey-dot-on {
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent), 0 0 16px 2px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+.journey-dot-pulse {
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  border: 1px solid var(--accent);
+  opacity: 0;
+}
+
+.journey-step:nth-child(2) .journey-dot-on { animation: journeyOn0 var(--journey-time) linear infinite; }
+.journey-step:nth-child(3) .journey-dot-on { animation: journeyOn1 var(--journey-time) linear infinite; }
+.journey-step:nth-child(4) .journey-dot-on { animation: journeyOn2 var(--journey-time) linear infinite; }
+
+.journey-text { --j-off: 0.4; }
+.journey-step:nth-child(2) .journey-text { animation: journeyOn0 var(--journey-time) linear infinite; }
+.journey-step:nth-child(3) .journey-text { animation: journeyOn1 var(--journey-time) linear infinite; }
+.journey-step:nth-child(4) .journey-text { animation: journeyOn2 var(--journey-time) linear infinite; }
+.journey-step:nth-child(4) .journey-dot-pulse { animation: journeyPulse var(--journey-time) ease-out infinite; }
+
+/* Timeline of the loop:  0-5% rest · 5-35% first leg · 35-42% pause ·
+   42-72% second leg · 72-92% hold · 92-100% fade out */
+@keyframes journeyOn0 {
+  0%, 2%   { opacity: var(--j-off, 0); }
+  7%, 92%  { opacity: 1; }
+  100%     { opacity: var(--j-off, 0); }
+}
+@keyframes journeyOn1 {
+  0%, 33%  { opacity: var(--j-off, 0); }
+  38%, 92% { opacity: 1; }
+  100%     { opacity: var(--j-off, 0); }
+}
+@keyframes journeyOn2 {
+  0%, 70%  { opacity: var(--j-off, 0); }
+  75%, 92% { opacity: 1; }
+  100%     { opacity: var(--j-off, 0); }
+}
+@keyframes journeyPulse {
+  0%, 72% { opacity: 0; scale: 1; }
+  73%     { opacity: 0.9; scale: 1; }
+  90%     { opacity: 0; scale: 3.4; }
+  100%    { opacity: 0; scale: 3.4; }
+}
+
+@keyframes journeyFillY {
+  0%, 5%   { scale: 1 0; opacity: 1; animation-timing-function: var(--journey-ease); }
+  35%, 42% { scale: 1 0.5; opacity: 1; animation-timing-function: var(--journey-ease); }
+  72%, 92% { scale: 1 1; opacity: 1; }
+  100%     { scale: 1 1; opacity: 0; }
+}
+@keyframes journeyHeadY {
+  0%       { top: 0; opacity: 0; }
+  5%       { top: 0; opacity: 1; animation-timing-function: var(--journey-ease); }
+  35%, 42% { top: 50%; opacity: 1; animation-timing-function: var(--journey-ease); }
+  72%      { top: 100%; opacity: 1; }
+  78%, 100% { top: 100%; opacity: 0; }
+}
+
+@media (min-width: 1024px) {
+  .journey-track {
+    left: 5px;
+    top: 5px;
+    bottom: auto;
+    width: 66.667%;
+    height: 1px;
+  }
+  .journey-fill {
+    background: linear-gradient(to right, var(--accent-deep), var(--accent));
+    animation-name: journeyFillX;
+  }
+  .journey-head {
+    top: 50%;
+    left: 100%;
+    animation-name: journeyHeadX;
+  }
+}
+
+@keyframes journeyFillX {
+  0%, 5%   { scale: 0 1; opacity: 1; animation-timing-function: var(--journey-ease); }
+  35%, 42% { scale: 0.5 1; opacity: 1; animation-timing-function: var(--journey-ease); }
+  72%, 92% { scale: 1 1; opacity: 1; }
+  100%     { scale: 1 1; opacity: 0; }
+}
+@keyframes journeyHeadX {
+  0%       { left: 0; opacity: 0; }
+  5%       { left: 0; opacity: 1; animation-timing-function: var(--journey-ease); }
+  35%, 42% { left: 50%; opacity: 1; animation-timing-function: var(--journey-ease); }
+  72%      { left: 100%; opacity: 1; }
+  78%, 100% { left: 100%; opacity: 0; }
+}
+
+/* ── Package phone demo ───────────────────────────────────────────────────────
+   The fingertip pressing a control inside the iPhone (see BundlePhoneDemo). */
+.phone-tap {
+  position: absolute;
+  right: 14%;
+  top: 50%;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  background: rgba(255, 255, 255, 0.3);
+  pointer-events: none;
+  animation: phoneTap 500ms ease-out both;
+}
+
+@keyframes phoneTap {
+  0%   { opacity: 0; scale: 1.6; }
+  40%  { opacity: 1; scale: 1; }
+  70%  { opacity: 1; scale: 0.8; }
+  100% { opacity: 0; scale: 1.1; }
+}
+
+/* ── Region marquee ───────────────────────────────────────────────────────────
+   The treatment-zone posters drift past in one endless row. The track holds
+   the list twice, so sliding it by half its width lands on an identical frame.
+   Transform only - it stays on the compositor. */
+@keyframes regionMarquee {
+  to { transform: translateX(-50%); }
+}
+
+.region-marquee {
+  display: flex;
+  width: max-content;
+  animation: regionMarquee 30s linear infinite;
+}
+
+.region-marquee:hover { animation-play-state: paused; }
+
 @media (prefers-reduced-motion: reduce) {
+  .region-marquee { animation: none; }
+  .phone-tap { display: none; }
+  .marker-ink { animation: none; }
+  .cta-halo::before { animation: none; opacity: 0.6; }
+  .cta-sweep { display: none; }
+  .journey-fill, .journey-dot-on, .journey-text { animation: none !important; }
+  .journey-head, .journey-dot-pulse { display: none; }
   .bm-card-in { animation: none; }
   .bm-skeleton::after { animation: none; }
   .glow-halo::before { animation: none; opacity: 0.5; }
   .shimmer-sweep, .bm-shine { display: none; }
   [data-reveal] { transition: none !important; }
+}
+
+/* ── Scroll reveals ───────────────────────────────────────────────────────────
+   Anything marked `data-rv` waits hidden and eases into place once it scrolls
+   into view. <ScrollReveal /> flips `data-rv-in` on it from one shared
+   IntersectionObserver; the rest is CSS. Only opacity and transform move, so
+   it all stays on the compositor.
+     data-rv          rises into place
+     data-rv="zoom"   rises and grows a touch (photos, cards)
+     data-rv="group"  stays put and only triggers the pieces inside it
+   `--rv-i` staggers siblings, 80ms a step.
+   Keep it off elements that carry their own `transition-*` utility - this rule
+   is unlayered and would win, so wrap those instead. */
+:root {
+  --rv-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+[data-rv] {
+  opacity: 0;
+  transform: translateY(1.5rem);
+  transition: opacity 0.7s var(--rv-ease), transform 0.9s var(--rv-ease);
+  transition-delay: calc(var(--rv-i, 0) * 80ms);
+}
+
+[data-rv="zoom"]  { transform: translateY(1rem) scale(0.95); }
+[data-rv="group"] { opacity: 1; transform: none; }
+
+[data-rv][data-rv-in] {
+  opacity: 1;
+  transform: none;
+}
+
+/* Technology section: the machine settles in first with its glow blooming
+   behind it, then each benefit slides in from its own side while its line
+   draws toward the machine and the arrowhead lands at the end. */
+.tech-machine {
+  opacity: 0;
+  transform: translateY(1.25rem) scale(0.96);
+  transition: opacity 0.9s var(--rv-ease), transform 1.2s var(--rv-ease);
+}
+
+.tech-glow {
+  opacity: 0;
+  transition: opacity 1.6s ease-out 0.25s;
+}
+
+.tech-callout {
+  --tech-delay: calc(0.35s + var(--rv-i, 0) * 0.11s);
+  opacity: 0;
+  transform: translateX(var(--tech-from, 0));
+  transition: opacity 0.7s var(--rv-ease) var(--tech-delay), transform 0.9s var(--rv-ease) var(--tech-delay);
+}
+
+.tech-line {
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.7s var(--rv-ease) calc(var(--tech-delay) + 0.2s);
+}
+
+.tech-tip {
+  opacity: 0;
+  transition: opacity 0.3s ease-out calc(var(--tech-delay) + 0.7s);
+}
+
+[data-rv-in] .tech-machine,
+[data-rv-in] .tech-callout,
+[data-rv-in] .tech-line {
+  opacity: 1;
+  transform: none;
+}
+
+[data-rv-in] .tech-tip  { opacity: 1; }
+[data-rv-in] .tech-glow { opacity: 0.15; }
+
+/* ── Price comparison: a page of math notes ───────────────────────────────────
+   A sheet of squared paper taped to the page, with the sum written out by
+   hand. Once it is on screen the lines get "written" one after another:
+   `.notes-write` wipes text in left to right, `.notes-draw` draws a pen stroke
+   (its path has pathLength 1). `--w` is the line's place in the order. */
+.notes-paper {
+  --ink: #24326E;   /* ballpoint blue */
+  --pen: #C8405B;   /* the red pen that marks the answer */
+  --sq: 1.5rem;     /* one square of the grid */
+  position: relative;
+  color: var(--ink);
+  background-color: #FBF9F2;
+  background-image:
+    radial-gradient(120% 90% at 12% 0%, rgba(255, 255, 255, 0.9), transparent 60%),
+    linear-gradient(160deg, transparent 55%, rgba(80, 50, 40, 0.07)),
+    linear-gradient(rgba(62, 104, 170, 0.17) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(62, 104, 170, 0.17) 1px, transparent 1px);
+  background-size: auto, auto, var(--sq) var(--sq), var(--sq) var(--sq);
+  border-radius: 3px;
+  rotate: -1deg;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 2px 3px rgba(0, 0, 0, 0.35),
+    0 24px 48px -16px rgba(0, 0, 0, 0.8),
+    0 0 90px -20px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.notes-tape {
+  position: absolute;
+  top: -0.8rem;
+  left: 50%;
+  width: 7rem;
+  height: 1.8rem;
+  margin-left: -3.5rem;
+  rotate: 2.5deg;
+  background: color-mix(in srgb, var(--accent) 62%, transparent);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  /* torn ends */
+  clip-path: polygon(0 0, 3% 22%, 0 45%, 3% 70%, 0 100%, 100% 100%, 97% 75%, 100% 50%, 97% 25%, 100% 0);
+}
+
+.notes-write {
+  clip-path: inset(-0.4em 100% -0.4em -0.4em);
+  transition: clip-path 0.75s cubic-bezier(0.45, 0, 0.25, 1) calc(0.25s + var(--w, 0) * 0.3s);
+}
+
+/* Hidden until its turn: an undrawn round-capped stroke still leaves a dot. */
+.notes-draw {
+  --at: calc(0.25s + var(--w, 0) * 0.3s);
+  opacity: 0;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset 0.8s cubic-bezier(0.45, 0, 0.25, 1) var(--at), opacity 0.01s linear var(--at);
+}
+
+.notes-body[data-rv-in] .notes-write { clip-path: inset(-0.4em); }
+.notes-body[data-rv-in] .notes-draw  { opacity: 1; stroke-dashoffset: 0; }
+
+@media (min-width: 48rem) {
+  .notes-paper { --sq: 1.75rem; rotate: -1.4deg; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-rv], .tech-machine, .tech-callout, .tech-line, .tech-tip {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .tech-glow { opacity: 0.15; transition: none; }
+  .notes-write { clip-path: none; transition: none; }
+  .notes-draw  { opacity: 1; stroke-dashoffset: 0; transition: none; }
 }
 
 /* ── Booking modal dark themes ────────────────────────────────────────────────
@@ -243,4 +707,93 @@ body {
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
   transform: translateX(-160%) skewX(-18deg);
   animation: bmShine 2.2s cubic-bezier(0.4, 0, 0.2, 1) var(--shine-delay, 0.7s) 2 both;
+}
+
+/* ── Admin panel ─────────────────────────────────────────────────────────────
+   Only compositor-friendly properties (opacity, transform), so the calendar
+   stays smooth on the studio's phone as well. */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--foreground) 18%, transparent) transparent;
+}
+
+/* ── Admin comfort palette ────────────────────────────────────────────────────
+   Goes on the root of every admin page, next to `locationTheme`. Tailwind's
+   stock status colours are neon on a dark background, so inside the admin
+   they are re-pointed to muted versions - every `red-400`, `green-400/10`...
+   utility follows without touching the markup. */
+.admin-theme {
+  --color-red-300: #E6ADA8;
+  --color-red-400: #DE8D87;
+  --color-red-500: #CF6660;
+  --color-red-600: #B9544F;
+  --color-green-300: #A9D6B4;
+  --color-green-400: #86C79A;
+  --color-green-500: #5FA877;
+  --color-emerald-300: #A3D6C0;
+  --color-emerald-400: #7FC7AA;
+  --color-amber-200: #EBD9AC;
+  --color-amber-300: #E4C886;
+  --color-amber-400: #DAB76C;
+  --color-amber-500: #CFA557;
+  --color-orange-500: #D99563;
+  --color-sky-400: #8DBEDD;
+}
+
+/* The reservation modal brings its own near-black sheets - lift them to the
+   same charcoal as the rest of the admin. */
+.admin-theme .bm-theme {
+  --foreground: #E8E2D8;
+  --bm-bg: #1A191A;
+  --bm-surface: #252324;
+  --bm-on-accent: #1A191A;
+  --bm-bg-image:
+    radial-gradient(70% 45% at 0% 0%, rgba(212, 175, 103, 0.07), transparent 70%),
+    radial-gradient(70% 45% at 100% 0%, rgba(220, 168, 166, 0.07), transparent 70%),
+    linear-gradient(180deg, #211F21 0%, #1A191A 55%);
+}
+
+.admin-theme .bm-theme-muskarci {
+  --foreground: #E6E0D5;
+  --bm-bg: #19191A;
+  --bm-surface: #242424;
+  --bm-accent: #CDAE72;
+  --bm-on-accent: #19191A;
+  --bm-bg-image:
+    radial-gradient(90% 55% at 12% -8%, rgba(212, 175, 103, 0.09), transparent 62%),
+    linear-gradient(180deg, #222222 0%, #19191A 60%);
+}
+
+.admin-theme .bm-theme-zene {
+  --foreground: #E8DDDD;
+  --bm-bg: #1C1619;
+  --bm-surface: #282024;
+  --bm-accent: #D4A9A7;
+  --bm-on-accent: #241A1E;
+  --bm-bg-image:
+    radial-gradient(110% 60% at 50% -12%, rgba(220, 168, 166, 0.10), transparent 65%),
+    linear-gradient(180deg, #282024 0%, #1C1619 60%);
+}
+
+@keyframes adminFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes adminSheetIn {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes adminLoadingBar {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(400%); }
+}
+
+.admin-fade-in     { animation: adminFadeIn 0.18s ease-out both; }
+.admin-sheet-in    { animation: adminSheetIn 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.admin-loading-bar { animation: adminLoadingBar 1.1s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-fade-in, .admin-sheet-in { animation: none; }
 }

@@ -23,16 +23,19 @@ export type Database = {
       availability_overrides: {
         Row: {
           date: string
+          location: string
           updated_at: string
           windows: Json
         }
         Insert: {
           date: string
+          location?: string
           updated_at?: string
           windows?: Json
         }
         Update: {
           date?: string
+          location?: string
           updated_at?: string
           windows?: Json
         }
@@ -40,14 +43,17 @@ export type Database = {
       }
       weekly_schedule: {
         Row: {
+          location: string
           weekday: number
           windows: Json
         }
         Insert: {
+          location?: string
           weekday: number
           windows?: Json
         }
         Update: {
+          location?: string
           weekday?: number
           windows?: Json
         }
@@ -80,16 +86,19 @@ export type Database = {
       marketing_spend: {
         Row: {
           amount: number
+          location: string
           month: string
           updated_at: string
         }
         Insert: {
           amount?: number
+          location?: string
           month: string
           updated_at?: string
         }
         Update: {
           amount?: number
+          location?: string
           month?: string
           updated_at?: string
         }
@@ -137,6 +146,7 @@ export type Database = {
           date: string
           end_time: string
           id: string
+          location: string
           notes: string | null
           promo_code: string | null
           start_time: string
@@ -154,6 +164,7 @@ export type Database = {
           date: string
           end_time: string
           id?: string
+          location?: string
           notes?: string | null
           promo_code?: string | null
           start_time: string
@@ -171,6 +182,7 @@ export type Database = {
           date?: string
           end_time?: string
           id?: string
+          location?: string
           notes?: string | null
           promo_code?: string | null
           start_time?: string
@@ -179,8 +191,38 @@ export type Database = {
         }
         Relationships: []
       }
+      service_prices: {
+        Row: {
+          location: string
+          price: number
+          service_id: string
+          valid_from: string
+        }
+        Insert: {
+          location: string
+          price: number
+          service_id: string
+          valid_from: string
+        }
+        Update: {
+          location?: string
+          price?: number
+          service_id?: string
+          valid_from?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_prices_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       services: {
         Row: {
+          active: boolean
           created_at: string | null
           description: string | null
           gender: string
@@ -192,6 +234,7 @@ export type Database = {
           sort_order: number
         }
         Insert: {
+          active?: boolean
           created_at?: string | null
           description?: string | null
           gender: string
@@ -203,6 +246,7 @@ export type Database = {
           sort_order?: number
         }
         Update: {
+          active?: boolean
           created_at?: string | null
           description?: string | null
           gender?: string
@@ -258,11 +302,11 @@ export type Database = {
     Functions: {
       is_admin: { Args: Record<string, never>; Returns: boolean }
       public_busy_slots: {
-        Args: { p_from: string; p_to: string }
+        Args: { p_from: string; p_to: string; p_location?: string }
         Returns: { date: string; start_time: string; end_time: string; status: string }[]
       }
       public_is_returning: { Args: { p_email: string }; Returns: boolean }
-      bundle_sessions_left: { Args: { p_email: string; p_code: string }; Returns: number }
+      bundle_sessions_left: { Args: { p_email: string; p_code: string; p_location?: string }; Returns: number }
       public_create_booking: {
         Args: {
           p_id: string
@@ -275,6 +319,7 @@ export type Database = {
           p_service_ids: string[]
           p_promo_code: string | null
           p_notes: string | null
+          p_location?: string
         }
         Returns: Json
       }
@@ -413,12 +458,6 @@ export const Constants = {
 
 // ── Convenience types ─────────────────────────────────────────────────────────
 export type Service     = Database["public"]["Tables"]["services"]["Row"];
-export type Reservation = Database["public"]["Tables"]["reservations"]["Row"];
-export type ReservationService = Database["public"]["Tables"]["reservation_services"]["Row"];
-export type Lead        = Database["public"]["Tables"]["leads"]["Row"];
 
 /** Narrowed status union – the DB stores this as plain string */
 export type ReservationStatus = "pending" | "confirmed" | "cancelled" | "blacklisted";
-
-/** Narrowed gender union – the DB stores this as plain string */
-export type Gender = "zene" | "muskarci";

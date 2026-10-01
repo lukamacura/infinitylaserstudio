@@ -5,7 +5,7 @@ import type { CSSProperties } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
-  X, ArrowLeft, Loader2, CheckCircle2, AlertCircle, Info, MapPin,
+  X, ArrowLeft, Loader2, CheckCircle2, AlertCircle, Info, MapPin, ChevronRight,
 } from "lucide-react";
 import {
   supabase, calcBookingDuration, calcTotalDuration, getAvailableSlots,
@@ -21,6 +21,10 @@ import {
   bundlePurchaseCode, bundleRedeemCode, type BundleResult,
 } from "@/lib/bundles";
 import { STUDENT_PROMO_CODE, isStudentPromoCode } from "@/lib/pricing";
+import { fetchPriceRows, PriceBook } from "@/lib/prices";
+import {
+  LOCATIONS, DEFAULT_LOCATION, getLocation, fullAddress, type LocationId,
+} from "@/lib/locations";
 import {
   type Gender, type DayOption,
   getIcon, getRegionArt, preloadRegionArt, RegionThumb, THUMB_SIZES, HERO_THUMB_SIZES,
@@ -40,7 +44,7 @@ interface BookingModalProps {
   preselectedGender?: "zene" | "muskarci";
 }
 
-type Step = 1 | 2 | "plan" | 3 | 4 | 5 | "success" | "preparation";
+type Step = "location" | 1 | 2 | "plan" | 3 | 4 | 5 | "success" | "preparation";
 type BookingMode = "single" | "bundle";
 
 /**
@@ -146,14 +150,18 @@ type SlotRow = { start_time: string; end_time: string; status: string };
 // The treatment list barely changes and every price is re-checked by the
 // database on booking, so a per-gender copy is kept for the page session:
 // reopening the modal, or going back and picking the same gender again, shows
-// the list instantly instead of a spinner.
+// the list instantly instead of a spinner. Prices differ per studio, so the
+// cache keeps the bare treatments plus every studio's prices, and the chosen
+// studio's prices are applied on the way out.
 const SERVICES_TTL_MS = 5 * 60 * 1000;
 const servicesCache = new Map<Gender, { at: number; data: Service[] }>();
+let priceBook: PriceBook | null = null;
 let servicesRequest: Promise<void> | null = null;
 
-function freshServices(gender: Gender): Service[] | null {
+function freshServices(gender: Gender, location: LocationId): Service[] | null {
   const cached = servicesCache.get(gender);
-  return cached && Date.now() - cached.at < SERVICES_TTL_MS ? cached.data : null;
+  if (!cached || !priceBook || Date.now() - cached.at >= SERVICES_TTL_MS) return null;
+  return priceBook.apply(cached.data, location);
 }
 
 /**
@@ -163,11 +171,13 @@ function freshServices(gender: Gender): Service[] | null {
  */
 function loadAllServices(): Promise<void> {
   if (servicesRequest) return servicesRequest;
-  const request: Promise<void> = Promise.resolve(
-    supabase.from("services").select("*").order("sort_order"),
-  ).then(
-    ({ data, error }) => {
-      if (error || !data) return;
+  const request: Promise<void> = Promise.all([
+    supabase.from("services").select("*").eq("active", true).order("sort_order"),
+    fetchPriceRows(),
+  ]).then(
+    ([{ data, error }, prices]) => {
+      if (error || !data || !prices) return;
+      priceBook = new PriceBook(prices);
       const at = Date.now();
       for (const g of ["zene", "muskarci"] as const) {
         const list = data.filter((s) => s.gender === g);
@@ -181,24 +191,26 @@ function loadAllServices(): Promise<void> {
 }
 
 // ── Busy-slots cache ──────────────────────────────────────────────────────────
-// One request covers the whole public horizon. It starts on the plan step, so
+// One request covers the whole public horizon of one studio. It starts on the plan step, so
 // the date step has its answer on arrival, and the time step paints from the
 // same rows while it re-checks the chosen day. Short-lived on purpose: it only
 // decides what is *offered* - the database re-checks the slot on booking.
 const BUSY_TTL_MS = 30 * 1000;
 type BusyByDate = Map<string, SlotRow[]>;
-let busyRequest: { at: number; promise: Promise<BusyByDate | null> } | null = null;
-let busySnapshot: { at: number; byDate: BusyByDate } | null = null;
+let busyRequest: { at: number; location: LocationId; promise: Promise<BusyByDate | null> } | null = null;
+let busySnapshot: { at: number; location: LocationId; byDate: BusyByDate } | null = null;
 
 /** Resolves to null when the reservations could not be loaded. */
-function loadBusyHorizon(): Promise<BusyByDate | null> {
-  if (busyRequest && Date.now() - busyRequest.at < BUSY_TTL_MS) return busyRequest.promise;
+function loadBusyHorizon(location: LocationId): Promise<BusyByDate | null> {
+  if (busyRequest && busyRequest.location === location && Date.now() - busyRequest.at < BUSY_TTL_MS) {
+    return busyRequest.promise;
+  }
   const from = new Date();
   const to = new Date(from);
   to.setDate(to.getDate() + PUBLIC_HORIZON_DAYS - 1);
   const at = Date.now();
   const promise: Promise<BusyByDate | null> = Promise.resolve(
-    supabase.rpc("public_busy_slots", { p_from: toDateStr(from), p_to: toDateStr(to) }),
+    supabase.rpc("public_busy_slots", { p_from: toDateStr(from), p_to: toDateStr(to), p_location: location }),
   ).then(
     ({ data, error }) => {
       if (error) return null;
@@ -208,7 +220,7 @@ function loadBusyHorizon(): Promise<BusyByDate | null> {
         list.push({ start_time: row.start_time, end_time: row.end_time, status: row.status });
         byDate.set(row.date, list);
       }
-      busySnapshot = { at, byDate };
+      busySnapshot = { at, location, byDate };
       return byDate;
     },
     () => null,
@@ -217,13 +229,14 @@ function loadBusyHorizon(): Promise<BusyByDate | null> {
     if (!result && busyRequest?.promise === promise) busyRequest = null;
     return result;
   });
-  busyRequest = { at, promise };
+  busyRequest = { at, location, promise };
   return promise;
 }
 
 /** Reservations for one day from the last horizon load, or null when stale. */
-function busySeed(date: string): SlotRow[] | null {
-  if (!busySnapshot || Date.now() - busySnapshot.at >= BUSY_TTL_MS) return null;
+function busySeed(location: LocationId, date: string): SlotRow[] | null {
+  if (!busySnapshot || busySnapshot.location !== location) return null;
+  if (Date.now() - busySnapshot.at >= BUSY_TTL_MS) return null;
   return busySnapshot.byDate.get(date) ?? [];
 }
 
@@ -238,16 +251,20 @@ const SOCIAL_PROOF: Record<Gender, { mark: string; line: string }> = {
   muskarci: { mark: "◆", line: "Preko 2000 ljudi se uspešno rešilo dlačica" },
 };
 
-const STEP_LABELS: Record<Step, [string, string]> = {
-  1: ["KORAK 1 OD 5", "Za koga zakazuješ?"],
-  2: ["KORAK 1 OD 5", "Odaberi regije za tretman"],
-  plan: ["KORAK 2 OD 5", "Pojedinačno ili paket sa popustom?"],
-  3: ["KORAK 3 OD 5", "Izaberi datum"],
-  4: ["KORAK 4 OD 5", "Izaberi vreme"],
-  5: ["KORAK 5 OD 5", "Vaši podaci"],
-  success: ["POTVRĐENO", "Termin je uspešno zakazan"],
-  preparation: ["PRE TRETMANA", "Šta treba da uradiš?"],
+const STEP_LABELS: Record<Step, string> = {
+  location: "U kom studiju zakazuješ?",
+  1: "Za koga zakazuješ?",
+  2: "Odaberi regije za tretman",
+  plan: "Pojedinačno ili paket sa popustom?",
+  3: "Izaberi datum",
+  4: "Izaberi vreme",
+  5: "Vaši podaci",
+  success: "Termin je uspešno zakazan",
+  preparation: "Šta treba da uradiš?",
 };
+
+/** The flow in order - the progress line fills one share per screen. */
+const STEP_ORDER: Step[] = ["location", 1, 2, "plan", 3, 4, 5];
 
 const PAYMENT_TERMS =
   "Ceo paket plaćaš na prvom tretmanu - svi preostali termini su ti zagarantovani.";
@@ -256,7 +273,7 @@ const PAYMENT_TERMS =
  * iOS-style banners "from Ana", each tied to the step it argues for.
  * One per step, shown once per modal session.
  */
-type NoticeKey = "guarantee" | "plan" | "student";
+type NoticeKey = "guarantee" | "plan" | "reassure" | "student";
 /** `step: null` = never auto-fires on a step; raised by hand from the flow. */
 const NOTICES: Record<NoticeKey, { step: Step | null; message: string }> = {
   guarantee: {
@@ -267,6 +284,10 @@ const NOTICES: Record<NoticeKey, { step: Step | null; message: string }> = {
     step: "plan",
     message:
       "Za potpune rezultate telu treba 6 do 8, a licu 10 tretmana. Uzmi paket i uštedi. Plaćaš jednom, a dolaziš koliko ti treba.",
+  },
+  reassure: {
+    step: 4,
+    message: "Ništa se ne brini. Na prvom tretmanu se sve dogovaramo.",
   },
   student: {
     step: null,
@@ -292,7 +313,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       : null,
   );
   const [isAnimating, setIsAnimating] = useState(false);
-  const [step, setStep]               = useState<Step>(1);
+  const [step, setStep]               = useState<Step>("location");
+  /** The studio being booked - chosen on the first step, before anything else. */
+  const [studioId, setStudioId]       = useState<LocationId | null>(null);
   const [gender, setGender]           = useState<Gender | null>(null);
   const [services, setServices]       = useState<Service[]>([]);
   const [loadingServices, setLoadingServices] = useState(false);
@@ -302,6 +325,10 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   const [selectedDate, setSelectedDate]   = useState("");
   const [selectedTime, setSelectedTime]   = useState("");
   const [daySlots, setDaySlots]           = useState<SlotRow[]>([]);
+  /** Which studio + day `daySlots` was loaded for. Until it matches the day on
+      screen no time is offered - otherwise every time, taken ones included,
+      shows as free for a moment when the time step opens. */
+  const [daySlotsFor, setDaySlotsFor]     = useState<string | null>(null);
   const [loadingSlots, setLoadingSlots]   = useState(false);
   /** Reservations for the day failed to load - never show slots as free then. */
   const [slotsError, setSlotsError]       = useState(false);
@@ -346,8 +373,6 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   const scrollBodyRef = useRef<HTMLDivElement>(null);
   /** The dialog sheet - receives focus on open so keyboard handling works. */
   const sheetRef = useRef<HTMLDivElement>(null);
-  /** Step 1 map embed - mounted late, see the effect below. */
-  const [mapReady, setMapReady] = useState(false);
 
   // iOS-style notifications from Ana - each fires once per modal session.
   // "Already shown" lives in a ref, not state: as a dependency of the scheduling
@@ -391,6 +416,11 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   const accent           = ACCENTS[gender ?? "zene"];
   const reduceMotion     = useReducedMotion();
   const proof            = SOCIAL_PROOF[gender ?? "zene"];
+  const studio           = getLocation(studioId ?? DEFAULT_LOCATION);
+  /** Preselected treatments are women's regions; a ?pol= link names the gender.
+      Either way the gender step is skipped once the studio is chosen. */
+  const presetGender: Gender | null =
+    preselectedNames && preselectedNames.length > 0 ? "zene" : preselectedGender ?? null;
   /** Step 2 list - "Celo telo" leads, it is the offer we most want booked. */
   const pickableServices = useMemo(() => {
     const visible = services.filter((s) => !isComboService(s.name));
@@ -434,8 +464,10 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   const isToday = selectedDate !== "" && selectedDate === toDateStr(nowDate);
   const minStart = isToday ? nowMinutes + 120 : undefined;
 
+  const slotsKey = studioId && selectedDate ? `${studioId}:${selectedDate}` : null;
+  const slotsReady = slotsKey !== null && daySlotsFor === slotsKey;
   const windows = selectedDate && availability ? resolveWindows(selectedDate, availability) : null;
-  const availableSlots = windows?.length
+  const availableSlots = slotsReady && windows?.length
     ? getAvailableSlots(daySlots, slotDuration, minStart, windows)
     : [];
 
@@ -455,34 +487,18 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     return () => { cancelAnimationFrame(raf); unlockBodyScroll(); };
   }, [isOpen]);
 
-  // The Google Maps embed on step 1 is heavy (its own scripts and tiles). It
-  // waits until the modal has settled and the browser is idle, so it never
-  // competes with the treatment list and artwork - and anyone who picks a
-  // gender within that second never pays for it at all.
+  // Treatments for both genders load the moment the modal opens, so step 2
+  // opens without a wait.
   useEffect(() => {
-    if (!isOpen || step !== 1) return;
-    let idleId: number | undefined;
-    const t = setTimeout(() => {
-      if ("requestIdleCallback" in window) {
-        idleId = window.requestIdleCallback(() => setMapReady(true), { timeout: 1500 });
-      } else {
-        setMapReady(true);
-      }
-    }, 1000);
-    return () => {
-      clearTimeout(t);
-      if (idleId !== undefined) window.cancelIdleCallback(idleId);
-    };
-  }, [isOpen, step]);
+    if (isOpen) void loadAllServices();
+  }, [isOpen]);
 
-  // Load the working-hours schedule once per open - one query for the whole horizon.
+  // Load the chosen studio's working hours - one query for the whole horizon.
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !studioId) return;
     let cancelled = false;
     setAvailabilityError(false);
-    // Treatments for both genders travel alongside, so step 2 opens without a wait.
-    void loadAllServices();
-    fetchAvailability()
+    fetchAvailability(studioId)
       .then((data) => { if (!cancelled) setAvailability(data); })
       .catch(() => {
         if (cancelled) return;
@@ -490,28 +506,15 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
         setAvailabilityError(true);
       });
     return () => { cancelled = true; };
-  }, [isOpen, availabilityReloadKey]);
-
-  // Preselected treatments are women's regions - open straight into her list,
-  // skipping the gender choice. A ?pol= link does the same with nothing selected.
-  // Plain opens start on Step 1 (gender).
-  useEffect(() => {
-    if (!isOpen) return;
-    if (preselectedNames && preselectedNames.length > 0) {
-      setGender("zene");
-      setStep(2);
-    } else if (preselectedGender) {
-      setGender(preselectedGender);
-      setStep(2);
-    }
-  }, [isOpen, preselectedNames, preselectedGender]);
+  }, [isOpen, studioId, availabilityReloadKey]);
 
   useEffect(() => {
     if (!gender) return;
     preloadRegionArt(gender);
+    const location = studioId ?? DEFAULT_LOCATION;
     // A fresh copy from this page session skips the request entirely. A manual
     // retry (servicesReloadKey) only ever follows a failure, so it never hits this.
-    const cached = freshServices(gender);
+    const cached = freshServices(gender, location);
     if (cached) {
       setServices(cached);
       setServicesError(false);
@@ -524,13 +527,13 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     setServicesError(false);
     void loadAllServices().then(() => {
       if (cancelled) return;
-      const data = freshServices(gender) ?? [];
+      const data = freshServices(gender, location) ?? [];
       setServicesError(data.length === 0);
       setServices(data);
       setLoadingServices(false);
     });
     return () => { cancelled = true; };
-  }, [gender, servicesReloadKey]);
+  }, [gender, studioId, servicesReloadKey]);
 
   // ── Animated price count-down on success screen ───────────────────────────
   useEffect(() => {
@@ -558,21 +561,28 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   // Reservations for the chosen day - refetched every time the time step opens,
   // so coming back to a day never shows slots that were booked in the meantime.
   useEffect(() => {
-    if (!selectedDate || step !== 4) return;
+    if (!studioId || !selectedDate || step !== 4) return;
     let cancelled = false;
     // The date step already loaded this day - paint from it, then re-check.
-    const seed = busySeed(selectedDate);
+    const key = `${studioId}:${selectedDate}`;
+    const seed = busySeed(studioId, selectedDate);
     setLoadingSlots(seed === null);
     setSlotsError(false);
-    setDaySlots(seed ?? []);
+    if (seed !== null) {
+      setDaySlots(seed);
+      setDaySlotsFor(key);
+    }
     supabase
-      .rpc("public_busy_slots", { p_from: selectedDate, p_to: selectedDate })
+      .rpc("public_busy_slots", { p_from: selectedDate, p_to: selectedDate, p_location: studioId })
       .then(
         ({ data, error }) => {
           if (cancelled) return;
           // On error show nothing as free - an empty list would mark the whole day open.
           if (error) setSlotsError(true);
-          else setDaySlots(data ?? []);
+          else {
+            setDaySlots(data ?? []);
+            setDaySlotsFor(key);
+          }
           setLoadingSlots(false);
         },
         () => {
@@ -582,11 +592,11 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
         },
       );
     return () => { cancelled = true; };
-  }, [selectedDate, step, slotsReloadKey]);
+  }, [studioId, selectedDate, step, slotsReloadKey]);
 
   // Step 3: load reservations for all candidate days, hide dates with no free slot
   useEffect(() => {
-    if (!isOpen || step !== 3 || slotDuration <= 0) {
+    if (!isOpen || !studioId || step !== 3 || slotDuration <= 0) {
       setLoadingBookableDays(false);
       return;
     }
@@ -609,7 +619,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       return;
     }
 
-    void loadBusyHorizon().then((byDate) => {
+    void loadBusyHorizon(studioId).then((byDate) => {
       if (bookableDaysFetchIdRef.current !== fetchId) return;
 
       const now = new Date();
@@ -634,13 +644,13 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     return () => {
       bookableDaysFetchIdRef.current += 1;
     };
-  }, [isOpen, step, slotDuration, availability]);
+  }, [isOpen, studioId, step, slotDuration, availability]);
 
   // Reservations are requested while the plan is being chosen, so the date
   // step usually has them on arrival.
   useEffect(() => {
-    if (isOpen && step === "plan") void loadBusyHorizon();
-  }, [isOpen, step]);
+    if (isOpen && studioId && step === "plan") void loadBusyHorizon(studioId);
+  }, [isOpen, studioId, step]);
 
   useEffect(() => {
     if (!selectedDate || bookableDayOptions.length === 0) return;
@@ -661,6 +671,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       appliedPreselect.current = true;
       return;
     }
+    // Nothing is preselected before the studio is chosen - that step comes first.
+    if (!studioId || !gender) return;
     if (services.length === 0) return; // wait for services to load
     const matchedIds = services
       .filter((s) => !isComboService(s.name))
@@ -677,7 +689,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     }
     appliedPreselect.current = true;
 
-  }, [isOpen, preselectedNames, preselectedBundle, services]);
+  }, [isOpen, studioId, gender, preselectedNames, preselectedBundle, services]);
 
   // Every step starts at the top - otherwise a long previous step (services)
   // leaves the next one scrolled past its opening.
@@ -726,8 +738,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     bookableDaysFetchIdRef.current += 1;
     setBookableDayOptions([]);
     setLoadingBookableDays(false);
-    setStep(1); setGender(null); setSelectedIds([]);
-    setSelectedDate(""); setSelectedTime(""); setDaySlots([]);
+    setStep("location"); setStudioId(null); setGender(null); setSelectedIds([]);
+    setAvailability(null); setAvailabilityError(false);
+    setSelectedDate(""); setSelectedTime(""); setDaySlots([]); setDaySlotsFor(null);
     setSlotsError(false); setServicesError(false); setSlotTaken(false);
     submitLockRef.current = false;
     pendingBookingRef.current = null;
@@ -748,18 +761,38 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
 
   function handleClose() {
+    // A booking is on its way to the database - closing now would wipe the
+    // form and the client would never see whether the term was booked.
+    if (submitLockRef.current) return;
     setIsAnimating(false);
     setTimeout(() => { onClose(); resetAll(); }, 300);
   }
 
   function handleBack() {
-    if (step === 1) { handleClose(); }
-    else if (step === 2) { setStep(1); setGender(null); setSelectedIds([]); }
+    if (step === "location") { handleClose(); }
+    else if (step === 1) { setStep("location"); }
+    else if (step === 2) { setStep(presetGender ? "location" : 1); setGender(null); setSelectedIds([]); }
     else if (step === "plan") { setStep(2); }
     else if (step === 3) { setStep("plan"); setSelectedDate(""); setSelectedTime(""); }
     else if (step === 4) { setStep(3); setSelectedTime(""); }
     else if (step === 5) { setStep(4); }
     else if (step === "preparation") { setStep("success"); }
+  }
+
+  function handleLocationSelect(id: LocationId) {
+    if (id !== studioId) {
+      // Another studio, another calendar - nothing picked so far carries over.
+      setStudioId(id);
+      setAvailability(null);
+      setSelectedDate(""); setSelectedTime(""); setDaySlots([]); setDaySlotsFor(null);
+      setBookableDayOptions([]);
+    }
+    if (presetGender) {
+      setGender(presetGender);
+      setStep(2);
+    } else {
+      setStep(1);
+    }
   }
 
   function handleGenderSelect(g: Gender) {
@@ -881,7 +914,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       setCheckingPromo(true);
       // Pre-paid sessions still free for this email + code (0 = no such
       // purchase, or every session of the bundle is already booked).
-      const { data: left, error } = await supabase.rpc("bundle_sessions_left", { p_email: email, p_code: raw });
+      const { data: left, error } = await supabase.rpc("bundle_sessions_left", {
+        p_email: email, p_code: raw, p_location: studio.id,
+      });
       setCheckingPromo(false);
       if (error) {
         rejectPromo("Provera koda nije uspela. Pokušaj ponovo.");
@@ -920,7 +955,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     setSubmitting(true);
     setSubmitError(null);
     try {
-      await submitBooking();
+      if (!studioId) { setStep("location"); return; }
+      await submitBooking(studioId);
     } catch (err) {
       console.error("[booking] submit failed:", err);
       setSubmitError("Greška pri zakazivanju. Proverite internet konekciju i pokušajte ponovo.");
@@ -930,7 +966,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     }
   }
 
-  async function submitBooking() {
+  async function submitBooking(locationId: LocationId) {
     const nameTrim  = form.name.trim();
     const emailTrim = form.email.trim();
     const phoneTrim = form.phone.trim();
@@ -956,7 +992,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     // Same details as a previous (possibly lost) attempt → same id, so a retry
     // can never create a second reservation.
     const bookingKey = JSON.stringify([
-      selectedDate, selectedTime, emailTrim.toLowerCase(), nameTrim, phoneTrim,
+      locationId, selectedDate, selectedTime, emailTrim.toLowerCase(), nameTrim, phoneTrim,
       [...selectedIds].sort(), promoForRecord,
     ]);
     if (pendingBookingRef.current?.key !== bookingKey) {
@@ -978,6 +1014,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       p_service_ids:   selectedIds,
       p_promo_code:    promoForRecord,
       p_notes:         notesForRecord,
+      p_location:      locationId,
     });
 
     if (error || !data) {
@@ -1042,9 +1079,11 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
         promo_code:       promoForRecord ?? "redovna cena",
         bundle_sessions:  bundleActive ? bundleSize : null,
         bundle_code:      bundleActive ? promoForRecord : null,
-        /* n8n uses this to add the "bring your student ID" line to the email. */
-        student_discount: studentActive,
-        booking_ref:      bookingRefValue,
+                booking_ref:      bookingRefValue,
+        /* The email takes the studio from the saved reservation - these are informational. */
+        location:         locationId,
+        location_name:    studio.name,
+        location_address: fullAddress(studio),
       }),
     }).catch(() => {});
 
@@ -1108,7 +1147,10 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
   if (!isOpen) return null;
 
-  const [stepLabel, stepSub] = STEP_LABELS[step];
+  // The gender screen is skipped when the gender is preset, so it takes no share.
+  const flow = presetGender ? STEP_ORDER.filter((s) => s !== 1) : STEP_ORDER;
+  const flowIdx = flow.indexOf(step);
+  const progress = flowIdx === -1 ? 1 : (flowIdx + 1) / (flow.length + 1);
 
   // ── Render ────────────────────────────────────────────────────────────────
   // z-80: iznad SocialProofToast (z-60), da guarantee banner nikad ne ostane ispod njega
@@ -1194,7 +1236,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
         {/* Header - from sm up, content lives in the centered COL_W column */}
         <div className={`flex items-center justify-between px-4 sm:px-6 pt-4 sm:pt-6 pb-2 sm:pb-4 shrink-0 ${COL_W}`}>
           <div className="flex items-center gap-3">
-            {(step === 1 || step === 2 || step === "plan" || step === 3 || step === 4 || step === 5 || step === "preparation") && (
+            {(step === "location" || step === 1 || step === 2 || step === "plan" || step === 3 || step === 4 || step === 5 || step === "preparation") && (
               <button onClick={handleBack} className="w-9 h-9 sm:w-11 sm:h-11 flex items-center justify-center rounded-full hover:bg-foreground/5 transition-colors cursor-pointer" aria-label="Nazad">
                 <ArrowLeft size={18} className="sm:w-[22px] sm:h-[22px]" />
               </button>
@@ -1208,13 +1250,20 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
         {/* Step indicator */}
         <div className={`px-4 sm:px-6 pb-3 sm:pb-6 shrink-0 ${COL_W}`}>
-          <p
-            className="text-xs sm:text-[13px] text-foreground/50 tracking-[3px] font-semibold font-poppins"
-            style={gender ? { color: accent.hex } : undefined}
+          <div
+            className="h-1 rounded-full bg-foreground/10 overflow-hidden"
+            role="progressbar"
+            aria-label="Napredak zakazivanja"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(progress * 100)}
           >
-            {stepLabel}
-          </p>
-          <p className="text-sm sm:text-base text-foreground/60 font-poppins mt-1">{stepSub}</p>
+            <div
+              className="h-full rounded-full bg-foreground/50 transition-[width] duration-500 ease-out motion-reduce:transition-none"
+              style={{ width: `${progress * 100}%`, ...(gender ? { backgroundColor: accent.hex } : {}) }}
+            />
+          </div>
+          <p className="text-lg sm:text-xl font-medium leading-snug text-foreground/90 font-poppins mt-4">{STEP_LABELS[step]}</p>
         </div>
 
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
@@ -1224,59 +1273,81 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
           <div ref={scrollBodyRef} className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain px-4 sm:px-6 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:pb-2 ${COL_W}`}>
 
 
+          {/* ══ STEP "location": Studio ═════════════════════════════════════ */}
+          {step === "location" && (
+            <div className="flex flex-col gap-4 sm:grid sm:grid-cols-2 py-2">
+              {LOCATIONS.map((loc, index) => {
+                const isSelected = studioId === loc.id;
+                return (
+                  <button
+                    key={loc.id}
+                    type="button"
+                    onClick={() => handleLocationSelect(loc.id)}
+                    style={cascade(index, 60, 4)}
+                    className={`bm-card-in flex flex-row sm:flex-col items-center text-left sm:text-center gap-4 w-full px-4 sm:px-3 py-5 sm:py-8 rounded-2xl sm:rounded-3xl border-2 active:scale-[0.98] transition-all cursor-pointer ${
+                      isSelected
+                        ? "border-foreground/40 bg-foreground/5"
+                        : "border-foreground/8 hover:border-foreground/25"
+                    }`}
+                  >
+                    <div className="relative w-24 h-24 sm:w-32 sm:h-32 rounded-full overflow-hidden border-2 border-foreground/15 bg-foreground/5 flex items-center justify-center shrink-0">
+                      {loc.image ? (
+                        <Image
+                          src={loc.image}
+                          alt={`Infinity Laser Studio ${loc.name}`}
+                          fill
+                          sizes="(max-width: 640px) 96px, 128px"
+                          className="object-cover"
+                        />
+                      ) : (
+                        <MapPin size={32} className="text-foreground/35 sm:w-10 sm:h-10" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1 sm:flex-none">
+                      <p className="text-xl font-bold font-playfair tracking-wide">{loc.name}</p>
+                      {loc.address && (
+                        <p className="text-sm text-foreground/50 font-poppins mt-0.5">{loc.address}</p>
+                      )}
+                    </div>
+                    <ChevronRight size={20} className="sm:hidden shrink-0 text-foreground/30" aria-hidden="true" />
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {/* ══ STEP 1: Gender ══════════════════════════════════════════════ */}
           {step === 1 && (
-            <div className="flex flex-col gap-3 py-2">
-              {GENDER_OPTIONS.map((opt) => (
+            <div className="flex flex-col gap-4 sm:grid sm:grid-cols-2 py-2">
+              {GENDER_OPTIONS.map((opt, index) => (
                 <button
                   key={opt.key}
                   type="button"
                   onClick={() => handleGenderSelect(opt.key)}
                   onPointerEnter={() => preloadRegionArt(opt.key)}
                   onFocus={() => preloadRegionArt(opt.key)}
-                  className="flex items-center gap-4 sm:gap-5 w-full p-5 sm:p-6 rounded-2xl sm:rounded-3xl border-2 hover:brightness-125 active:scale-[0.99] transition-all text-left cursor-pointer"
-                  style={{ backgroundImage: opt.surface, borderColor: `${opt.hex}40` }}
+                  style={{ ...cascade(index, 60, 4), backgroundImage: opt.surface, borderColor: `${opt.hex}40` }}
+                  className="bm-card-in flex flex-row sm:flex-col items-center text-left sm:text-center gap-4 w-full px-4 sm:px-3 py-5 sm:py-8 rounded-2xl sm:rounded-3xl border-2 hover:brightness-125 active:scale-[0.98] transition-all cursor-pointer"
                 >
                   <div
-                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl flex items-center justify-center shrink-0 border"
-                    style={{ backgroundColor: `${opt.hex}1A`, borderColor: `${opt.hex}33` }}
+                    className="relative w-24 h-24 sm:w-32 sm:h-32 rounded-full overflow-hidden border-2 shrink-0"
+                    style={{ backgroundColor: `${opt.hex}1A`, borderColor: `${opt.hex}55` }}
                   >
-                    <opt.Icon size={28} style={{ color: opt.hex }} className="sm:w-8 sm:h-8" />
+                    <Image
+                      src={opt.image}
+                      alt={opt.sub}
+                      fill
+                      sizes="(max-width: 640px) 96px, 128px"
+                      className="object-cover"
+                    />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-base sm:text-lg font-bold font-playfair tracking-wide" style={{ color: opt.hex }}>{opt.label}</p>
-                    <p className="text-xs sm:text-sm text-foreground/50 font-poppins mt-0.5">{opt.sub}</p>
+                  <div className="min-w-0 flex-1 sm:flex-none">
+                    <p className="text-xl font-bold font-playfair tracking-wide" style={{ color: opt.hex }}>{opt.label}</p>
+                    <p className="text-sm text-foreground/50 font-poppins mt-0.5">{opt.sub}</p>
                   </div>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={opt.hex} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 sm:w-6 sm:h-6">
-                    <path d="M9 18l6-6-6-6" />
-                  </svg>
+                  <ChevronRight size={20} className="sm:hidden shrink-0" style={{ color: `${opt.hex}80` }} aria-hidden="true" />
                 </button>
               ))}
-
-              {/* Lokacija */}
-              <div className="mt-4 sm:mt-6">
-                <div className="flex items-center gap-2 mb-2 sm:mb-3">
-                  <MapPin size={16} className="text-foreground/40 shrink-0 sm:w-5 sm:h-5" />
-                  <p className="text-sm sm:text-base font-semibold font-poppins">Novi Sad, Miloja Čiplića 51</p>
-                </div>
-                <div className="relative w-full aspect-[16/10] sm:aspect-[16/8] rounded-2xl sm:rounded-3xl overflow-hidden border-2 border-foreground/8 bg-foreground/4">
-                  {mapReady ? (
-                    <iframe
-                      src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2808.952530282901!2d19.795792112493817!3d45.248752670950566!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x475b116b6f148971%3A0xbae20345f88572f7!2sInfinity%20Laser%20Studio!5e0!3m2!1sen!2srs!4v1775850629842!5m2!1sen!2srs"
-                      className="absolute inset-0 w-full h-full animate-[fadeInUp_0.4s_ease-out]"
-                      style={{ border: 0 }}
-                      loading="lazy"
-                      referrerPolicy="no-referrer-when-downgrade"
-                      title="Lokacija Infinity Laser Studio — Miloja Čiplića 51, Novi Sad"
-                    />
-                  ) : (
-                    /* Same box, so nothing shifts when the map lands. */
-                    <div className="absolute inset-0 flex items-center justify-center" aria-hidden="true">
-                      <MapPin size={28} className="text-foreground/15" />
-                    </div>
-                  )}
-                </div>
-              </div>
             </div>
           )}
 
@@ -1580,7 +1651,6 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
           {/* ══ STEP 3: Date only ══════════════════════════════════════════════ */}
           {step === 3 && (
             <div className="flex flex-col gap-4">
-              <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/40 font-poppins mb-1">IZABERI DAN</p>
               {loadingBookableDays ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3" role="status" aria-label="Učitavanje slobodnih dana">
                   {Array.from({ length: 6 }, (_, i) => (
@@ -1648,14 +1718,13 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
           {/* ══ STEP 4: Time only ══════════════════════════════════════════════ */}
           {step === 4 && (
             <div className="flex flex-col gap-4">
-              <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/40 font-poppins mb-1">SLOBODNI TERMINI</p>
               {slotTaken && (
                 <div className="flex items-start gap-2 sm:gap-3 p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-amber-400/10 border border-amber-400/40 text-amber-200 text-sm sm:text-base font-poppins">
                   <AlertCircle size={16} className="shrink-0 mt-0.5" />
                   Izabrani termin je upravo zauzet. Izaberi drugo vreme - tvoji podaci su sačuvani.
                 </div>
               )}
-              {loadingSlots ? (
+              {loadingSlots || (!slotsError && !slotsReady) ? (
                 <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-1.5 sm:gap-2.5" role="status" aria-label="Učitavanje termina">
                   {Array.from({ length: 12 }, (_, i) => (
                     <Skeleton key={i} className="h-[42px] sm:h-[52px] rounded-lg sm:rounded-xl" />
@@ -1706,8 +1775,6 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
           {step === 5 && (
             // Personal + health data: always masked in Clarity recordings.
             <div className="flex flex-col gap-4 sm:gap-6" data-clarity-mask="true">
-              <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/40 font-poppins mb-1">VAŠI PODACI</p>
-
               <div>
                 <label htmlFor="bm-name" className="block text-xs sm:text-sm text-foreground/50 font-poppins mb-1 sm:mb-1.5">Ime i prezime *</label>
                 <input
@@ -2041,7 +2108,11 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-emerald-400/10 flex items-center justify-center mb-5 sm:mb-6">
                 <CheckCircle2 size={44} className="text-emerald-400 sm:w-13 sm:h-13" strokeWidth={1.5} />
               </div>
-              <h3 className="text-2xl sm:text-3xl md:text-4xl font-bold font-playfair mb-2 sm:mb-3">Termin zakazan! Čekamo Vas u Miloja Čiplića 51 u Novom Sadu</h3>
+              <h3 className="text-2xl sm:text-3xl md:text-4xl font-bold font-playfair mb-2 sm:mb-3">
+                {studio.address
+                  ? `Termin zakazan! Čekamo Vas u ${studio.address} ${studio.cityLocative}`
+                  : `Termin zakazan! Čekamo Vas ${studio.cityLocative}`}
+              </h3>
               <p className="text-sm sm:text-base text-foreground/50 font-poppins mb-6 sm:mb-8">Potvrda je poslata na {form.email}</p>
 
               {/* ── Stats banner: duration + animated price ── */}
@@ -2157,7 +2228,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
           </div>
 
           {/* ── Sticky footer: primary CTA always visible while scrolling ───────── */}
-          {(step === 2 || step === 3 || step === 4 || step === 5 || step === "success" || step === "preparation") && (
+          {(step === 2 || step === 3 || step === 5 || step === "success" || step === "preparation") && (
             <div className="shrink-0 sm:border-t sm:border-foreground/10 bg-[var(--bm-bg)] px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pt-5 sm:pb-5 shadow-[0_-12px_24px_-12px_rgba(0,0,0,0.6)]">
               <div className={COL_W}>
               {step === 2 && (
@@ -2196,10 +2267,6 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                 <p className="text-center text-[10px] sm:text-sm font-poppins text-foreground/45">
                   <span className="mr-1.5" style={{ color: accent.hex }}>{proof.mark}</span>{proof.line}
                 </p>
-              )}
-
-              {step === 4 && (
-                <p className="text-center text-[10px] sm:text-sm font-poppins text-foreground/40">Ništa se ne brini. Na prvom tretmanu se sve dogovaramo.</p>
               )}
 
               {step === 5 && (
@@ -2254,10 +2321,6 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
             </div>
           )}
         </div>
-
-        {/* Bottom accent bar - desktop only; on phones it read as a stray border
-            against the home indicator. */}
-        <div className="hidden sm:block h-1 bm-metal shrink-0" />
       </div>
     </div>
   );

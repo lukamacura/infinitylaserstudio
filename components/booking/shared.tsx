@@ -350,8 +350,8 @@ export const ACCENTS = {
 
 /** Step 1 gender cards - the surface gradient matches each gender's sheet. */
 export const GENDER_OPTIONS = [
-  { key: "zene",     label: "Žene",      sub: "Tretmani za žene",      Icon: Flower2,         hex: ACCENTS.zene.hex,     surface: "linear-gradient(120deg, #1E1017 0%, #120A0E 100%)" },
-  { key: "muskarci", label: "Muškarci",  sub: "Tretmani za muškarce",  Icon: PersonStanding,  hex: ACCENTS.muskarci.hex, surface: "linear-gradient(120deg, #161616 0%, #0B0B0C 100%)" },
+  { key: "zene",     label: "Žene",      sub: "Tretmani za žene",      image: "/pol/zenski.webp", Icon: Flower2,         hex: ACCENTS.zene.hex,     surface: "linear-gradient(120deg, #1E1017 0%, #120A0E 100%)" },
+  { key: "muskarci", label: "Muškarci",  sub: "Tretmani za muškarce",  image: "/pol/muski.webp",  Icon: PersonStanding,  hex: ACCENTS.muskarci.hex, surface: "linear-gradient(120deg, #161616 0%, #0B0B0C 100%)" },
 ] as const;
 
 /**
@@ -373,9 +373,4 @@ export function Skeleton({ className }: { className: string }) {
 }
 
 /** Pre-treatment instructions - shown on the "preparation" step of both modals. */
-export const PREPARATION_STEPS = [
-  { num: "01", text: "Pre prvog tretmana mora proći minimum mesec dana od poslednjeg čupanja dlačica bilo koje vrste." },
-  { num: "02", text: "Dlačice uklanjati isključivo brijačem ili kremom za depilaciju - nikako čupanjem." },
-  { num: "03", text: "Dan pre dolaska na tretman obrijati dlačice ili ih ukloniti depilacijskom kremom." },
-  { num: "04", text: "Na dan tretmana na kožu ne nanositi nikakve preparate (kreme, ulja, dezodorans)." },
-] as const;
+export { PREPARATION_STEPS } from "@/lib/preparation";

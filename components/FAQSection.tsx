@@ -55,32 +55,32 @@ export default function FAQSection() {
   const [open, setOpen] = useState<number | null>(0);
 
   return (
-    <section id="cenovnik" className="py-20 px-6 bg-cream">
+    <section id="faq" className="scroll-mt-24 section-y px-6 bg-background-alt">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
       />
       <Reveal className="max-w-3xl mx-auto">
         {/* Heading */}
-        <div className="text-center mb-14">
-          <span className="inline-flex items-center gap-2 font-poppins text-sm text-gray-500 mb-4">
-            <span className="w-6 h-px bg-teal inline-block" />
+        <div className="text-center section-head">
+          <span className="inline-flex items-center gap-2 font-poppins text-sm text-foreground/60 mb-4">
+            <span className="w-6 h-px bg-accent inline-block" />
             Česta pitanja
-            <span className="w-6 h-px bg-teal inline-block" />
+            <span className="w-6 h-px bg-accent inline-block" />
           </span>
-          <h2 className="font-playfair text-4xl md:text-5xl text-gray-800">
+          <h2 className="font-playfair text-4xl md:text-5xl text-foreground">
             Tvoja pitanja,{" "}
             <span className="relative inline-block">
               naši odgovori
               <svg className="absolute -bottom-1 left-0 w-full" viewBox="0 0 200 8" fill="none">
-                <path d="M2 6 Q50 1 100 5 Q150 9 198 3" stroke="#FCD6ED" strokeWidth="3" strokeLinecap="round" fill="none" />
+                <path d="M2 6 Q50 1 100 5 Q150 9 198 3" stroke="#DCA8A6" strokeWidth="3" strokeLinecap="round" fill="none" />
               </svg>
             </span>
           </h2>
         </div>
 
         {/* Accordion */}
-        <div className="flex flex-col divide-y divide-gray-100">
+        <div className="flex flex-col divide-y divide-foreground/8">
           {faqs.map((faq, i) => (
             <div key={i} className="py-5">
               <button
@@ -88,12 +88,12 @@ export default function FAQSection() {
                 aria-expanded={open === i}
                 onClick={() => setOpen(open === i ? null : i)}
               >
-                <span className="font-poppins text-base font-medium text-gray-800 group-hover:text-teal transition-colors">
+                <span className="font-poppins text-base font-medium text-foreground group-hover:text-accent transition-colors">
                   {faq.q}
                 </span>
                 <span
                   className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-colors ${
-                    open === i ? "bg-teal" : "bg-gray-100"
+                    open === i ? "bg-accent" : "bg-foreground/6"
                   }`}
                 >
                   <svg
@@ -101,15 +101,17 @@ export default function FAQSection() {
                     className={`w-3.5 h-3.5 transition-transform duration-300 ${open === i ? "rotate-45" : ""}`}
                     fill="none"
                   >
-                    <path d="M8 3v10M3 8h10" stroke={open === i ? "#1a1a1a" : "#6b7280"} strokeWidth="1.8" strokeLinecap="round" />
+                    <path d="M8 3v10M3 8h10" stroke={open === i ? "#1E1017" : "#B9A9AC"} strokeWidth="1.8" strokeLinecap="round" />
                   </svg>
                 </span>
               </button>
-              {open === i && (
-                <p className="mt-3 font-poppins text-sm text-gray-500 leading-relaxed pr-12">
-                  {faq.a}
-                </p>
-              )}
+              {/* Always in the page, so Google reads every answer - closed ones are only hidden. */}
+              <p
+                hidden={open !== i}
+                className="mt-3 font-poppins text-sm text-foreground/60 leading-relaxed pr-12"
+              >
+                {faq.a}
+              </p>
             </div>
           ))}
         </div>

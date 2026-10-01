@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import Image from "next/image";
 import {
   Palette,
@@ -11,87 +12,112 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-const highlights: { text: string; icon: LucideIcon }[] = [
-  { text: "4 talasne dužine (755, 808, 940, 1064 nm), za sve tipove kože i dlačica", icon: Palette },
-  { text: "Dioda snage 2400 W, maksimalna efikasnost i brzi rezultati", icon: Zap },
-  { text: "Superhladna sonda do -15 °C, bezbolan i siguran tretman", icon: Snowflake },
-  { text: "Više nastavaka za svaku regiju tela, od manje pristupačnih do velikih površina", icon: LayoutGrid },
-  { text: "Kamera sa 20x uvećanjem, analiza kože i dlake u realnom vremenu", icon: ScanSearch },
-  { text: "Android softver nove generacije, lak rad, čuvanje slika i video zapisa tretmana", icon: Smartphone },
-  { text: "Bluetooth i Wi-Fi, pametne opcije i dodatni komfor za operatera i klijenta", icon: Wifi },
-  { text: "Do 10 Hz frekvencija, epilacija, podmlađivanje i zatezanje kože", icon: Activity },
+const highlights: { title: string; detail: string; icon: LucideIcon }[] = [
+  { title: "Android softver", detail: "Lak rad i čuvanje zapisa tretmana", icon: Smartphone },
+  { title: "4 talasne dužine", detail: "Za sve tipove kože i dlačica", icon: Palette },
+  { title: "Dioda 2400 W", detail: "Brzi i efikasni rezultati", icon: Zap },
+  { title: "Do 10 Hz", detail: "Epilacija i zatezanje kože", icon: Activity },
+  { title: "Kamera 20x", detail: "Analiza kože i dlake uživo", icon: ScanSearch },
+  { title: "Sonda do -15 °C", detail: "Bezbolan i siguran tretman", icon: Snowflake },
+  { title: "Više nastavaka", detail: "Za svaku regiju tela", icon: LayoutGrid },
+  { title: "Bluetooth i Wi-Fi", detail: "Pametne opcije i komfor", icon: Wifi },
 ];
+
+function Arrow({ side }: { side: "left" | "right" }) {
+  return (
+    <span
+      aria-hidden
+      className={`flex w-5 shrink-0 items-center text-accent sm:w-10 lg:w-16 ${
+        side === "right" ? "-scale-x-100" : ""
+      }`}
+    >
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+      <span className="tech-line h-px flex-1 bg-accent/60" />
+      <svg viewBox="0 0 8 10" className="tech-tip -ml-px h-2.5 w-2 shrink-0" fill="currentColor">
+        <path d="M0 0l8 5-8 5z" />
+      </svg>
+    </span>
+  );
+}
+
+function Callouts({ items, side }: { items: typeof highlights; side: "left" | "right" }) {
+  return (
+    <ul
+      className="flex flex-col justify-around gap-3"
+      // Each side slides in from its own edge, toward the machine.
+      style={{ "--tech-from": side === "left" ? "-0.875rem" : "0.875rem" } as CSSProperties}
+    >
+      {items.map((h, i) => {
+        const Icon = h.icon;
+        return (
+          <li
+            key={h.title}
+            style={{ "--rv-i": i } as CSSProperties}
+            className={`tech-callout flex items-center gap-1.5 sm:gap-3 ${
+              side === "right" ? "flex-row-reverse" : ""
+            }`}
+          >
+            <div className={`min-w-0 flex-1 ${side === "left" ? "text-right" : "text-left"}`}>
+              <p className="font-poppins text-xs font-semibold leading-snug text-foreground sm:text-sm lg:text-base">
+                {h.title}
+              </p>
+              <p className="hidden font-poppins text-xs leading-snug text-foreground/60 sm:block lg:text-sm">
+                {h.detail}
+              </p>
+            </div>
+            <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent md:flex">
+              <Icon className="h-5 w-5" strokeWidth={1.75} aria-hidden />
+            </div>
+            <Arrow side={side} />
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 export default function ServiceHighlights() {
   return (
-    <section id="tech" className="py-20 px-6 bg-white">
+    <section id="tech" className="scroll-mt-24 section-y px-6 bg-background">
       <div className="max-w-6xl mx-auto">
         {/* Heading */}
-        <div className="text-center mb-4">
-          <span className="inline-flex items-center gap-2 font-poppins text-sm text-gray-500 mb-4">
-            <span className="w-6 h-px bg-teal inline-block" />
+        <div data-rv className="text-center mb-4">
+          <span className="inline-flex items-center gap-2 font-poppins text-sm text-foreground/60 mb-4">
+            <span className="w-6 h-px bg-accent inline-block" />
             Tehnologija
-            <span className="w-6 h-px bg-teal inline-block" />
+            <span className="w-6 h-px bg-accent inline-block" />
           </span>
-          <h2 className="font-playfair text-4xl md:text-5xl text-gray-800">
-            Koža kakvu si uvek htela.
+          <h2 className="font-playfair text-4xl md:text-5xl text-foreground">
+            Tehnologija iza epilacije.
           </h2>
         </div>
-        <p className="text-center font-poppins text-gray-500 text-sm mb-16 max-w-xl mx-auto leading-relaxed">
+        <p data-rv style={{ "--rv-i": 1 } as CSSProperties} className="text-center font-poppins text-foreground/60 text-sm section-head max-w-xl mx-auto leading-relaxed">
           Bez brijača, bez crvenila, bez jutarnjeg rituala koji niko nije tražio. Više od 2.000 klijentkinja već zna kako izgleda sloboda.
         </p>
 
-        {/* Three-column layout: 4 highlights | image | 4 highlights */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 lg:gap-12 items-center">
-          {/* Left highlights */}
-          <div className="flex flex-col gap-4">
-            {highlights.slice(0, 4).map((h, i) => {
-              const Icon = h.icon;
-              return (
-                <div
-                  key={i}
-                  className="flex items-center gap-4 rounded-2xl bg-gray-50/90 border border-gray-100 px-4 py-3.5 shadow-sm"
-                >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-teal/10 text-teal">
-                    <Icon className="h-5 w-5" strokeWidth={1.75} aria-hidden />
-                  </div>
-                  <p className="font-poppins text-sm text-gray-600 leading-relaxed flex-1 text-left md:text-right">{h.text}</p>
-                </div>
-              );
-            })}
-          </div>
+        {/* Callouts with arrows | image | callouts with arrows.
+            One trigger for the whole figure (`.tech-*` in globals.css), held
+            back until a good part of the machine is on screen. */}
+        <div
+          data-rv="group"
+          data-rv-ratio="0.35"
+          className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-stretch gap-1.5 sm:gap-3"
+        >
+          <Callouts items={highlights.slice(0, 4)} side="left" />
 
           {/* Center image */}
-          <div className="flex justify-center order-first md:order-0">
-            <div className="relative w-[20rem] h-96 md:w-md md:h-136">
-              <div className="absolute inset-12 md:inset-20 rounded-full bg-pink opacity-50" />
-              <Image
-                src="/services/aton-magnum.webp"
-                alt="ATON Magnum laser uređaj"
-                fill
-                className="object-contain z-10"
-                sizes="(max-width: 768px) 320px, 448px"
-              />
-            </div>
+          <div className="relative aspect-213/474 h-60 self-center sm:h-80 md:h-112">
+            <div className="tech-glow absolute -inset-x-8 inset-y-10 rounded-full bg-accent blur-2xl md:inset-y-16" />
+            <Image
+              src="/services/laser.webp"
+              alt="ATON Magnum laser uređaj"
+              fill
+              className="tech-machine object-contain z-10"
+              sizes="(max-width: 768px) 144px, 202px"
+            />
           </div>
 
-          {/* Right highlights */}
-          <div className="flex flex-col gap-4">
-            {highlights.slice(4, 8).map((h, i) => {
-              const Icon = h.icon;
-              return (
-                <div
-                  key={i}
-                  className="flex items-center gap-4 rounded-2xl bg-gray-50/90 border border-gray-100 px-4 py-3.5 shadow-sm"
-                >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-teal/10 text-teal">
-                    <Icon className="h-5 w-5" strokeWidth={1.75} aria-hidden />
-                  </div>
-                  <p className="font-poppins text-sm text-gray-600 leading-relaxed flex-1">{h.text}</p>
-                </div>
-              );
-            })}
-          </div>
+          <Callouts items={highlights.slice(4, 8)} side="right" />
         </div>
       </div>
     </section>

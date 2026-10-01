@@ -83,6 +83,17 @@ export function computeBundle(regions: PricedRegion[], sessions: number): Bundle
   return { sessions, originalTotal, finalTotal, savings, pricePerSession, blendedPct };
 }
 
+/**
+ * Pre-calculated showcase bundles for the landing page (women's list prices
+ * from the catalog). The first one is also the laser side of the price
+ * comparison, so both sections always quote the same number.
+ */
+export const SHOWCASE_BUNDLES = [
+  { title: "Celo telo", subtitle: "Cela površina tela", price: 8500, sessions: 8, keywords: ["telo"] },
+  { title: "Celo lice", subtitle: "Kompletan tretman lica", price: 2500, sessions: 10, keywords: ["lice"] },
+  { title: "Noge + Intima", subtitle: "Najtraženija kombinacija", price: 6000, sessions: 6, keywords: ["noge", "intima"] },
+];
+
 // ── Promo-code encoding (no DB schema change) ───────────────────────────────────
 // A bundle is recorded in reservations.promo_code:
 //   • purchase   → "paket-<sessions>-<finalTotal>"      (charged the full total)

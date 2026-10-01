@@ -6,7 +6,7 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        disallow: ["/admin", "/api/"],
+        disallow: ["/admin", "/finances", "/stats", "/api/"],
       },
     ],
     sitemap: "https://www.infinitylaserstudio.com/sitemap.xml",

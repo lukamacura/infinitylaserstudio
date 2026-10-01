@@ -1,6 +1,5 @@
 import { supabase, type BusinessWindow } from "./supabase";
-
-export type { BusinessWindow };
+import type { LocationId } from "./locations";
 
 /** Weekly template: index 0 = Monday … 6 = Sunday. Empty array = closed that day. */
 export type WeeklyTemplate = BusinessWindow[][];
@@ -71,12 +70,12 @@ export function buildCandidateDates(
   return dates;
 }
 
-/** Load the weekly template + all future overrides (date ≥ today) from Supabase. */
-export async function fetchAvailability(): Promise<AvailabilityData> {
+/** Load one studio's weekly template + all its future overrides (date ≥ today). */
+export async function fetchAvailability(location: LocationId): Promise<AvailabilityData> {
   const todayStr = toDateStr(new Date());
   const [tplRes, ovrRes] = await Promise.all([
-    supabase.from("weekly_schedule").select("weekday, windows"),
-    supabase.from("availability_overrides").select("date, windows").gte("date", todayStr),
+    supabase.from("weekly_schedule").select("weekday, windows").eq("location", location),
+    supabase.from("availability_overrides").select("date, windows").eq("location", location).gte("date", todayStr),
   ]);
   // A failed read must not pass for "closed every day".
   if (tplRes.error || ovrRes.error) throw new Error("availability load failed");

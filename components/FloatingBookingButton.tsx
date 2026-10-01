@@ -2,10 +2,14 @@
 
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
+import { usePathname } from "next/navigation";
+import { ArrowRight } from "lucide-react";
 
 const BookingModal = dynamic(() => import("./BookingModal"), { ssr: false });
 
 export default function FloatingBookingButton() {
+  const pathname = usePathname();
+  const isPrivatePage = /^\/(admin|finances|stats)(\/|$)/.test(pathname ?? "");
   const [isOpen, setIsOpen] = useState(false);
   const [visible, setVisible] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -24,6 +28,7 @@ export default function FloatingBookingButton() {
   // waiting on a network round-trip. Kept off the critical path: a few seconds
   // after load, and only when the browser is idle.
   useEffect(() => {
+    if (isPrivatePage) return;
     let idleId: number | undefined;
     const warm = () => { void import("./BookingModal"); };
     const t = setTimeout(() => {
@@ -34,42 +39,30 @@ export default function FloatingBookingButton() {
       clearTimeout(t);
       if (idleId !== undefined) window.cancelIdleCallback(idleId);
     };
-  }, []);
+  }, [isPrivatePage]);
+
+  // The admin pages are for staff - no booking button over the calendar.
+  if (isPrivatePage) return null;
 
   return (
     <>
-      <style>{`
-        /* The shadow is painted once and only its opacity breathes: animating
-           box-shadow itself repaints on every frame, for as long as the page is open. */
-        @keyframes floatingGlow {
-          0%, 100% { opacity: 0.55; }
-          50% { opacity: 1; }
-        }
-        .floating-glow::before {
-          content: "";
-          position: absolute;
-          inset: 0;
-          border-radius: inherit;
-          pointer-events: none;
-          box-shadow: 0 0 28px 10px rgba(230,100,140,0.55), 0 0 56px 18px rgba(230,100,140,0.25);
-          animation: floatingGlow 2.2s ease-in-out infinite;
-          will-change: opacity;
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .floating-glow::before { animation: none; }
-        }
-      `}</style>
-
-      {/* Always rendered; `invisible` removes it from focus/clicks while hidden. */}
-      <button
-        onClick={() => setIsOpen(true)}
-        className={`floating-glow cursor-pointer fixed bottom-6 left-1/2 -translate-x-1/2 z-40 font-poppins font-semibold text-base px-10 py-3.5 rounded-full bg-pink text-black tracking-wide transition-[opacity,translate,scale,visibility] duration-300 ease-out hover:scale-106 active:scale-97 ${
+      {/* Same CTA as the hero. Always rendered; `invisible` removes it from focus/clicks while hidden. */}
+      <span
+        className={`cta-halo fixed bottom-6 left-1/2 -translate-x-1/2 z-40 inline-flex transition-[opacity,translate,visibility] duration-300 ease-out ${
           visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5 invisible"
         }`}
-        aria-label="Zakaži tretman"
       >
-        Zakaži
-      </button>
+        <button
+          onClick={() => setIsOpen(true)}
+          className="group metal relative overflow-hidden inline-flex items-center justify-between gap-5 h-14 lg:h-16 pl-8 pr-2.5 rounded-full text-base lg:text-[17px] font-bold tracking-[0.06em] whitespace-nowrap cursor-pointer transition-transform duration-300 ease-out hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
+        >
+          <span className="cta-sweep" aria-hidden="true" />
+          <span className="relative">ZAKAŽI TERMIN</span>
+          <span className="relative flex items-center justify-center w-9 h-9 lg:w-11 lg:h-11 rounded-full bg-on-accent text-accent transition-transform duration-300 ease-out group-hover:translate-x-1">
+            <ArrowRight size={18} strokeWidth={2.2} />
+          </span>
+        </button>
+      </span>
 
       {mounted && <BookingModal isOpen={isOpen} onClose={() => setIsOpen(false)} />}
     </>

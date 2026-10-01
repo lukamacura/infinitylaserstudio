@@ -10,7 +10,7 @@ const members = [
     quote: "Svaki tretman je priča za sebe.",
     bio: "Preciznost, toplina i posvećenost - Mila svaku klijentkinju dočeka s pažnjom kakvu zaslužuje.",
     src: "/team/mila.webp",
-    accent: "#ACE6E4",
+    accent: "#DCA8A6",
   },
   {
     name: "Tanja",
@@ -18,27 +18,27 @@ const members = [
     quote: "Rezultati govore. Osmesi potvrđuju.",
     bio: "Mirna ruka, brz tretman i uvek raspoložena za razgovor. Tanja se stara da se iz ordinacije izađe s osmehom - i bez dlaka. Specijalizovana za tretmane lica i osetljivih zona.",
     src: "/team/tanja.webp",
-    accent: "#FCCAE2",
+    accent: "#9E6769",
   },
 ];
 
 export default function TeamSection() {
   return (
-    <section className="py-20 px-6 bg-white">
+    <section className="section-y px-6 bg-background">
       <div className="max-w-3xl mx-auto">
         {/* Eyebrow */}
         <Reveal className="text-center mb-4" y={16} duration={0.6} margin="-60px">
-          <span className="inline-flex items-center gap-2 font-poppins text-sm text-gray-500">
-            <span className="w-6 h-px bg-teal inline-block" />
+          <span className="inline-flex items-center gap-2 font-poppins text-sm text-foreground/60">
+            <span className="w-6 h-px bg-accent inline-block" />
             Upoznaj tim
-            <span className="w-6 h-px bg-teal inline-block" />
+            <span className="w-6 h-px bg-accent inline-block" />
           </span>
         </Reveal>
 
         {/* Headline */}
         <Reveal
           as="h2"
-          className="font-playfair text-4xl md:text-5xl text-gray-800 text-center leading-tight mb-4"
+          className="font-playfair text-4xl md:text-5xl text-foreground text-center leading-tight mb-4"
           y={20}
           delay={0.08}
           margin="-60px"
@@ -47,14 +47,14 @@ export default function TeamSection() {
           <span className="relative inline-block">
             možeš verovati
             <svg className="absolute -bottom-1 left-0 w-full" viewBox="0 0 200 8" fill="none">
-              <path d="M2 6 Q50 1 100 5 Q150 9 198 4" stroke="#FCCAE2" strokeWidth="3" strokeLinecap="round" fill="none" />
+              <path d="M2 6 Q50 1 100 5 Q150 9 198 4" stroke="#DCA8A6" strokeWidth="3" strokeLinecap="round" fill="none" />
             </svg>
           </span>
         </Reveal>
 
         <Reveal
           as="p"
-          className="text-center font-poppins text-gray-500 text-base mb-12"
+          className="text-center font-poppins text-foreground/60 text-base section-head"
           y={16}
           duration={0.6}
           delay={0.15}
@@ -67,14 +67,14 @@ export default function TeamSection() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           {members.map((m, i) => (
             <Reveal key={m.name} y={40} delay={0.15 + i * 0.18} margin="-60px" className="flex">
-            <div className="group relative flex-1 bg-cream rounded-3xl overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-transform duration-300 ease-out hover:-translate-y-1.5">
+            <div className="group relative flex-1 bg-surface rounded-3xl overflow-hidden shadow-sm border border-foreground/8 flex flex-col transition-transform duration-300 ease-out hover:-translate-y-1.5">
               {/* Photo */}
               <div className="relative w-full aspect-4/5 overflow-hidden">
                 <Image
                   src={m.src}
                   alt={m.name}
                   fill
-                  sizes="(max-width: 640px) 100vw, 50vw"
+                  sizes="(max-width: 640px) 100vw, 372px"
                   className="object-cover object-top transition-transform duration-700 ease-out group-hover:scale-105"
                 />
                 {/* Gradient overlay */}
@@ -96,12 +96,12 @@ export default function TeamSection() {
               {/* Content */}
               <div className="p-5 flex flex-col gap-3 flex-1">
                 <blockquote
-                  className="font-playfair italic text-gray-700 text-base leading-snug border-l-[3px] pl-3"
+                  className="font-playfair italic text-foreground/85 text-base leading-snug border-l-[3px] pl-3"
                   style={{ borderColor: m.accent }}
                 >
                   &ldquo;{m.quote}&rdquo;
                 </blockquote>
-                <p className="font-poppins text-sm text-gray-500 leading-relaxed">{m.bio}</p>
+                <p className="font-poppins text-sm text-foreground/60 leading-relaxed">{m.bio}</p>
               </div>
             </div>
             </Reveal>

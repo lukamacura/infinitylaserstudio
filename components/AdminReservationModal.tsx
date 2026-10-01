@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import type { CSSProperties } from "react";
+import Image from "next/image";
 import {
-  X, ArrowLeft, Loader2, CheckCircle2, AlertCircle, FileText,
+  X, ArrowLeft, Loader2, CheckCircle2, AlertCircle, FileText, ChevronRight,
 } from "lucide-react";
 import {
   supabase, calcBookingDuration, calcTotalDuration, getAvailableSlots,
@@ -16,6 +17,9 @@ import {
 import type { Service } from "@/lib/database.types";
 import { parseBundlePromo, bundleRedeemCode } from "@/lib/bundles";
 import { STUDENT_PROMO_CODE, isStudentPromoCode } from "@/lib/pricing";
+import { fetchPriceRows, PriceBook } from "@/lib/prices";
+import { getLocation, fullAddress, type LocationId } from "@/lib/locations";
+import { escapeLike } from "@/lib/fetchAll";
 import {
   type Gender, type DayOption,
   getIcon, getRegionArt, preloadRegionArt, RegionThumb, THUMB_SIZES, HERO_THUMB_SIZES,
@@ -35,6 +39,8 @@ import {
 
 interface AdminReservationModalProps {
   isOpen: boolean;
+  /** The studio the reservation is created for - the one open in the admin panel. */
+  location: LocationId;
   onClose: () => void;
   onSuccess?: () => void;
 }
@@ -84,22 +90,27 @@ function isIlsPromoCode(raw: string): boolean {
   return /^ils-.+$/i.test(raw.trim());
 }
 
-const STEP_LABELS: Record<Step, [string, string]> = {
-  1: ["KORAK 1 OD 4", "Za koga zakazuješ?"],
-  2: ["KORAK 1 OD 4", "Odaberi regije za tretman"],
-  3: ["KORAK 2 OD 4", "Izaberi datum"],
-  4: ["KORAK 3 OD 4", "Izaberi vreme"],
-  5: ["KORAK 4 OD 4", "Podaci o klijentu"],
-  success: ["POTVRĐENO", "Rezervacija je kreirana"],
-  preparation: ["PRE TRETMANA", "Šta klijent treba da uradi?"],
+const STEP_LABELS: Record<Step, string> = {
+  1: "Za koga zakazuješ?",
+  2: "Odaberi regije za tretman",
+  3: "Izaberi datum",
+  4: "Izaberi vreme",
+  5: "Podaci o klijentu",
+  success: "Rezervacija je kreirana",
+  preparation: "Šta klijent treba da uradi?",
 };
+
+/** The flow in order - the progress line fills one share per screen. */
+const STEP_ORDER: Step[] = [1, 2, 3, 4, 5];
 
 // ═════════════════════════════════════════════════════════════════════════════
 export default function AdminReservationModal({
   isOpen,
+  location,
   onClose,
   onSuccess,
 }: AdminReservationModalProps) {
+  const studio = getLocation(location);
   const [isAnimating, setIsAnimating] = useState(false);
   const [step, setStep]               = useState<Step>(1);
   const [gender, setGender]           = useState<Gender | null>(null);
@@ -118,6 +129,8 @@ export default function AdminReservationModal({
   const [slotsFor, setSlotsFor]           = useState<string | null>(null);
   const [slotsError, setSlotsError]       = useState(false);
   const [slotsReloadKey, setSlotsReloadKey] = useState(0);
+  /** Synchronous double-submit guard (state updates land a render too late). */
+  const submitLockRef = useRef(false);
   const [form, setForm]                   = useState({ name: "", email: "", phone: "", notes: "" });
   const [fieldErrors, setFieldErrors]     = useState({ name: false, email: false });
   const [submitting, setSubmitting]       = useState(false);
@@ -221,28 +234,34 @@ export default function AdminReservationModal({
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
-    fetchAvailability()
+    fetchAvailability(location)
       .then((data) => { if (!cancelled) setAvailability(data); })
       .catch(() => { if (!cancelled) setAvailability(EMPTY_AVAILABILITY); });
     return () => { cancelled = true; };
-  }, [isOpen]);
+  }, [isOpen, location]);
 
   // Always a fresh services fetch here (no session cache): prices can be edited
-  // from the admin panel and this modal must reflect them right away.
+  // in the database and this modal must reflect them right away. Prices are
+  // this studio's current ones.
   useEffect(() => {
     if (!servicesKey || !gender) return;
     preloadRegionArt(gender);
     let cancelled = false;
-    supabase
-      .from("services")
-      .select("*")
-      .eq("gender", gender)
-      .order("sort_order")
+    Promise.all([
+      supabase
+        .from("services")
+        .select("*")
+        .eq("gender", gender)
+        .eq("active", true)
+        .order("sort_order"),
+      fetchPriceRows(),
+    ])
       .then(
-        ({ data, error }) => {
+        ([{ data, error }, prices]) => {
           if (cancelled) return;
-          if (error || !data || data.length === 0) setServicesError(true);
-          setServices(data ?? []);
+          const priced = data && prices ? new PriceBook(prices).apply(data, location) : [];
+          if (error || !prices || priced.length === 0) setServicesError(true);
+          setServices(priced);
           setServicesFor(servicesKey);
         },
         () => {
@@ -253,7 +272,7 @@ export default function AdminReservationModal({
         },
       );
     return () => { cancelled = true; };
-  }, [gender, servicesKey]);
+  }, [gender, servicesKey, location]);
 
   // ── Animated price count-down on success screen ───────────────────────────
   useEffect(() => {
@@ -286,6 +305,7 @@ export default function AdminReservationModal({
       .from("reservations")
       .select("start_time, end_time, status")
       .eq("date", selectedDate)
+      .eq("location", location)
       .then(
         ({ data, error }) => {
           if (cancelled) return;
@@ -300,7 +320,7 @@ export default function AdminReservationModal({
         },
       );
     return () => { cancelled = true; };
-  }, [selectedDate, step, slotsKey]);
+  }, [selectedDate, step, slotsKey, location]);
 
   // Every step starts at the top - otherwise a long previous step (services)
   // leaves the next one scrolled past its opening.
@@ -397,7 +417,7 @@ export default function AdminReservationModal({
     const { data, error } = await supabase
       .from("reservations")
       .select("id")
-      .ilike("customer_email", trimmed)
+      .ilike("customer_email", escapeLike(trimmed))
       .eq("status", "confirmed")
       .limit(1)
       .maybeSingle();
@@ -449,18 +469,15 @@ export default function AdminReservationModal({
         return;
       }
       setCheckingPromo(true);
-      const { data, error } = await supabase
-        .from("reservations")
-        .select("id")
-        .ilike("customer_email", email)
-        .eq("promo_code", raw)
-        .eq("status", "confirmed")
-        .limit(1)
-        .maybeSingle();
+      // Same check as the public form: pre-paid sessions still free for this
+      // email + code. A bundle of 3 can no longer be redeemed a 4th time.
+      const { data: left, error } = await supabase.rpc("bundle_sessions_left", {
+        p_email: email, p_code: raw.toLowerCase(), p_location: location,
+      });
       setCheckingPromo(false);
-      if (!error && data) {
+      if (!error && (left ?? 0) > 0) {
         setPromoStatus("valid");
-        setAppliedPromoCode(raw);
+        setAppliedPromoCode(raw.toLowerCase());
         setPromoKind("bundle_redeem");
       } else {
         setPromoStatus("invalid");
@@ -476,6 +493,7 @@ export default function AdminReservationModal({
   }
 
   async function handleSubmit() {
+    if (submitLockRef.current) return;
     const errors = { name: !form.name.trim(), email: !form.email.trim() };
     setFieldErrors(errors);
     if (errors.name || errors.email) return;
@@ -484,14 +502,25 @@ export default function AdminReservationModal({
       return;
     }
 
+    submitLockRef.current = true;
     setSubmitting(true);
     setSubmitError(null);
+    try {
+      await submitReservation();
+    } catch {
+      setSubmitError("Greška pri kreiranju rezervacije. Proveri internet vezu i pokušaj ponovo.");
+    } finally {
+      submitLockRef.current = false;
+      setSubmitting(false);
+    }
+  }
 
+  async function submitReservation() {
     const emailTrim = form.email.trim();
     const { data: existingReservation } = await supabase
       .from("reservations")
       .select("id")
-      .ilike("customer_email", emailTrim)
+      .ilike("customer_email", escapeLike(emailTrim))
       .eq("status", "confirmed")
       .limit(1)
       .maybeSingle();
@@ -536,6 +565,29 @@ export default function AdminReservationModal({
       : calcBookingDuration(selectedServices);
     const endTime = minutesToTime(timeToMinutes(selectedTime) + durationForReservation);
 
+    // The free times on screen were loaded when the time step opened. A client
+    // may have booked the same one from the site since - look again right
+    // before saving, so two people never get the same term.
+    const { data: busy, error: busyError } = await supabase
+      .from("reservations")
+      .select("start_time, end_time, status")
+      .eq("date", selectedDate)
+      .eq("location", location);
+    if (busyError || !busy) {
+      setSubmitError("Provera termina nije uspela. Proveri internet vezu i pokušaj ponovo.");
+      return;
+    }
+    const startMin = timeToMinutes(selectedTime);
+    const endMin   = startMin + durationForReservation;
+    const clash = busy.some((r) =>
+      r.status !== "cancelled" && r.status !== "blacklisted" &&
+      startMin < timeToMinutes(r.end_time) && endMin > timeToMinutes(r.start_time));
+    if (clash) {
+      setSubmitError("Ovaj termin je upravo zauzet. Vrati se korak nazad i izaberi drugo vreme.");
+      setSlotsReloadKey((k) => k + 1);
+      return;
+    }
+
     const { data: res, error } = await supabase
       .from("reservations")
       .insert({
@@ -549,20 +601,27 @@ export default function AdminReservationModal({
         status:         "confirmed",
         notes:          notesForRecord,
         promo_code:     promoForRecord,
+        location,
       })
       .select()
       .single();
 
     if (error || !res) {
       setSubmitError("Greška pri kreiranju rezervacije. Pokušajte ponovo.");
-      setSubmitting(false);
       return;
     }
 
     if (selectedIds.length > 0) {
-      await supabase.from("reservation_services").insert(
+      const { error: servicesError } = await supabase.from("reservation_services").insert(
         selectedIds.map((id) => ({ reservation_id: res.id, service_id: id }))
       );
+      if (servicesError) {
+        // A reservation without regions would sit in the calendar empty and
+        // count as 0 RSD - take it back and let the admin try again.
+        await supabase.from("reservations").delete().eq("id", res.id);
+        setSubmitError("Regije nisu sačuvane, rezervacija nije napravljena. Pokušajte ponovo.");
+        return;
+      }
     }
 
     const bookingRefValue = res.id.slice(-8).toUpperCase();
@@ -584,18 +643,21 @@ export default function AdminReservationModal({
         discounted_price: finalForSubmit,
         promo_code:       promoForRecord ?? "redovna cena",
         booking_ref:      bookingRefValue,
+        location,
+        location_name:    studio.name,
+        location_address: fullAddress(studio),
       }),
     }).catch(() => {});
 
     setIsReturningCustomer(returningSubmit);
     setStep("success");
-    setSubmitting(false);
     onSuccess?.();
   }
 
   if (!isOpen) return null;
 
-  const [stepLabel, stepSub] = STEP_LABELS[step];
+  const flowIdx = STEP_ORDER.indexOf(step);
+  const progress = flowIdx === -1 ? 1 : (flowIdx + 1) / (STEP_ORDER.length + 1);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -609,7 +671,7 @@ export default function AdminReservationModal({
     >
       {/* Backdrop */}
       <div
-        className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${isAnimating ? "opacity-100" : "opacity-0"}`}
+        className={`absolute inset-0 bg-black/60 transition-opacity duration-300 ${isAnimating ? "opacity-100" : "opacity-0"}`}
         onClick={handleClose}
       />
 
@@ -640,13 +702,29 @@ export default function AdminReservationModal({
 
         {/* Step indicator */}
         <div className={`px-4 sm:px-6 pb-3 sm:pb-6 shrink-0 ${COL_W}`}>
-          <p
-            className="text-xs sm:text-[13px] text-foreground/50 tracking-[3px] font-semibold font-poppins"
-            style={gender ? { color: accent.hex } : undefined}
+          <div
+            className="h-1 rounded-full bg-foreground/10 overflow-hidden"
+            role="progressbar"
+            aria-label="Napredak zakazivanja"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(progress * 100)}
           >
-            {stepLabel}
-          </p>
-          <p className="text-sm sm:text-base text-foreground/60 font-poppins mt-1">{stepSub}</p>
+            <div
+              className="h-full rounded-full bg-foreground/50 transition-[width] duration-500 ease-out motion-reduce:transition-none"
+              style={{ width: `${progress * 100}%`, ...(gender ? { backgroundColor: accent.hex } : {}) }}
+            />
+          </div>
+          <div className="flex items-baseline justify-between gap-3 mt-4">
+            <p className="text-lg sm:text-xl font-medium leading-snug text-foreground/90 font-poppins">{STEP_LABELS[step]}</p>
+            {/* Admin only: which studio this reservation is being created for. */}
+            <span
+              className="shrink-0 text-[10px] sm:text-xs font-semibold tracking-widest text-foreground/68 font-poppins"
+              style={gender ? { color: accent.hex } : undefined}
+            >
+              {studio.name.toUpperCase()}
+            </span>
+          </div>
         </div>
 
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
@@ -655,30 +733,34 @@ export default function AdminReservationModal({
 
           {/* ══ STEP 1: Gender ══════════════════════════════════════════════ */}
           {step === 1 && (
-            <div className="flex flex-col gap-3 py-2">
-              {GENDER_OPTIONS.map((opt) => (
+            <div className="flex flex-col gap-4 sm:grid sm:grid-cols-2 py-2">
+              {GENDER_OPTIONS.map((opt, index) => (
                 <button
                   key={opt.key}
                   type="button"
                   onClick={() => handleGenderSelect(opt.key)}
                   onPointerEnter={() => preloadRegionArt(opt.key)}
                   onFocus={() => preloadRegionArt(opt.key)}
-                  className="flex items-center gap-4 sm:gap-5 w-full p-5 sm:p-6 rounded-2xl sm:rounded-3xl border-2 hover:brightness-125 active:scale-[0.99] transition-all text-left cursor-pointer"
-                  style={{ backgroundImage: opt.surface, borderColor: `${opt.hex}40` }}
+                  style={{ ...cascade(index, 60, 4), backgroundImage: opt.surface, borderColor: `${opt.hex}40` }}
+                  className="bm-card-in flex flex-row sm:flex-col items-center text-left sm:text-center gap-4 w-full px-4 sm:px-3 py-5 sm:py-8 rounded-2xl sm:rounded-3xl border-2 hover:brightness-125 active:scale-[0.98] transition-all cursor-pointer"
                 >
                   <div
-                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl flex items-center justify-center shrink-0 border"
-                    style={{ backgroundColor: `${opt.hex}1A`, borderColor: `${opt.hex}33` }}
+                    className="relative w-24 h-24 sm:w-32 sm:h-32 rounded-full overflow-hidden border-2 shrink-0"
+                    style={{ backgroundColor: `${opt.hex}1A`, borderColor: `${opt.hex}55` }}
                   >
-                    <opt.Icon size={28} style={{ color: opt.hex }} className="sm:w-8 sm:h-8" />
+                    <Image
+                      src={opt.image}
+                      alt={opt.sub}
+                      fill
+                      sizes="(max-width: 640px) 96px, 128px"
+                      className="object-cover"
+                    />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-base sm:text-lg font-bold font-playfair tracking-wide" style={{ color: opt.hex }}>{opt.label}</p>
-                    <p className="text-xs sm:text-sm text-foreground/50 font-poppins mt-0.5">{opt.sub}</p>
+                  <div className="min-w-0 flex-1 sm:flex-none">
+                    <p className="text-xl font-bold font-playfair tracking-wide" style={{ color: opt.hex }}>{opt.label}</p>
+                    <p className="text-sm text-foreground/68 font-poppins mt-0.5">{opt.sub}</p>
                   </div>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={opt.hex} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 sm:w-6 sm:h-6">
-                    <path d="M9 18l6-6-6-6" />
-                  </svg>
+                  <ChevronRight size={20} className="sm:hidden shrink-0" style={{ color: `${opt.hex}80` }} aria-hidden="true" />
                 </button>
               ))}
             </div>
@@ -703,7 +785,7 @@ export default function AdminReservationModal({
                   ))}
                 </div>
               ) : servicesError ? (
-                <div className="flex flex-col items-center gap-3 p-5 rounded-xl sm:rounded-2xl bg-foreground/5 text-foreground/60 text-sm sm:text-base font-poppins text-center">
+                <div className="flex flex-col items-center gap-3 p-5 rounded-xl sm:rounded-2xl bg-foreground/5 text-foreground/76 text-sm sm:text-base font-poppins text-center">
                   <span className="flex items-center gap-2"><AlertCircle size={16} />Tretmani trenutno ne mogu da se učitaju.</span>
                   <button
                     type="button"
@@ -759,7 +841,7 @@ export default function AdminReservationModal({
                         )}
                         <div className="relative flex-1 min-w-0">
                           <p className="text-base sm:text-lg font-bold font-poppins">{service.name}</p>
-                          <span className="block text-[11px] sm:text-[13px] text-foreground/50 font-poppins leading-snug mt-0.5">
+                          <span className="block text-[11px] sm:text-[13px] text-foreground/68 font-poppins leading-snug mt-0.5">
                             Sve regije u jednom tretmanu - najbolji odnos cene i rezultata
                           </span>
                           <span className="block text-sm sm:text-base font-bold font-poppins mt-1" style={{ color: accent.hex }}>
@@ -802,12 +884,12 @@ export default function AdminReservationModal({
                       />
                     ) : (
                       <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl flex items-center justify-center shrink-0 transition-colors ${isSelected ? accent.bgMed : "bg-foreground/5"}`}>
-                        <Icon size={20} style={{ color: isSelected ? accent.hex : undefined }} className={`sm:w-6 sm:h-6 ${isSelected ? "" : "text-foreground/40"}`} />
+                        <Icon size={20} style={{ color: isSelected ? accent.hex : undefined }} className={`sm:w-6 sm:h-6 ${isSelected ? "" : "text-foreground/60"}`} />
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm sm:text-base font-semibold font-poppins">{service.name}</p>
-                      <span className="text-xs sm:text-sm text-foreground/40 font-poppins mt-0.5">
+                      <span className="text-xs sm:text-sm text-foreground/60 font-poppins mt-0.5">
                         {formatPrice(service.price)} RSD
                       </span>
                     </div>
@@ -829,9 +911,9 @@ export default function AdminReservationModal({
           {/* ══ STEP 3: Date only ══════════════════════════════════════════════ */}
           {step === 3 && (
             <div className="flex flex-col gap-4">
-              <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/40 font-poppins mb-1">IZABERI DAN</p>
+              <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/60 font-poppins mb-1">IZABERI DAN</p>
               {dayOptions.length === 0 ? (
-                <div className="flex items-center gap-2 sm:gap-3 p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-foreground/5 text-foreground/50 text-sm sm:text-base font-poppins">
+                <div className="flex items-center gap-2 sm:gap-3 p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-foreground/5 text-foreground/68 text-sm sm:text-base font-poppins">
                   <AlertCircle size={16} />
                   Nema dostupnih dana.
                 </div>
@@ -864,7 +946,7 @@ export default function AdminReservationModal({
                         >
                           {day.label}
                         </p>
-                        <p className="text-xs sm:text-sm text-foreground/50 font-poppins mt-0.5">{day.shortDate}</p>
+                        <p className="text-xs sm:text-sm text-foreground/68 font-poppins mt-0.5">{day.shortDate}</p>
                       </button>
                     );
                   })}
@@ -876,7 +958,7 @@ export default function AdminReservationModal({
           {/* ══ STEP 4: Time only ══════════════════════════════════════════════ */}
           {step === 4 && (
             <div className="flex flex-col gap-4">
-              <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/40 font-poppins mb-1">SLOBODNI TERMINI</p>
+              <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/60 font-poppins mb-1">SLOBODNI TERMINI</p>
               {loadingSlots ? (
                 <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-1.5 sm:gap-2.5" role="status" aria-label="Učitavanje termina">
                   {Array.from({ length: 12 }, (_, i) => (
@@ -884,7 +966,7 @@ export default function AdminReservationModal({
                   ))}
                 </div>
               ) : slotsError ? (
-                <div className="flex flex-col items-center gap-3 p-5 rounded-xl sm:rounded-2xl bg-foreground/5 text-foreground/60 text-sm sm:text-base font-poppins text-center">
+                <div className="flex flex-col items-center gap-3 p-5 rounded-xl sm:rounded-2xl bg-foreground/5 text-foreground/76 text-sm sm:text-base font-poppins text-center">
                   <span className="flex items-center gap-2"><AlertCircle size={16} />Termini trenutno ne mogu da se učitaju.</span>
                   <button
                     type="button"
@@ -896,7 +978,7 @@ export default function AdminReservationModal({
                   </button>
                 </div>
               ) : availableSlots.length === 0 ? (
-                <div className="flex items-center gap-2 sm:gap-3 p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-foreground/5 text-foreground/50 text-sm sm:text-base font-poppins">
+                <div className="flex items-center gap-2 sm:gap-3 p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-foreground/5 text-foreground/68 text-sm sm:text-base font-poppins">
                   <AlertCircle size={16} />
                   Nema slobodnih termina za ovaj datum.
                 </div>
@@ -926,10 +1008,10 @@ export default function AdminReservationModal({
           {/* ══ STEP 5: Podaci o klijentu ═══════════════════════════════════════════ */}
           {step === 5 && (
             <div className="flex flex-col gap-4 sm:gap-6">
-              <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/40 font-poppins mb-1">PODACI O KLIJENTU</p>
+              <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/60 font-poppins mb-1">PODACI O KLIJENTU</p>
 
               <div>
-                <label htmlFor="arm-name" className="block text-xs sm:text-sm text-foreground/50 font-poppins mb-1 sm:mb-1.5">Ime i prezime *</label>
+                <label htmlFor="arm-name" className="block text-xs sm:text-sm text-foreground/68 font-poppins mb-1 sm:mb-1.5">Ime i prezime *</label>
                 <input
                   id="arm-name"
                   name="name"
@@ -948,7 +1030,7 @@ export default function AdminReservationModal({
               </div>
 
               <div>
-                <label htmlFor="arm-email" className="block text-xs sm:text-sm text-foreground/50 font-poppins mb-1 sm:mb-1.5">Email *</label>
+                <label htmlFor="arm-email" className="block text-xs sm:text-sm text-foreground/68 font-poppins mb-1 sm:mb-1.5">Email *</label>
                 <input
                   id="arm-email"
                   name="email"
@@ -966,6 +1048,12 @@ export default function AdminReservationModal({
                     setForm((p) => ({ ...p, email: e.target.value }));
                     setFieldErrors((p) => ({ ...p, email: false }));
                     setIsReturningCustomer(null);
+                    // A package code was checked against the old email.
+                    if (promoKind === "bundle_redeem") {
+                      setPromoStatus("idle");
+                      setAppliedPromoCode(null);
+                      setPromoKind("none");
+                    }
                   }}
                   className={`w-full px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl border-2 focus:outline-none font-poppins text-sm sm:text-base transition-colors ${fieldErrors.email ? "border-red-400/70 bg-red-500/10" : "border-foreground/10"}`}
                   onFocus={(e) => { if (!fieldErrors.email) e.target.style.borderColor = accent.hex; }}
@@ -976,17 +1064,17 @@ export default function AdminReservationModal({
                 />
                 {fieldErrors.email && <p className="text-xs text-red-400 font-poppins mt-1">Unesite email adresu.</p>}
                 {checkingReturningEmail && (
-                  <p className="text-xs text-foreground/45 font-poppins mt-1.5">Proveravamo istoriju zakazivanja…</p>
+                  <p className="text-xs text-foreground/64 font-poppins mt-1.5">Proveravamo istoriju zakazivanja…</p>
                 )}
                 {!checkingReturningEmail && isReturningCustomer === true && (
-                  <p className="text-xs text-foreground/55 font-poppins mt-1.5">
+                  <p className="text-xs text-foreground/72 font-poppins mt-1.5">
                     😊 Postojeći klijent u bazi.
                   </p>
                 )}
               </div>
 
               <div>
-                <label htmlFor="arm-phone" className="block text-xs sm:text-sm text-foreground/50 font-poppins mb-1 sm:mb-1.5">Telefon <span className="text-foreground/35">(opcionalno)</span></label>
+                <label htmlFor="arm-phone" className="block text-xs sm:text-sm text-foreground/68 font-poppins mb-1 sm:mb-1.5">Telefon <span className="text-foreground/55">(opcionalno)</span></label>
                 <input
                   id="arm-phone"
                   name="tel"
@@ -1004,7 +1092,7 @@ export default function AdminReservationModal({
               </div>
 
               <div>
-                <label htmlFor="arm-note" className="flex items-center gap-1.5 text-xs sm:text-sm text-foreground/50 font-poppins mb-1 sm:mb-1.5">
+                <label htmlFor="arm-note" className="flex items-center gap-1.5 text-xs sm:text-sm text-foreground/68 font-poppins mb-1 sm:mb-1.5">
                   <FileText size={12} className="sm:w-3.5 sm:h-3.5" />
                   Napomena (admin)
                 </label>
@@ -1023,7 +1111,7 @@ export default function AdminReservationModal({
               </div>
 
               <div>
-                <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/40 font-poppins mb-2">PROMO KOD</p>
+                <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/60 font-poppins mb-2">PROMO KOD</p>
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -1104,19 +1192,19 @@ export default function AdminReservationModal({
               {/* Price summary with savings */}
               {selectedIds.length > 0 && (
                 <div className="rounded-2xl sm:rounded-3xl bg-foreground/4 p-4 sm:p-6">
-                  <p className="text-[10px] sm:text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-2 sm:mb-3">PREGLED CENE</p>
+                  <p className="text-[10px] sm:text-xs font-semibold tracking-widest text-foreground/60 font-poppins mb-2 sm:mb-3">PREGLED CENE</p>
                   <div className="mb-3">
                     {effectiveServices.map((s) => (
                       <div key={s.id} className="flex justify-between items-center py-0.5">
-                        <span className="text-xs sm:text-sm font-poppins text-foreground/60">{s.name}</span>
-                        <span className="text-xs sm:text-sm font-poppins text-foreground/40">{formatPrice(s.price)} RSD</span>
+                        <span className="text-xs sm:text-sm font-poppins text-foreground/76">{s.name}</span>
+                        <span className="text-xs sm:text-sm font-poppins text-foreground/60">{formatPrice(s.price)} RSD</span>
                       </div>
                     ))}
                   </div>
                   <div className="border-t border-foreground/10 pt-2.5">
                     <div className="flex justify-between items-center">
-                      <span className="text-sm sm:text-base font-poppins text-foreground/50">Redovna cena</span>
-                      <span className={`text-sm sm:text-base font-poppins font-semibold ${anyDiscount ? "text-foreground/40 line-through" : "font-bold text-foreground"}`}>
+                      <span className="text-sm sm:text-base font-poppins text-foreground/68">Redovna cena</span>
+                      <span className={`text-sm sm:text-base font-poppins font-semibold ${anyDiscount ? "text-foreground/60 line-through" : "font-bold text-foreground"}`}>
                         {formatPrice(totalPrice)} RSD
                       </span>
                     </div>
@@ -1140,7 +1228,7 @@ export default function AdminReservationModal({
                     )}
                     {savingsVsList > 0 && (
                       <div className="flex justify-between items-center mt-1 pt-2 border-t border-foreground/8">
-                        <span className="text-xs sm:text-sm font-poppins text-foreground/40">Ušteda</span>
+                        <span className="text-xs sm:text-sm font-poppins text-foreground/60">Ušteda</span>
                         <span className="text-xs sm:text-sm font-poppins font-semibold" style={{ color: accent.hex }}>{formatPrice(savingsVsList)} RSD</span>
                       </div>
                     )}
@@ -1169,23 +1257,23 @@ export default function AdminReservationModal({
                 <CheckCircle2 size={44} className="text-emerald-400 sm:w-13 sm:h-13" strokeWidth={1.5} />
               </div>
               <h3 className="text-2xl sm:text-3xl md:text-4xl font-bold font-playfair mb-2 sm:mb-3">Rezervacija kreirana!</h3>
-              <p className="text-sm sm:text-base text-foreground/50 font-poppins mb-6 sm:mb-8">Potvrda je poslata na {form.email}</p>
+              <p className="text-sm sm:text-base text-foreground/68 font-poppins mb-6 sm:mb-8">Potvrda je poslata na {form.email}</p>
 
               {/* ── Stats banner: duration + animated price ── */}
               <div className="grid grid-cols-2 gap-3 sm:gap-4 w-full mb-4 sm:mb-6">
                 <div className="flex flex-col items-center justify-center bg-foreground/5 rounded-2xl sm:rounded-3xl py-4 sm:py-7 px-3">
-                  <p className="text-[10px] sm:text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-1 sm:mb-2">TRAJANJE</p>
+                  <p className="text-[10px] sm:text-xs font-semibold tracking-widest text-foreground/60 font-poppins mb-1 sm:mb-2">TRAJANJE</p>
                   <p className="text-3xl sm:text-5xl font-bold font-poppins leading-none">{reservationDuration}</p>
-                  <p className="text-xs sm:text-sm text-foreground/40 font-poppins mt-1 sm:mt-2">min</p>
+                  <p className="text-xs sm:text-sm text-foreground/60 font-poppins mt-1 sm:mt-2">min</p>
                 </div>
 
                 <div
                   className="flex flex-col items-center justify-center rounded-2xl sm:rounded-3xl py-4 sm:py-7 px-3 relative overflow-hidden"
                   style={{ backgroundColor: `${accent.hex}12` }}
                 >
-                  <p className="text-[10px] sm:text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-1 sm:mb-2">CENA</p>
+                  <p className="text-[10px] sm:text-xs font-semibold tracking-widest text-foreground/60 font-poppins mb-1 sm:mb-2">CENA</p>
                   {anyDiscount && (
-                    <p className="text-xs sm:text-sm text-foreground/35 font-poppins line-through leading-none mb-0.5">
+                    <p className="text-xs sm:text-sm text-foreground/55 font-poppins line-through leading-none mb-0.5">
                       {formatPrice(totalPrice)} RSD
                     </p>
                   )}
@@ -1206,7 +1294,7 @@ export default function AdminReservationModal({
                       STUDENT −20% · UZ INDEKS
                     </span>
                   ) : (
-                    <span className="mt-2 sm:mt-3 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-poppins text-foreground/70 bg-foreground/10">
+                    <span className="mt-2 sm:mt-3 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-poppins text-foreground/82 bg-foreground/10">
                       Redovna cena
                     </span>
                   )}
@@ -1220,7 +1308,7 @@ export default function AdminReservationModal({
                   ["Vreme", `${selectedTime} – ${minutesToTime(timeToMinutes(selectedTime) + reservationDuration)}`],
                 ].map(([label, value]) => (
                   <div key={label} className="flex justify-between text-sm sm:text-base font-poppins">
-                    <span className="text-foreground/50">{label}</span>
+                    <span className="text-foreground/68">{label}</span>
                     <span className="font-semibold">{value}</span>
                   </div>
                 ))}
@@ -1233,9 +1321,9 @@ export default function AdminReservationModal({
                   </div>
                 )}
                 <div className="border-t border-foreground/10 pt-3">
-                  <p className="text-xs sm:text-sm text-foreground/40 font-poppins mb-1.5 sm:mb-2">USLUGE</p>
+                  <p className="text-xs sm:text-sm text-foreground/60 font-poppins mb-1.5 sm:mb-2">USLUGE</p>
                   {!isReturningCustomer && (
-                    <p className="text-sm sm:text-base font-poppins font-semibold text-foreground/50">Konsultacija (10 min)</p>
+                    <p className="text-sm sm:text-base font-poppins font-semibold text-foreground/68">Konsultacija (10 min)</p>
                   )}
                   {effectiveServices.map((s) => (
                     <p key={s.id} className="text-sm sm:text-base font-poppins font-semibold">{s.name}</p>
@@ -1243,7 +1331,7 @@ export default function AdminReservationModal({
                 </div>
                 {bookingRef && (
                   <div className="border-t border-foreground/10 pt-3">
-                    <p className="text-xs sm:text-sm text-foreground/40 font-poppins mb-1">REF. BROJ</p>
+                    <p className="text-xs sm:text-sm text-foreground/60 font-poppins mb-1">REF. BROJ</p>
                     <p className="text-sm sm:text-lg font-mono font-bold tracking-wider" style={{ color: accent.hex }}>
                       #{bookingRef}
                     </p>
@@ -1262,7 +1350,7 @@ export default function AdminReservationModal({
                     {item.num}
                   </span>
                   <div className="border-l-2 pl-5 sm:pl-7 py-0.5 sm:py-1" style={{ borderColor: `${accent.hex}4D` }}>
-                    <p className="font-poppins text-sm sm:text-base md:text-lg text-foreground/60 leading-relaxed">{item.text}</p>
+                    <p className="font-poppins text-sm sm:text-base md:text-lg text-foreground/76 leading-relaxed">{item.text}</p>
                   </div>
                 </div>
               ))}
@@ -1272,7 +1360,7 @@ export default function AdminReservationModal({
 
           {/* ── Sticky footer: primary CTA always visible while scrolling ───────── */}
           {(step === 2 || step === 5 || step === "success" || step === "preparation") && (
-            <div className="shrink-0 sm:border-t sm:border-foreground/10 bg-[var(--bm-bg)]/90 backdrop-blur-md px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pt-5 sm:pb-5 shadow-[0_-12px_24px_-12px_rgba(0,0,0,0.6)]">
+            <div className="shrink-0 sm:border-t sm:border-foreground/10 bg-[var(--bm-bg)] px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pt-5 sm:pb-5 shadow-[0_-12px_24px_-12px_rgba(0,0,0,0.6)]">
               <div className={COL_W}>
               {step === 2 && (
                 <div className="flex flex-col gap-2">
@@ -1281,17 +1369,17 @@ export default function AdminReservationModal({
                       <>
                         <div className="flex items-center justify-center gap-2 flex-wrap">
                           <span className="text-base sm:text-xl font-bold font-poppins leading-none" style={{ color: accent.hex }}>{formatPrice(totalPrice)} RSD</span>
-                          <span className="text-[10px] sm:text-xs text-foreground/40 font-poppins">· {slotDuration} min</span>
+                          <span className="text-[10px] sm:text-xs text-foreground/60 font-poppins">· {slotDuration} min</span>
                         </div>
                         {appliedCombos.length > 0 && (
                           <div className="flex items-center justify-center gap-1 mt-1">
                             <span className="px-1.5 sm:px-2 py-0.5 rounded text-[9px] sm:text-[11px] font-bold font-poppins bm-metal" style={{ backgroundColor: accent.hex }}>COMBO</span>
-                            <span className="text-[10px] sm:text-xs font-poppins text-foreground/40">paket popust uračunat</span>
+                            <span className="text-[10px] sm:text-xs font-poppins text-foreground/60">paket popust uračunat</span>
                           </div>
                         )}
                       </>
                     ) : (
-                      <p className="text-xs sm:text-sm text-foreground/45 font-poppins">Odaberite bar jednu uslugu za nastavak.</p>
+                      <p className="text-xs sm:text-sm text-foreground/64 font-poppins">Odaberite bar jednu uslugu za nastavak.</p>
                     )}
                   </div>
                   <button
@@ -1358,10 +1446,6 @@ export default function AdminReservationModal({
             </div>
           )}
         </div>
-
-        {/* Bottom accent bar - desktop only; on phones it read as a stray border
-            against the home indicator. */}
-        <div className="hidden sm:block h-1 bm-metal shrink-0" />
       </div>
     </div>
   );
