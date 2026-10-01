@@ -28,7 +28,7 @@ export default function BundleBuilderSection({ onOpenBundle }: BundleBuilderSect
             Uzmi više tretmana, plati znatno manje
           </h2>
           <p className="font-poppins text-sm md:text-base text-foreground/55 mt-4 leading-relaxed">
-            Trajni rezultat dolazi sa serijom tretmana. do 21% popusta. 
+            Trajni rezultat dolazi sa serijom tretmana. do 20% popusta.
           </p>
         </div>
 
@@ -48,7 +48,7 @@ export default function BundleBuilderSection({ onOpenBundle }: BundleBuilderSect
               </svg>
             </span>
           </h3>
-          <p className="font-poppins text-sm text-foreground/50 mt-5">Cene za žene · popust se obračunava po regiji</p>
+          <p className="font-poppins text-sm text-foreground/50 mt-5">Cene za žene · 3 tretmana −10%, 6 tretmana −15%, 8 i 10 tretmana −20%</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">

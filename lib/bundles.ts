@@ -5,13 +5,11 @@
 export type BundleCategory = "face" | "body";
 
 /**
- * Treatments needed for full results differ by area:
- *   • Face needs ~10 sessions  → discount scales up to 10.
- *   • Body needs ~6–8 sessions → discount maxes out at 8.
+ * Discount by bundle size, the same for every region. Face can go up to 10
+ * sessions (body's full course is 8), and 10 keeps the top 20%.
  * Bigger commitment ⇒ bigger discount.
  */
-export const FACE_TIERS: Record<number, number> = { 3: 7, 6: 12, 8: 17, 10: 21 };
-export const BODY_TIERS: Record<number, number> = { 3: 12, 6: 17, 8: 21 };
+export const BUNDLE_TIERS: Record<number, number> = { 3: 10, 6: 15, 8: 20, 10: 20 };
 
 /** Region categorisation by name (mirrors the modal's keyword icon logic). */
 export function serviceCategory(name: string): BundleCategory {
@@ -22,9 +20,8 @@ export function serviceCategory(name: string): BundleCategory {
   return "body";
 }
 
-function tierPercent(category: BundleCategory, sessions: number): number {
-  const map = category === "face" ? FACE_TIERS : BODY_TIERS;
-  return map[sessions] ?? 0;
+function tierPercent(sessions: number): number {
+  return BUNDLE_TIERS[sessions] ?? 0;
 }
 
 /** Round to the nearest value ending in "00" (e.g. 53.742 → 53.700). */
@@ -63,14 +60,14 @@ export interface BundleResult {
 }
 
 /**
- * Per-region discount by category at the chosen session count, summed and
- * rounded. A mixed basket gets face % on face regions and body % on body ones.
+ * Tier discount at the chosen session count applied to every region, summed
+ * and rounded to the nearest 00.
  */
 export function computeBundle(regions: PricedRegion[], sessions: number): BundleResult {
   const originalTotal = regions.reduce((sum, r) => sum + r.price, 0) * sessions;
 
   const rawFinal = regions.reduce((sum, r) => {
-    const pct = tierPercent(serviceCategory(r.name), sessions);
+    const pct = tierPercent(sessions);
     return sum + r.price * sessions * (1 - pct / 100);
   }, 0);
 
