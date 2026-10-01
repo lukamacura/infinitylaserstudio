@@ -23,7 +23,7 @@ const REGION_IMAGES: Record<Tab, Set<string>> = {
   ]),
   muskarci: new Set([
     "pola-lica", "celo-lice", "pazuh", "ruke", "pola-ruku", "grudi",
-    "stomak", "pola-ledja", "cela-ledja", "celo-telo",
+    "stomak", "pola-ledja", "cela-ledja", "noge", "pola-nogu", "celo-telo",
   ]),
 };
 
