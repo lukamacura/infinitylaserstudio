@@ -6,6 +6,7 @@ import Hero from "@/components/Hero";
 import BrandStory from "@/components/BrandStory";
 import ServiceHighlights from "@/components/ServiceHighlights";
 import StatsSection from "@/components/StatsSection";
+import CostComparison from "@/components/CostComparison";
 // import MenSection from "@/components/MenSection";
 import FAQSection from "@/components/FAQSection";
 import TeamSection from "@/components/TeamSection";
@@ -112,6 +113,7 @@ export default function HomeClient() {
     <main>
       <Hero onOpen={open} />
       <StatsSection />
+      <CostComparison />
       <ServiceHighlights />
       <WistiaVideo />
       <BrandStory />

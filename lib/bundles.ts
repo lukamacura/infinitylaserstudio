@@ -55,7 +55,7 @@ export interface BundleResult {
   savings: number;
   /** finalTotal ÷ sessions, rounded — "samo X po tretmanu". */
   pricePerSession: number;
-  /** Effective blended discount across all regions, for display. */
+  /** The tier discount (10/15/20), for display. */
   blendedPct: number;
 }
 
@@ -74,8 +74,9 @@ export function computeBundle(regions: PricedRegion[], sessions: number): Bundle
   const finalTotal = roundTo100(rawFinal);
   const savings = originalTotal - finalTotal;
   const pricePerSession = Math.round(finalTotal / sessions);
-  const blendedPct =
-    originalTotal > 0 ? Math.round((1 - finalTotal / originalTotal) * 100) : 0;
+  // Every region gets the same tier %, so show that exact figure (10/15/20),
+  // not the effective one, which rounding to 00 can nudge to e.g. 11%.
+  const blendedPct = originalTotal > 0 ? tierPercent(sessions) : 0;
 
   return { sessions, originalTotal, finalTotal, savings, pricePerSession, blendedPct };
 }

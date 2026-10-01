@@ -1,25 +1,29 @@
 import type { CSSProperties } from "react";
 import { Caveat } from "next/font/google";
-import { computeBundle, SHOWCASE_BUNDLES } from "@/lib/bundles";
 
-// Handwriting for the notes page. Used only here and far below the fold, so
-// it is not preloaded - the hero fonts keep the early bandwidth.
+// Handwriting for the notes page. Used only here, so it is not preloaded -
+// the hero fonts keep the early bandwidth.
 const caveat = Caveat({
   subsets: ["latin", "latin-ext"],
   display: "swap",
   preload: false,
 });
 
-/** What 20 years of shaving, waxing and creams add up to. */
-const TRADITIONAL_TOTAL = 500_000;
+/** Years of removing hair the usual way, roughly from 16 to 56. */
+const YEARS = 40;
 
-// The laser side is a real package from "Primeri paketa", priced by the same
-// helper, so the comparison can't drift from what the booking modal charges.
-const PACKAGE = SHOWCASE_BUNDLES[0];
-const bundle = computeBundle([{ name: PACKAGE.title, price: PACKAGE.price }], PACKAGE.sessions);
+/** What the usual way costs a year, item by item (rough RSD estimates). */
+const YEARLY_COSTS = [
+  { label: "Žileti i pena za brijanje", perYear: 6_000 },
+  { label: "Depilacija voskom u salonu", perYear: 10_000 },
+  { label: "Kreme, losioni i trake", perYear: 4_000 },
+];
 
-const difference = TRADITIONAL_TOTAL - bundle.finalTotal;
-const timesCheaper = Math.floor(TRADITIONAL_TOTAL / bundle.finalTotal);
+/** Shaving ~10 minutes, 4 times a week. */
+const HOURS_PER_YEAR = Math.round((10 * 4 * 52) / 60);
+
+const LIFETIME_TOTAL = YEARLY_COSTS.reduce((sum, c) => sum + c.perYear * YEARS, 0);
+const lifetimeDays = Math.round((HOURS_PER_YEAR * YEARS) / 24);
 
 function formatPrice(n: number): string {
   return n.toLocaleString("sr-RS");
@@ -60,9 +64,9 @@ export default function CostComparison() {
 
         {/* Headline */}
         <h2 data-rv style={step(1)} className="font-playfair text-4xl md:text-5xl text-foreground text-center leading-tight section-head">
-          Šta bi radila sa{" "}
+          Koliko te dlačice koštaju{" "}
           <span className="relative inline-block">
-            500.000 dinara više?
+            za ceo život?
             <svg className="absolute -bottom-1 left-0 w-full" viewBox="0 0 200 8" fill="none">
               <path d="M2 6 Q50 1 100 5 Q150 9 198 4" stroke="#DCA8A6" strokeWidth="3" strokeLinecap="round" fill="none" />
             </svg>
@@ -79,47 +83,42 @@ export default function CostComparison() {
             <div data-rv="group" data-rv-ratio="0.35" className="notes-body">
               {/* Title */}
               <p className="notes-write relative inline-block text-[1.75rem] md:text-[2rem] font-bold leading-none mb-7">
-                Računica za 20 godina
+                Računica za {YEARS} godina
                 <svg className="absolute -bottom-2 left-0 w-full h-2" viewBox="0 0 200 8" fill="none" preserveAspectRatio="none" aria-hidden>
                   <path d="M2 5 Q40 1 90 4 T198 3" stroke="var(--pen)" strokeWidth="2.5" strokeLinecap="round" />
                 </svg>
               </p>
 
-              {/* 20 years of the old way */}
-              <div className="notes-write flex items-end justify-between gap-3" style={write(1)}>
-                <div className="min-w-0">
-                  <p className="text-2xl md:text-[1.75rem] font-semibold leading-tight">Brijanje, vosak, kreme</p>
-                  <p className="text-xl md:text-[1.35rem] leading-tight opacity-70">20 godina, a dlake se uvek vrate</p>
+              {/* One line per item */}
+              {YEARLY_COSTS.map((c, i) => (
+                <div
+                  key={c.label}
+                  className={`notes-write flex items-end justify-between gap-3 ${i > 0 ? "mt-5" : ""}`}
+                  style={write(1 + i * 2)}
+                >
+                  <div className="min-w-0">
+                    <p className="text-2xl md:text-[1.75rem] font-semibold leading-tight">{c.label}</p>
+                    <p className="text-xl md:text-[1.35rem] leading-tight opacity-70">
+                      {formatPrice(c.perYear)} RSD × {YEARS} god.
+                    </p>
+                  </div>
+                  <Amount sign={i > 0 ? "+" : undefined} value={c.perYear * YEARS} className="text-[1.75rem] md:text-[2.25rem]" />
                 </div>
-                <Amount value={TRADITIONAL_TOTAL} className="text-[2rem] md:text-[2.5rem]" />
-              </div>
-
-              {/* One package */}
-              <div className="notes-write flex items-end justify-between gap-3 mt-5" style={write(3)}>
-                <div className="min-w-0">
-                  <p className="text-2xl md:text-[1.75rem] font-semibold leading-tight">
-                    Infinity Laser, paket {PACKAGE.title}
-                  </p>
-                  <p className="text-xl md:text-[1.35rem] leading-tight opacity-70">
-                    {bundle.sessions} tretmana, trajni rezultat
-                  </p>
-                </div>
-                <Amount sign="−" value={bundle.finalTotal} className="text-[2rem] md:text-[2.5rem]" />
-              </div>
+              ))}
 
               {/* Red-pen remark */}
               <p
                 className="notes-write text-2xl md:text-[1.75rem] font-bold leading-none mt-2 -rotate-2 origin-left text-(--pen)"
-                style={write(5)}
+                style={write(YEARLY_COSTS.length * 2)}
               >
-                ↳ {timesCheaper} puta manje!
+                ↳ a dlake se uvek vrate!
               </p>
 
               {/* The line under the sum */}
               <svg className="block w-full h-3 mt-4" viewBox="0 0 400 12" fill="none" preserveAspectRatio="none" aria-hidden>
                 <path
                   className="notes-draw"
-                  style={write(6)}
+                  style={write(YEARLY_COSTS.length * 2 + 1)}
                   pathLength={1}
                   d="M2 7 Q70 3 150 6 T290 5 T398 7"
                   stroke="currentColor"
@@ -128,14 +127,14 @@ export default function CostComparison() {
                 />
               </svg>
 
-              {/* What stays with her */}
+              {/* The lifetime total */}
               <div className="flex items-center justify-between gap-3 mt-4">
-                <p className="notes-write text-[1.75rem] md:text-[2rem] font-bold leading-none" style={write(7)}>
-                  Ostaje tebi =
+                <p className="notes-write text-[1.75rem] md:text-[2rem] font-bold leading-none" style={write(YEARLY_COSTS.length * 2 + 2)}>
+                  Ukupno =
                 </p>
                 <span className="relative inline-block px-1">
-                  <span className="notes-write inline-block" style={write(7)}>
-                    <Amount value={difference} className="text-[2.25rem] md:text-[2.75rem]" />
+                  <span className="notes-write inline-block" style={write(YEARLY_COSTS.length * 2 + 2)}>
+                    <Amount value={LIFETIME_TOTAL} className="text-[2.25rem] md:text-[2.75rem]" />
                   </span>
                   {/* Circled in red */}
                   <svg
@@ -147,7 +146,7 @@ export default function CostComparison() {
                   >
                     <path
                       className="notes-draw"
-                      style={write(9)}
+                      style={write(YEARLY_COSTS.length * 2 + 4)}
                       pathLength={1}
                       d="M26 12 C70 1 150 1 182 14 C204 25 198 50 150 58 C95 66 22 60 8 40 C-4 20 40 4 120 7"
                       stroke="var(--pen)"
@@ -159,12 +158,12 @@ export default function CostComparison() {
               </div>
 
               {/* Side sums */}
-              <p className="notes-write text-[1.35rem] md:text-2xl leading-tight mt-9" style={write(11)}>
-                {formatPrice(bundle.finalTotal)} : {bundle.sessions} ={" "}
-                <span className="font-bold">{formatPrice(bundle.pricePerSession)} RSD</span> po tretmanu
+              <p className="notes-write text-[1.35rem] md:text-2xl leading-tight mt-9" style={write(YEARLY_COSTS.length * 2 + 6)}>
+                + {HOURS_PER_YEAR} sati godišnje samo na brijanje ={" "}
+                <span className="font-bold">{lifetimeDays} dana</span> života
               </p>
-              <p className="notes-write text-[1.35rem] md:text-2xl leading-tight mt-1 text-(--pen)" style={write(12)}>
-                P.S. + 72 sata svake godine koje više ne trošiš na brijanje
+              <p className="notes-write text-[1.35rem] md:text-2xl leading-tight mt-1 text-(--pen)" style={write(YEARLY_COSTS.length * 2 + 7)}>
+                P.S. Laser ovo završava jednom zauvek.
               </p>
             </div>
           </div>
