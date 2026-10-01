@@ -22,7 +22,7 @@ import { getLocation, fullAddress, type LocationId } from "@/lib/locations";
 import { escapeLike } from "@/lib/fetchAll";
 import {
   type Gender, type DayOption,
-  getIcon, getRegionArt, preloadRegionArt, RegionThumb, THUMB_SIZES, HERO_THUMB_SIZES,
+  getIcon, getRegionArt, preloadRegionArt, RegionThumb, CARD_IN_MS, THUMB_SIZES, HERO_THUMB_SIZES,
   SR_DAYS_FULL, SR_MONTHS_SHORT, monIdx, toDateStr, formatDateFull, formatPrice, EMAIL_REGEX,
   lockBodyScroll, unlockBodyScroll,
   isFullBody, isAllowedWithFullBody, applyComboRules, orderPickableServices,
@@ -831,7 +831,7 @@ export default function AdminReservationModal({
                             art={art}
                             selected={isSelected}
                             sizes={HERO_THUMB_SIZES}
-                            revealDelay={enterDelay + 180}
+                            revealDelay={enterDelay + CARD_IN_MS}
                             className="w-24 h-24 sm:w-28 sm:h-28 -my-2 -ml-1"
                           />
                         ) : (
@@ -879,7 +879,7 @@ export default function AdminReservationModal({
                         art={art}
                         selected={isSelected}
                         sizes={THUMB_SIZES}
-                        revealDelay={enterDelay + 180}
+                        revealDelay={enterDelay + CARD_IN_MS}
                         className="w-20 h-20 sm:w-24 sm:h-24 -my-2 -ml-1"
                       />
                     ) : (

@@ -141,7 +141,8 @@ body {
    Only a `from` frame, so each card eases into its own resting style (a
    blocked card lands on its dimmed opacity instead of snapping to it).
    `backwards` holds the start frame through the stagger delay. Opacity and
-   transform only - both stay on the compositor. */
+   transform only - both stay on the compositor. Duration is mirrored by
+   CARD_IN_MS in components/booking/shared.tsx - keep them in sync. */
 @keyframes bmCardIn {
   from { opacity: 0; transform: translateY(14px) scale(0.985); }
 }

@@ -127,6 +127,11 @@ export function preloadRegionArt(gender: Gender) {
  *  only the glowing figure remains. Dimmed at rest, full glow when selected. */
 const FEATHER_MASK = "radial-gradient(closest-side, #000 62%, transparent 100%)";
 
+/** Length of the `.bm-card-in` entrance (globals.css). While it runs the card
+ *  is an isolated group, so screen blending has no backdrop and the poster's
+ *  dark background shows through - reveal the figure only after it ends. */
+export const CARD_IN_MS = 560;
+
 export function RegionThumb({
   art, selected, sizes, className, revealDelay = 0,
 }: { art: RegionArt; selected: boolean; sizes: string; className: string; revealDelay?: number }) {
