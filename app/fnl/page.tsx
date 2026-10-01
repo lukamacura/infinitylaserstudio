@@ -3,9 +3,10 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   LogOut, Filter, AlertCircle, AlertTriangle, CheckCircle2, ArrowDown,
-  Users, CalendarCheck, Percent, RefreshCw,
+  Users, CalendarCheck, Percent, RefreshCw, X,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAdminAuth } from "@/lib/adminAuth";
@@ -53,6 +54,10 @@ function rangeStart(key: RangeKey): Date {
 
 type Row = { key: FunnelStage; label: string; hint: string; count: number };
 
+/** Phone screenshots of each step (public/fnl/<stage>.webp, 390×844 screens at 560px wide). */
+const SHOT_W = 560;
+const SHOT_H = 1212;
+
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function FunnelPage() {
   const { authenticated: authState, signIn, signOut } = useAdminAuth();
@@ -66,6 +71,8 @@ export default function FunnelPage() {
   const [loading, setLoading]   = useState(false);
   /** Why the numbers are missing, in words for the owner. */
   const [loadError, setLoadError] = useState<string | null>(null);
+  /** Screenshot opened full size. */
+  const [zoom, setZoom] = useState<Row | null>(null);
 
   /** Only the newest request may write - a slow one never overwrites a newer filter. */
   const loadSeq = useRef(0);
@@ -108,6 +115,13 @@ export default function FunnelPage() {
       document.removeEventListener("visibilitychange", refresh);
     };
   }, [authenticated, load]);
+
+  useEffect(() => {
+    if (!zoom) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setZoom(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zoom]);
 
   if (!authenticated) {
     return <AdminLogin icon={Filter} location={location} onSignIn={signIn} checking={authState === null} />;
@@ -303,15 +317,30 @@ export default function FunnelPage() {
                       )}
 
                       <div
-                        className="group relative grid grid-cols-[2rem_1fr_auto] md:grid-cols-[2.5rem_1fr_auto] items-center gap-3 md:gap-4 p-3 md:p-4 rounded-2xl bg-foreground/3 hover:bg-foreground/6 transition-colors"
+                        className="group relative grid grid-cols-[5.5rem_1fr_auto] md:grid-cols-[9rem_1fr_auto] items-center gap-3 md:gap-6 p-3 md:p-4 rounded-2xl bg-foreground/3 hover:bg-foreground/6 transition-colors"
                         title={`${r.label}: ${r.count} ljudi (${fmtPct(share)} od početka)`}
                       >
-                        <span className="w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center text-xs md:text-sm font-bold font-poppins bg-accent/15 text-accent">
-                          {i + 1}
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setZoom(r)}
+                          aria-label={`Uvećaj: ${r.label}`}
+                          className="relative block rounded-xl md:rounded-2xl overflow-hidden border border-foreground/10 shadow-md cursor-zoom-in transition-transform hover:scale-[1.03]"
+                        >
+                          <Image
+                            src={`/fnl/${r.key}.webp`}
+                            alt={r.label}
+                            width={SHOT_W}
+                            height={SHOT_H}
+                            sizes="(min-width: 768px) 144px, 88px"
+                            className="w-full h-auto"
+                          />
+                          <span className="absolute top-1.5 left-1.5 w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center text-[11px] md:text-xs font-bold font-poppins bg-accent text-on-accent shadow">
+                            {i + 1}
+                          </span>
+                        </button>
                         <div className="min-w-0">
                           <p className="text-sm md:text-base font-bold font-poppins">{r.label}</p>
-                          <p className="text-[11px] md:text-xs text-foreground/50 font-poppins truncate">{r.hint}</p>
+                          <p className="text-[11px] md:text-sm text-foreground/50 font-poppins">{r.hint}</p>
                           <div className="mt-2 h-2.5 md:h-3 rounded-full bg-foreground/6 overflow-hidden">
                             <div
                               className="h-full rounded-full transition-[width] duration-700 ease-out"
@@ -351,6 +380,34 @@ export default function FunnelPage() {
           </div>
         </div>
       </div>
+
+      {/* Full-size screenshot */}
+      {zoom && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={zoom.label}
+          onClick={() => setZoom(null)}
+          className="fixed inset-0 z-100 flex flex-col items-center justify-center gap-3 p-4 bg-black/80 backdrop-blur-sm cursor-zoom-out"
+        >
+          <button
+            type="button"
+            onClick={() => setZoom(null)}
+            aria-label="Zatvori"
+            className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 cursor-pointer"
+          >
+            <X size={20} />
+          </button>
+          <Image
+            src={`/fnl/${zoom.key}.webp`}
+            alt={zoom.label}
+            width={SHOT_W}
+            height={SHOT_H}
+            className="w-auto h-auto max-h-[82dvh] max-w-full rounded-2xl shadow-2xl"
+          />
+          <p className="text-white font-poppins font-bold text-sm md:text-base">{zoom.label}</p>
+        </div>
+      )}
     </main>
   );
 }
