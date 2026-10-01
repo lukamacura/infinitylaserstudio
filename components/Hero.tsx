@@ -84,8 +84,8 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
                 </span>
               </span>{" "}
               dlačica{" "}
-              <span className="metal-text block">
-                ZA 6-8 TRETMANA
+              <span className="block">
+                ili <span className="text-accent">vraćamo novac</span>
               </span>
             </p>
 
