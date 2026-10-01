@@ -172,6 +172,7 @@ export default function MarketingPage() {
           <nav className="flex items-center gap-1 bg-foreground/3 rounded-xl p-1 shrink-0">
             <Link href="/finances" className="px-2.5 md:px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-bold font-poppins text-foreground/50 hover:text-foreground/76 uppercase tracking-widest transition-colors">Finansije</Link>
             <span className="px-2.5 md:px-3 py-1.5 rounded-lg bg-accent/15 text-[10px] md:text-xs font-bold font-poppins text-accent uppercase tracking-widest">Statistike</span>
+            <Link href="/fnl" className="px-2.5 md:px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-bold font-poppins text-foreground/50 hover:text-foreground/76 uppercase tracking-widest transition-colors">Funnel</Link>
           </nav>
           <AdminLocationSwitch
             value={location}

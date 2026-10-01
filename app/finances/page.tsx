@@ -302,6 +302,7 @@ export default function FinancesPage() {
           <nav className="flex items-center gap-1 bg-foreground/3 rounded-xl p-1">
             <span className="px-3 py-1.5 rounded-lg bg-accent/15 text-xs font-bold font-poppins text-accent uppercase tracking-widest">Finansije</span>
             <Link href="/stats" className="px-3 py-1.5 rounded-lg text-xs font-bold font-poppins text-foreground/50 hover:text-foreground/76 uppercase tracking-widest transition-colors">Statistike</Link>
+            <Link href="/fnl" className="px-3 py-1.5 rounded-lg text-xs font-bold font-poppins text-foreground/50 hover:text-foreground/76 uppercase tracking-widest transition-colors">Funnel</Link>
           </nav>
           <AdminLocationSwitch
             value={location}
