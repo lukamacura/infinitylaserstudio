@@ -79,18 +79,6 @@ export default function BrandStory() {
               <p className="font-poppins text-xs text-foreground/60">Osnivač &amp; Lekar</p>
             </div>
           </div>
-
-          {/* Bottom-left badge: Certified studio */}
-          <div className="absolute -bottom-4 -left-4 z-20 bg-surface-raised border border-foreground/10 rounded-2xl shadow-lg shadow-black/40 px-4 py-3 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-accent flex items-center justify-center shrink-0">
-              <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none">
-                <path d="M10 3l1.8 3.6L16 7.6l-3 2.9.7 4.1L10 12.5l-3.7 2.1.7-4.1L4 7.6l4.2-.9L10 3z" fill="#1E1017" stroke="#9E6769" strokeWidth="0.5" />
-              </svg>
-            </div>
-            <div>
-              <p className="font-poppins text-xs font-semibold text-foreground">Sertifikovani studio</p>
-            </div>
-          </div>
         </div>
       </div>
     </section>

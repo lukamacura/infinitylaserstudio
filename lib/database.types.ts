@@ -220,6 +220,66 @@ export type Database = {
           },
         ]
       }
+      staff: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      staff_overrides: {
+        Row: {
+          date: string
+          location: string
+          staff_ids: string[]
+          updated_at: string
+        }
+        Insert: {
+          date: string
+          location: string
+          staff_ids?: string[]
+          updated_at?: string
+        }
+        Update: {
+          date?: string
+          location?: string
+          staff_ids?: string[]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      staff_weekly: {
+        Row: {
+          location: string
+          staff_ids: string[]
+          weekday: number
+        }
+        Insert: {
+          location: string
+          staff_ids?: string[]
+          weekday: number
+        }
+        Update: {
+          location?: string
+          staff_ids?: string[]
+          weekday?: number
+        }
+        Relationships: []
+      }
       services: {
         Row: {
           active: boolean

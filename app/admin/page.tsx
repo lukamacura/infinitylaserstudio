@@ -5,7 +5,7 @@ import {
   ChevronLeft, ChevronRight, LogOut, X,
   Clock, User, Mail, Phone, Calendar, CalendarPlus,
   PhoneCall, PhoneOff, AlertTriangle, StickyNote, HeartPulse, Tag, Package,
-  Plus, RotateCcw, Ban, Search,
+  Plus, RotateCcw, Ban, Search, Users,
 } from "lucide-react";
 import { fetchAll, escapeLike } from "@/lib/fetchAll";
 import { supabase, timeToMinutes, type BusinessWindow } from "@/lib/supabase";
@@ -18,8 +18,12 @@ import { locationTheme, type LocationId } from "@/lib/locations";
 import { fetchPriceRows, PriceBook } from "@/lib/prices";
 import type { ReservationStatus, Json } from "@/lib/database.types";
 import {
-  fetchAvailability, resolveWindows, EMPTY_AVAILABILITY, type AvailabilityData,
+  fetchAvailability, resolveWindows, weekdayOf, EMPTY_AVAILABILITY, type AvailabilityData,
 } from "@/lib/availability";
+import {
+  fetchStaff, fetchStaffSchedule, resolveStaff, sameStaff, EMPTY_STAFF_SCHEDULE,
+  type StaffMember, type StaffSchedule,
+} from "@/lib/staff";
 import { computeReservationPrice, type PriceResult } from "@/lib/pricing";
 import { parseBundlePromo } from "@/lib/bundles";
 
@@ -355,6 +359,50 @@ function WindowsEditor({
   );
 }
 
+/** Toggle chips: tap a name to put that person on (or take them off) the day. */
+function StaffPicker({
+  staff,
+  selected,
+  onChange,
+}: {
+  staff: StaffMember[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  // Someone removed from the team still shows here while they are on the day,
+  // so they can be taken off it.
+  const shown = staff.filter((m) => m.active || selected.includes(m.id));
+  if (shown.length === 0) {
+    return (
+      <p className="text-xs font-poppins text-foreground/60 italic">
+        Još nema zaposlenih. Dodaj ih u kartici Radno vreme.
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {shown.map((m) => {
+        const on = selected.includes(m.id);
+        return (
+          <button
+            key={m.id}
+            type="button"
+            aria-pressed={on}
+            onClick={() => onChange(on ? selected.filter((id) => id !== m.id) : [...selected, m.id])}
+            className={`px-3 py-1.5 rounded-lg border text-[11px] font-bold font-poppins transition-all cursor-pointer ${
+              on
+                ? "bg-accent text-on-accent border-accent"
+                : "bg-foreground/4 border-foreground/8 text-foreground/76 hover:bg-accent/10 hover:border-accent/20 hover:text-accent"
+            }`}
+          >
+            {m.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Day layout ────────────────────────────────────────────────────────────────
 // Layout reservations into columns so overlaps render side-by-side instead of stacked.
 // Returns each reservation with its assigned column index and the total columns its cluster spans.
@@ -430,6 +478,11 @@ export default function AdminPage() {
   const [availability, setAvailability]   = useState<AvailabilityData>(EMPTY_AVAILABILITY);
   const [overrideDate, setOverrideDate]   = useState<string | null>(null);
   const [overrideDraft, setOverrideDraft] = useState<BusinessWindow[]>([]);
+  // ── Who works which day ──
+  const [staff, setStaff]                 = useState<StaffMember[]>([]);
+  const [staffSchedule, setStaffSchedule] = useState<StaffSchedule>(EMPTY_STAFF_SCHEDULE);
+  const [overrideStaffDraft, setOverrideStaffDraft] = useState<string[]>([]);
+  const [newStaffName, setNewStaffName]   = useState("");
 
   const [weekStart, setWeekStart]         = useState<Date>(() => getMonday(new Date()));
   const [selectedDate, setSelectedDate]   = useState<Date>(() => {
@@ -657,6 +710,18 @@ export default function AdminPage() {
     } catch { /* keep current */ }
   }, [location]);
 
+  const staffReq = useRef(0);
+  const fetchStaffAll = useCallback(async () => {
+    const req = ++staffReq.current;
+    // Same as hours: a failed load keeps what is on screen.
+    try {
+      const [people, schedule] = await Promise.all([fetchStaff(), fetchStaffSchedule(location)]);
+      if (req !== staffReq.current) return;
+      setStaff(people);
+      setStaffSchedule(schedule);
+    } catch { /* keep current */ }
+  }, [location]);
+
   function handleLocationChange(next: typeof location) {
     if (next === location) return;
     // Nothing from the other studio may linger on screen while the new one loads.
@@ -665,6 +730,7 @@ export default function AdminPage() {
     setClientGroups([]);
     setClientsSearched(false);
     setAvailability(EMPTY_AVAILABILITY);
+    setStaffSchedule(EMPTY_STAFF_SCHEDULE);
     setSelected(null);
     setOverrideDate(null);
     setLocation(next);
@@ -673,6 +739,10 @@ export default function AdminPage() {
   useEffect(() => {
     if (authenticated) fetchAvail();
   }, [authenticated, fetchAvail]);
+
+  useEffect(() => {
+    if (authenticated) fetchStaffAll();
+  }, [authenticated, fetchStaffAll]);
 
   // Keep the calendar current without a manual reload: new bookings come in
   // from the public site while the panel is open.
@@ -685,6 +755,7 @@ export default function AdminPage() {
       void fetchRange(weekStart, true);
       void fetchPendingCalls(true);
       void fetchAvail();
+      void fetchStaffAll();
     };
     const timer = setInterval(refresh, REFRESH_EVERY_MS);
     document.addEventListener("visibilitychange", refresh);
@@ -694,7 +765,7 @@ export default function AdminPage() {
       document.removeEventListener("visibilitychange", refresh);
       window.removeEventListener("focus", refresh);
     };
-  }, [authenticated, weekStart, fetchRange, fetchPendingCalls, fetchAvail]);
+  }, [authenticated, weekStart, fetchRange, fetchPendingCalls, fetchAvail, fetchStaffAll]);
 
   // Escape closes whichever dialog is on top.
   useEffect(() => {
@@ -727,31 +798,136 @@ export default function AdminPage() {
 
   function openOverride(dateStr: string) {
     setOverrideDraft(resolveWindows(dateStr, availability) ?? []);
+    setOverrideStaffDraft(resolveStaff(dateStr, staffSchedule));
     setOverrideDate(dateStr);
   }
 
-  async function saveOverride(dateStr: string, windows: BusinessWindow[]) {
-    setAvailability((prev) => ({
-      ...prev,
-      overrides: { ...prev.overrides, [dateStr]: windows },
-    }));
-    setOverrideDate(null);
-    const { error } = await supabase.from("availability_overrides").upsert(
-      { location, date: dateStr, windows: windows as unknown as Json, updated_at: new Date().toISOString() },
-      { onConflict: "location,date" },
-    );
-    if (error) hoursSaveFailed();
+  function sameWindows(a: BusinessWindow[], b: BusinessWindow[]) {
+    return a.length === b.length && a.every((w, i) => w.start === b[i].start && w.end === b[i].end);
   }
 
+  /**
+   * Saves the day's dialog. Hours and staff are separate exceptions: one that
+   * still matches the weekly template (and was not an exception already) is
+   * not written, so changing only who works does not freeze that day's hours.
+   */
+  async function saveOverride(dateStr: string, windows: BusinessWindow[], staffIds: string[]) {
+    setOverrideDate(null);
+    const tasks: Promise<void>[] = [];
+
+    const hoursOverridden = dateStr in availability.overrides;
+    const templateWindows = availability.template[weekdayOf(dateStr)] ?? [];
+    if (hoursOverridden || !sameWindows(windows, templateWindows)) {
+      setAvailability((prev) => ({
+        ...prev,
+        overrides: { ...prev.overrides, [dateStr]: windows },
+      }));
+      tasks.push((async () => {
+        const { error } = await supabase.from("availability_overrides").upsert(
+          { location, date: dateStr, windows: windows as unknown as Json, updated_at: new Date().toISOString() },
+          { onConflict: "location,date" },
+        );
+        if (error) hoursSaveFailed();
+      })());
+    }
+
+    const staffOverridden = dateStr in staffSchedule.overrides;
+    const templateStaff = staffSchedule.template[weekdayOf(dateStr)] ?? [];
+    if (staffOverridden || !sameStaff(staffIds, templateStaff)) {
+      setStaffSchedule((prev) => ({
+        ...prev,
+        overrides: { ...prev.overrides, [dateStr]: staffIds },
+      }));
+      tasks.push((async () => {
+        const { error } = await supabase.from("staff_overrides").upsert(
+          { location, date: dateStr, staff_ids: staffIds, updated_at: new Date().toISOString() },
+          { onConflict: "location,date" },
+        );
+        if (error) staffSaveFailed();
+      })());
+    }
+
+    await Promise.all(tasks);
+  }
+
+  /** Back to the weekly template - both the hours and who works. */
   async function clearOverride(dateStr: string) {
     setAvailability((prev) => {
       const overrides = { ...prev.overrides };
       delete overrides[dateStr];
       return { ...prev, overrides };
     });
+    setStaffSchedule((prev) => {
+      const overrides = { ...prev.overrides };
+      delete overrides[dateStr];
+      return { ...prev, overrides };
+    });
     setOverrideDate(null);
-    const { error } = await supabase.from("availability_overrides").delete().eq("location", location).eq("date", dateStr);
-    if (error) hoursSaveFailed();
+    const [hoursRes, staffRes] = await Promise.all([
+      supabase.from("availability_overrides").delete().eq("location", location).eq("date", dateStr),
+      supabase.from("staff_overrides").delete().eq("location", location).eq("date", dateStr),
+    ]);
+    if (hoursRes.error) hoursSaveFailed();
+    if (staffRes.error) staffSaveFailed();
+  }
+
+  // ── Who works: team list + weekly template ─────────────────────────────────
+  function staffSaveFailed() {
+    setNotice("Raspored zaposlenih nije sačuvan. Pokušaj ponovo.");
+    void fetchStaffAll();
+  }
+
+  async function saveTemplateStaff(weekday: number, staffIds: string[]) {
+    setStaffSchedule((prev) => ({
+      ...prev,
+      template: prev.template.map((ids, i) => (i === weekday ? staffIds : ids)),
+    }));
+    const { error } = await supabase
+      .from("staff_weekly")
+      .upsert({ location, weekday, staff_ids: staffIds }, { onConflict: "location,weekday" });
+    if (error) staffSaveFailed();
+  }
+
+  async function addStaffMember() {
+    const name = newStaffName.trim();
+    if (!name) return;
+    setNewStaffName("");
+    const { data, error } = await supabase.from("staff").insert({ name }).select("id, name, active").single();
+    if (error || !data) { staffSaveFailed(); return; }
+    setStaff((prev) => [...prev, data]);
+  }
+
+  async function renameStaffMember(id: string, name: string) {
+    const trimmed = name.trim();
+    const current = staff.find((m) => m.id === id);
+    if (!trimmed || !current || current.name === trimmed) return;
+    setStaff((prev) => prev.map((m) => (m.id === id ? { ...m, name: trimmed } : m)));
+    const { error } = await supabase.from("staff").update({ name: trimmed }).eq("id", id);
+    if (error) staffSaveFailed();
+  }
+
+  /**
+   * Takes someone off the team. They are only hidden, never deleted, and are
+   * taken off both studios' weekly templates so they stop showing up. Dates
+   * already set as exceptions keep them until edited.
+   */
+  async function removeStaffMember(id: string) {
+    setStaff((prev) => prev.map((m) => (m.id === id ? { ...m, active: false } : m)));
+    setStaffSchedule((prev) => ({ ...prev, template: prev.template.map((ids) => ids.filter((x) => x !== id)) }));
+    const { error } = await supabase.from("staff").update({ active: false }).eq("id", id);
+    if (error) { staffSaveFailed(); return; }
+    const { data: rows, error: readError } = await supabase
+      .from("staff_weekly")
+      .select("location, weekday, staff_ids")
+      .contains("staff_ids", [id]);
+    if (readError) { staffSaveFailed(); return; }
+    const results = await Promise.all((rows ?? []).map((row) =>
+      supabase
+        .from("staff_weekly")
+        .update({ staff_ids: row.staff_ids.filter((x) => x !== id) })
+        .eq("location", row.location)
+        .eq("weekday", row.weekday)));
+    if (results.some((r) => r.error)) staffSaveFailed();
   }
 
   function handleLogout() {
@@ -954,6 +1130,8 @@ export default function AdminPage() {
   const weekDates = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
   const weekEnd   = addDays(weekStart, 6);
 
+  const staffById = useMemo(() => new Map(staff.map((m) => [m.id, m])), [staff]);
+
   /** Everything the calendar needs to know about each of the seven days. */
   const days = useMemo(() => weekDates.map((date) => {
     const dateStr = toDateStr(date);
@@ -962,12 +1140,15 @@ export default function AdminPage() {
       date,
       dateStr,
       windows: resolveWindows(dateStr, availability),
-      hasOverride: dateStr in availability.overrides,
+      hasOverride: dateStr in availability.overrides || dateStr in staffSchedule.overrides,
+      staffNames: resolveStaff(dateStr, staffSchedule)
+        .map((id) => staffById.get(id)?.name)
+        .filter((n): n is string => !!n),
       activeCount: rows.filter(isActive).length,
       desktop: layoutDay(rows, MIN_CARD_PX_DESKTOP / PX_PER_MIN),
       mobile:  layoutDay(rows, MIN_CARD_PX_MOBILE / PX_PER_MIN),
     };
-  }), [weekDates, reservations, availability]);
+  }), [weekDates, reservations, availability, staffSchedule, staffById]);
 
   // The grid spans the week's working hours and appointments (plus a margin),
   // so the screen is not spent on hours when nobody is in the studio.
@@ -993,6 +1174,9 @@ export default function AdminPage() {
     () => Array.from({ length: (gridEnd - gridStart) / 60 + 1 }, (_, i) => gridStart + i * 60),
     [gridStart, gridEnd],
   );
+
+  const overrideIsException = !!overrideDate
+    && (overrideDate in availability.overrides || overrideDate in staffSchedule.overrides);
 
   /** The day the phone layout shows (it has room for one). */
   const mobileDay = days.find(d => d.dateStr === ds) ?? days[0];
@@ -1477,11 +1661,57 @@ export default function AdminPage() {
       {activeTab === "hours" && (
         <div className="flex-1 min-h-0 overflow-auto overscroll-y-contain custom-scrollbar">
           <div className="max-w-3xl mx-auto px-4 py-6">
+            {/* Team */}
+            <div className="mb-8">
+              <h2 className="text-lg font-bold font-playfair">Zaposleni</h2>
+              <p className="text-xs font-poppins text-foreground/64 mt-1 mb-4 leading-relaxed">
+                Ista lista važi za oba studija. Ime možeš da izmeniš direktno u polju.
+              </p>
+              <div className="rounded-2xl border border-foreground/8 bg-surface p-4 shadow-sm space-y-2">
+                {staff.filter((m) => m.active).map((m) => (
+                  <div key={`${m.id}:${m.name}`} className="flex items-center gap-2">
+                    <input
+                      defaultValue={m.name}
+                      onBlur={(e) => renameStaffMember(m.id, e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                      aria-label="Ime zaposlenog"
+                      className="flex-1 min-w-0 px-3 py-2 rounded-lg border border-foreground/10 bg-transparent font-poppins text-sm focus:outline-none focus:border-accent/40 transition-colors"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeStaffMember(m.id)}
+                      className="shrink-0 h-9 px-3 rounded-lg bg-red-400/10 border border-red-400/30 text-[11px] font-bold font-poppins text-red-400 hover:bg-red-400/20 transition-all cursor-pointer"
+                    >
+                      Ukloni
+                    </button>
+                  </div>
+                ))}
+                <form
+                  onSubmit={(e) => { e.preventDefault(); void addStaffMember(); }}
+                  className="flex items-center gap-2 pt-1"
+                >
+                  <input
+                    value={newStaffName}
+                    onChange={(e) => setNewStaffName(e.target.value)}
+                    placeholder="Ime novog zaposlenog"
+                    className="flex-1 min-w-0 px-3 py-2 rounded-lg border border-foreground/10 bg-transparent font-poppins text-sm focus:outline-none focus:border-accent/40 transition-colors"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!newStaffName.trim()}
+                    className="shrink-0 h-9 px-3 rounded-lg bg-accent/10 border border-accent/15 text-accent text-[11px] font-bold font-poppins hover:bg-accent/15 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-default flex items-center gap-1"
+                  >
+                    <Plus size={13} /> Dodaj
+                  </button>
+                </form>
+              </div>
+            </div>
+
             <div className="mb-5">
               <h2 className="text-lg font-bold font-playfair">Nedeljni šablon radnog vremena</h2>
               <p className="text-xs font-poppins text-foreground/64 mt-1 leading-relaxed">
-                Podrazumevano radno vreme po danu. Izmene se čuvaju odmah. Za poseban raspored na
-                pojedinačan datum, klikni na zaglavlje dana u kalendaru (izuzetak).
+                Podrazumevano radno vreme i ko radi po danu. Izmene se čuvaju odmah. Za poseban
+                raspored na pojedinačan datum, klikni na zaglavlje dana u kalendaru (izuzetak).
               </p>
             </div>
             <div className="space-y-3">
@@ -1491,6 +1721,12 @@ export default function AdminPage() {
                   <WindowsEditor
                     windows={availability.template[idx] ?? []}
                     onChange={(next) => saveTemplateDay(idx, next)}
+                  />
+                  <p className="mt-4 mb-2 text-[10px] font-bold font-poppins uppercase tracking-widest text-foreground/55">Ko radi</p>
+                  <StaffPicker
+                    staff={staff}
+                    selected={staffSchedule.template[idx] ?? []}
+                    onChange={(next) => saveTemplateStaff(idx, next)}
                   />
                 </div>
               ))}
@@ -1556,6 +1792,7 @@ export default function AdminPage() {
                       </span>
                       <span className="text-[11px] font-medium font-poppins text-foreground/60 truncate">
                         {mobileDay.activeCount} {srPlural(mobileDay.activeCount, "termin", "termina", "termina")}
+                        {mobileDay.staffNames.length > 0 ? ` · ${mobileDay.staffNames.join(", ")}` : ""}
                         {mobileDay.hasOverride ? " · izuzetak" : ""}
                       </span>
                     </div>
@@ -1564,7 +1801,7 @@ export default function AdminPage() {
                       onClick={() => openOverride(mobileDay.dateStr)}
                       className="shrink-0 h-8 px-3 rounded-lg border border-foreground/10 text-[10px] font-bold font-poppins uppercase tracking-wider text-foreground/68 active:bg-foreground/5 transition-colors cursor-pointer flex items-center gap-1.5"
                     >
-                      <Clock size={12} /> Izmeni sate
+                      <Clock size={12} /> Izmeni dan
                     </button>
                   </div>
                 </div>
@@ -1579,7 +1816,7 @@ export default function AdminPage() {
                         key={day.dateStr}
                         type="button"
                         onClick={() => openOverride(day.dateStr)}
-                        title="Izmeni radno vreme za ovaj dan"
+                        title="Izmeni radno vreme i ko radi ovaj dan"
                         className={`py-3 px-2 flex flex-col items-center gap-1.5 w-full border-l border-foreground/5 first:border-l-0 cursor-pointer transition-colors ${
                           isDayToday ? "bg-accent/10 hover:bg-accent/15" : "hover:bg-foreground/3"
                         }`}
@@ -1597,6 +1834,15 @@ export default function AdminPage() {
                         }`}>
                           {fmtWindows(day.windows) ?? "Zatvoreno"}
                         </span>
+                        {day.staffNames.length > 0 && (
+                          <span
+                            className="max-w-full truncate flex items-center gap-1 text-[10px] font-bold font-poppins text-foreground/72 leading-none"
+                            title={day.staffNames.join(", ")}
+                          >
+                            <Users size={11} className="shrink-0 text-foreground/50" />
+                            <span className="truncate">{day.staffNames.join(", ")}</span>
+                          </span>
+                        )}
                         <span className="text-[10px] font-medium font-poppins text-foreground/55 leading-none">
                           {day.activeCount > 0
                             ? `${day.activeCount} ${srPlural(day.activeCount, "termin", "termina", "termina")}`
@@ -1860,7 +2106,7 @@ export default function AdminPage() {
             <div className="md:hidden w-12 h-1.5 bg-foreground/10 rounded-full mx-auto mt-4 mb-1" />
             <div className="flex items-center justify-between px-6 py-5 border-b border-foreground/5">
               <div className="min-w-0">
-                <h2 className="text-lg font-bold font-playfair">Radno vreme za dan</h2>
+                <h2 className="text-lg font-bold font-playfair">Raspored za dan</h2>
                 <p className="text-[11px] font-bold font-poppins text-foreground/50 uppercase tracking-widest mt-0.5 truncate">
                   {fmtFull(new Date(`${overrideDate}T00:00:00`))}
                 </p>
@@ -1870,21 +2116,25 @@ export default function AdminPage() {
 
             <div className="px-6 py-6 space-y-4">
               <p className="text-[11px] font-poppins text-foreground/64 leading-relaxed">
-                {overrideDate in availability.overrides
-                  ? "Ovaj dan ima poseban raspored (izuzetak). Izmeni sate ili ga vrati na nedeljni šablon."
-                  : "Ovaj dan prati nedeljni šablon. Sve što ovde sačuvaš postaje izuzetak samo za ovaj datum."}
+                {overrideIsException
+                  ? "Ovaj dan ima poseban raspored (izuzetak). Izmeni ga ili ga vrati na nedeljni šablon."
+                  : "Ovaj dan prati nedeljni šablon. Sve što ovde promeniš postaje izuzetak samo za ovaj datum."}
               </p>
 
+              <p className="text-[10px] font-bold font-poppins uppercase tracking-widest text-foreground/55">Radno vreme</p>
               <WindowsEditor windows={overrideDraft} onChange={setOverrideDraft} />
+
+              <p className="pt-2 text-[10px] font-bold font-poppins uppercase tracking-widest text-foreground/55">Ko radi</p>
+              <StaffPicker staff={staff} selected={overrideStaffDraft} onChange={setOverrideStaffDraft} />
 
               <div className="flex gap-2 pt-2">
                 <button
-                  onClick={() => saveOverride(overrideDate, overrideDraft)}
+                  onClick={() => saveOverride(overrideDate, overrideDraft, overrideStaffDraft)}
                   className="flex-1 h-12 rounded-2xl bg-accent text-on-accent text-xs font-bold tracking-[0.2em] font-poppins uppercase hover:opacity-90 transition-all active:scale-95 cursor-pointer"
                 >
                   Sačuvaj
                 </button>
-                {overrideDate in availability.overrides && (
+                {overrideIsException && (
                   <button
                     onClick={() => clearOverride(overrideDate)}
                     className="h-12 px-4 rounded-2xl bg-foreground/4 border border-foreground/10 text-foreground/76 text-[11px] font-bold tracking-widest font-poppins uppercase hover:bg-foreground/8 transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"

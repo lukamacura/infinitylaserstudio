@@ -32,7 +32,7 @@ export function toDateStr(d: Date): string {
 }
 
 /** Monday-index (0=Mon … 6=Sun) for a "YYYY-MM-DD" string. */
-function weekdayOf(dateStr: string): number {
+export function weekdayOf(dateStr: string): number {
   const d = new Date(`${dateStr}T00:00:00`);
   return (d.getDay() + 6) % 7;
 }
