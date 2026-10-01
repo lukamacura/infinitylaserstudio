@@ -2068,31 +2068,33 @@ export default function AdminPage() {
                   className="w-full px-4 py-3 rounded-2xl bg-foreground/2 border border-foreground/5 font-poppins text-sm text-foreground/80 placeholder:text-foreground/42 focus:outline-none focus:border-accent/40 focus:bg-foreground/4 transition-all resize-none"
                 />
               </div>
+            </div>
 
-              <div className="space-y-4 pt-4 pb-4">
-                <div className="grid grid-cols-3 gap-3">
-                  {(Object.entries(STATUS_STYLES) as [ReservationStatus, typeof STATUS_STYLES[ReservationStatus]][]).filter(([key]) => key !== "pending").map(([key, s]) => (
-                    <button
-                      key={key}
-                      onClick={() => setNewStatus(key)}
-                      className={`h-16 rounded-2xl border-2 font-bold font-poppins transition-all flex flex-col items-center justify-center gap-1 ${
-                        newStatus === key ? `${s.bg} ${s.border} ${s.text} shadow-md` : "bg-surface border-foreground/5 text-foreground/38 grayscale hover:grayscale-0 hover:border-foreground/10"
-                      }`}
-                    >
-                      <span className={`w-2 h-2 rounded-full ${s.dot}`} />
-                      <span className="text-[10px] uppercase tracking-widest">{s.label}</span>
-                    </button>
-                  ))}
-                </div>
-
-                <button
-                  onClick={handleStatusSave}
-                  disabled={saving || (newStatus === selected.status && (newNotes.trim() || "") === (selected.notes ?? ""))}
-                  className="w-full h-16 rounded-2xl bg-accent text-on-accent text-sm font-bold tracking-[0.2em] font-poppins shadow-xl shadow-accent/20 disabled:opacity-40 transition-all active:scale-95 cursor-pointer uppercase"
-                >
-                  {saving ? "..." : "Sačuvaj izmene"}
-                </button>
+            {/* Status + save stay pinned below the scroll area so they are
+                always reachable, however long the details get. */}
+            <div className="shrink-0 border-t border-foreground/8 bg-surface px-8 pt-4 pb-5 space-y-3">
+              <div className="grid grid-cols-3 gap-3">
+                {(Object.entries(STATUS_STYLES) as [ReservationStatus, typeof STATUS_STYLES[ReservationStatus]][]).filter(([key]) => key !== "pending").map(([key, s]) => (
+                  <button
+                    key={key}
+                    onClick={() => setNewStatus(key)}
+                    className={`h-14 rounded-2xl border-2 font-bold font-poppins transition-all flex flex-col items-center justify-center gap-1 ${
+                      newStatus === key ? `${s.bg} ${s.border} ${s.text} shadow-md` : "bg-surface border-foreground/5 text-foreground/38 grayscale hover:grayscale-0 hover:border-foreground/10"
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${s.dot}`} />
+                    <span className="text-[10px] uppercase tracking-widest">{s.label}</span>
+                  </button>
+                ))}
               </div>
+
+              <button
+                onClick={handleStatusSave}
+                disabled={saving || (newStatus === selected.status && (newNotes.trim() || "") === (selected.notes ?? ""))}
+                className="w-full h-14 rounded-2xl bg-accent text-on-accent text-sm font-bold tracking-[0.2em] font-poppins shadow-xl shadow-accent/20 disabled:opacity-40 transition-all active:scale-95 cursor-pointer uppercase"
+              >
+                {saving ? "..." : "Sačuvaj izmene"}
+              </button>
             </div>
           </div>
         </div>
