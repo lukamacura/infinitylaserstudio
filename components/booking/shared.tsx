@@ -76,6 +76,8 @@ function getMenArt(n: string): RegionArt | null {
   if (n.includes("leđ") || n.includes("ledj")) return { src: src("cela-ledja"), zoom: 2, x: 50, y: 0 };
   if (n.includes("grudi"))     return { src: src("grudi"), zoom: 2.2, x: 50, y: 0 };
   if (n.includes("stomak") && !n.includes("linija")) return { src: src("stomak"), zoom: 2.2, x: 50, y: 5.5 };
+  if (n.includes("1/2 nog"))   return { src: src("pola-nogu"), zoom: 2.1, x: 50, y: 53 };
+  if (n.includes("nog"))       return { src: src("noge"), zoom: 2, x: 50, y: 54 };
   if (n.includes("telo"))      return { src: src("celo-telo"), zoom: 1.3, x: 50, y: 0 };
   return null;
 }
@@ -94,7 +96,7 @@ export const THUMB_QUALITY = 75;
 // One representative name per image - enough to resolve every file once.
 const REGION_KEYS: Record<Gender, string[]> = {
   zene: ["nausnice", "brada", "celo lice", "intim", "pazuh", "1/2 ruku", "ruke", "1/2 nogu", "noge", "celo telo"],
-  muskarci: ["1/2 lica", "celo lice", "pazuh", "1/2 ruku", "ruke", "1/2 leđa", "cela leđa", "grudi", "stomak", "celo telo"],
+  muskarci: ["1/2 lica", "celo lice", "pazuh", "1/2 ruku", "ruke", "1/2 leđa", "cela leđa", "grudi", "stomak", "1/2 nogu", "noge", "celo telo"],
 };
 
 const preloaded = new Set<string>();
