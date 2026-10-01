@@ -366,6 +366,11 @@ export type Database = {
         Returns: { date: string; start_time: string; end_time: string; status: string }[]
       }
       public_is_returning: { Args: { p_email: string }; Returns: boolean }
+      public_track_funnel: { Args: { p_session: string; p_stage: string; p_location?: string | null }; Returns: undefined }
+      admin_booking_funnel: {
+        Args: { p_from: string; p_to: string; p_location?: string | null }
+        Returns: { stage: string; sessions: number }[]
+      }
       bundle_sessions_left: { Args: { p_email: string; p_code: string; p_location?: string }; Returns: number }
       public_create_booking: {
         Args: {

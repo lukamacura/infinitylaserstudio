@@ -22,6 +22,7 @@ import {
 } from "@/lib/bundles";
 import { STUDENT_PROMO_CODE, isStudentPromoCode } from "@/lib/pricing";
 import { fetchPriceRows, PriceBook } from "@/lib/prices";
+import { trackFunnel, type FunnelStage } from "@/lib/funnel";
 import {
   LOCATIONS, DEFAULT_LOCATION, getLocation, fullAddress, type LocationId,
 } from "@/lib/locations";
@@ -715,6 +716,23 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
   }, [isOpen, studioId, gender, preselectedNames, preselectedBundle, services]);
 
+  // ── Funnel (/fnl): reaching a step means the one before it was done ───────
+  useEffect(() => {
+    if (!isOpen) return;
+    const reached: Partial<Record<Step, FunnelStage[]>> = {
+      location: ["open"],
+      1: ["studio"],
+      2: ["studio", "gender"],
+      plan: ["services"],
+      3: ["plan"],
+      4: ["day"],
+      5: ["time"],
+      success: ["booked"],
+    };
+    for (const stage of reached[step] ?? []) trackFunnel(stage, studioId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, step]);
+
   // Every step starts at the top - otherwise a long previous step (services)
   // leaves the next one scrolled past its opening.
   useEffect(() => {
@@ -975,6 +993,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       return;
     }
 
+    trackFunnel("submit", studioId);
     submitLockRef.current = true;
     setSubmitting(true);
     setSubmitError(null);
