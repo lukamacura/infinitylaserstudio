@@ -15,6 +15,7 @@ import LocationsSection from "@/components/LocationsSection";
 import Footer from "@/components/Footer";
 import WistiaVideo from "@/components/WistiaVideo";
 import ScrollReveal from "@/components/ScrollReveal";
+import type { LocationId } from "@/lib/locations";
 
 // Heavy (Supabase + framer-motion) and never visible on first paint — load it on demand.
 const BookingModal = dynamic(() => import("@/components/BookingModal"), { ssr: false });
@@ -23,7 +24,7 @@ const BookingModal = dynamic(() => import("@/components/BookingModal"), { ssr: f
 // Combos map to their component parts.
 type Gender = "zene" | "muskarci";
 
-const REGION_SLUGS: Record<string, string[]> = {
+const REGION_SLUGS_ZENE: Record<string, string[]> = {
   "nausnice": ["nausnice"],
   "brada": ["brada"],
   "nausnice-brada": ["nausnice", "brada"],
@@ -38,6 +39,32 @@ const REGION_SLUGS: Record<string, string[]> = {
   "celo-telo": ["celo telo"],
 };
 
+const REGION_SLUGS_MUSKARCI: Record<string, string[]> = {
+  "lice": ["lice"],
+  "pola-lica": ["1/2 lica"],
+  "pazuh": ["pazuh"],
+  "ruke": ["ruke"],
+  "pola-ruku": ["1/2 ruku"],
+  "grudi": ["grudi"],
+  "stomak": ["stomak"],
+  "stomak-grudi": ["stomak", "grudi"],
+  "ledja": ["leđa"],
+  "pola-ledja": ["1/2 leđa"],
+  "noge": ["noge"],
+  "pola-nogu": ["1/2 nogu"],
+};
+
+const REGION_SLUGS: Record<Gender, Record<string, string[]>> = {
+  zene: REGION_SLUGS_ZENE,
+  muskarci: REGION_SLUGS_MUSKARCI,
+};
+
+// ?lokacija= slug → studio id.
+const LOCATION_SLUGS: Record<string, LocationId> = {
+  "novi-sad": "novi_sad",
+  "sombor": "sombor",
+};
+
 export default function HomeClient() {
   const [bookingOpen, setBookingOpen] = useState(false);
   // Mount the modal only after the first open, then keep it mounted for exit animations.
@@ -46,50 +73,39 @@ export default function HomeClient() {
   const [preselectedNames, setPreselectedNames] = useState<string[]>([]);
   const [preselectedBundle, setPreselectedBundle] = useState<number | undefined>(undefined);
   const [preselectedGender, setPreselectedGender] = useState<Gender | undefined>(undefined);
+  const [preselectedStudio, setPreselectedStudio] = useState<LocationId | undefined>(undefined);
   function open() {
     setPreselectedNames([]);
     setPreselectedBundle(undefined);
     setPreselectedGender(undefined);
+    setPreselectedStudio(undefined);
     setBookingOpen(true);
   }
 
-  function openWithPreselect(keywords: string[], bundleSize?: number) {
-    setPreselectedNames(keywords);
-    setPreselectedBundle(bundleSize);
-    setPreselectedGender(undefined);
-    setBookingOpen(true);
-  }
-
-  function openWithGender(g: Gender) {
-    setPreselectedNames([]);
-    setPreselectedBundle(undefined);
-    setPreselectedGender(g);
-    setBookingOpen(true);
-  }
-
-  // Open the modal preselected to Žene + a region from a ?regija= link,
-  // straight into a gender's treatment list from a ?pol= link,
-  // or with nothing selected from a ?book=1 link.
+  // Open the modal from a link. Every param is optional and they combine:
+  //   ?lokacija=novi-sad|sombor  skips the studio step
+  //   ?pol=zene|muskarci         skips the gender step
+  //   ?regija=<slug>             preselects regions (implies Žene without ?pol=)
+  //   ?book=1                    opens with nothing preselected
+  // An unknown value is ignored, the rest of the link still applies.
   // Runs once on mount (after hydration) to read the URL — an external system.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const regija = params.get("regija");
-    if (regija) {
-      const keywords = REGION_SLUGS[regija.toLowerCase()];
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      if (keywords) openWithPreselect(keywords);
-      return;
-    }
-    const pol = params.get("pol")?.toLowerCase();
-    if (pol === "zene" || pol === "muskarci") {
-       
-      openWithGender(pol);
-      return;
-    }
-    if (params.get("book") === "1") {
-       
-      open();
-    }
+    const polParam = params.get("pol")?.toLowerCase();
+    const pol: Gender | undefined =
+      polParam === "zene" || polParam === "muskarci" ? polParam : undefined;
+    const regija = params.get("regija")?.toLowerCase();
+    const studio = LOCATION_SLUGS[params.get("lokacija")?.toLowerCase() ?? ""];
+    const keywords = regija ? REGION_SLUGS[pol ?? "zene"][regija] : undefined;
+    const gender: Gender | undefined = pol ?? (keywords ? "zene" : undefined);
+
+    if (!keywords && !gender && !studio && params.get("book") !== "1") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPreselectedNames(keywords ?? []);
+    setPreselectedBundle(undefined);
+    setPreselectedGender(gender);
+    setPreselectedStudio(studio);
+    setBookingOpen(true);
   }, []);
 
   useEffect(() => {
@@ -126,10 +142,11 @@ export default function HomeClient() {
       <ScrollReveal />
       {bookingMounted && <BookingModal
         isOpen={bookingOpen}
-        onClose={() => { setBookingOpen(false); setPreselectedNames([]); setPreselectedBundle(undefined); setPreselectedGender(undefined); }}
+        onClose={() => { setBookingOpen(false); setPreselectedNames([]); setPreselectedBundle(undefined); setPreselectedGender(undefined); setPreselectedStudio(undefined); }}
         preselectedNames={preselectedNames}
         preselectedBundle={preselectedBundle}
         preselectedGender={preselectedGender}
+        preselectedStudio={preselectedStudio}
       />}
 
     </main>

@@ -42,6 +42,8 @@ interface BookingModalProps {
   preselectedBundle?: number;
   /** Skip the gender step and open straight into this gender's treatment list. */
   preselectedGender?: "zene" | "muskarci";
+  /** Skip the studio step and open with this studio chosen. */
+  preselectedStudio?: LocationId;
 }
 
 type Step = "location" | 1 | 2 | "plan" | 3 | 4 | 5 | "success" | "preparation";
@@ -306,7 +308,7 @@ const BUNDLE_IMAGES: Record<number, string> = {
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
-export default function BookingModal({ isOpen, onClose, preselectedNames, preselectedBundle, preselectedGender }: BookingModalProps) {
+export default function BookingModal({ isOpen, onClose, preselectedNames, preselectedBundle, preselectedGender, preselectedStudio }: BookingModalProps) {
   const fbclidRef = useRef(
     typeof window !== "undefined"
       ? new URLSearchParams(window.location.search).get("fbclid")
@@ -320,6 +322,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   const [services, setServices]       = useState<Service[]>([]);
   const [loadingServices, setLoadingServices] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  /** Regions a link preselected - listed first so they are in view on arrival. */
+  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
 
   // Step 3 state
   const [selectedDate, setSelectedDate]   = useState("");
@@ -417,18 +421,21 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   const reduceMotion     = useReducedMotion();
   const proof            = SOCIAL_PROOF[gender ?? "zene"];
   const studio           = getLocation(studioId ?? DEFAULT_LOCATION);
-  /** Preselected treatments are women's regions; a ?pol= link names the gender.
-      Either way the gender step is skipped once the studio is chosen. */
+  /** A ?pol= link names the gender; preselected treatments without one are
+      women's regions. Either way the gender step is skipped once the studio is chosen. */
   const presetGender: Gender | null =
-    preselectedNames && preselectedNames.length > 0 ? "zene" : preselectedGender ?? null;
+    preselectedGender ?? (preselectedNames && preselectedNames.length > 0 ? "zene" : null);
   /** Step 2 list - "Celo telo" leads, it is the offer we most want booked. */
   const pickableServices = useMemo(() => {
     const visible = services.filter((s) => !isComboService(s.name));
+    const pinned = visible.filter((s) => pinnedIds.includes(s.id));
+    const rest = visible.filter((s) => !pinnedIds.includes(s.id));
     return [
-      ...visible.filter((s) => isFullBody(s.name)),
-      ...visible.filter((s) => !isFullBody(s.name)),
+      ...pinned,
+      ...rest.filter((s) => isFullBody(s.name)),
+      ...rest.filter((s) => !isFullBody(s.name)),
     ];
-  }, [services]);
+  }, [services, pinnedIds]);
 
   // ── Bundle ("Napravi svoj paket") ───────────────────────────────────────────
   const eligibleSizes = eligibleBundleSizes(effectiveServices);
@@ -660,6 +667,19 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     }
   }, [bookableDayOptions, selectedDate]);
 
+  // ── A ?lokacija= link skips the studio step ───────────────────────────────
+  const appliedStudio = useRef(false);
+  useEffect(() => {
+    if (!isOpen) {
+      appliedStudio.current = false;
+      return;
+    }
+    if (appliedStudio.current) return;
+    appliedStudio.current = true;
+    if (preselectedStudio) handleLocationSelect(preselectedStudio);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, preselectedStudio]);
+
   // ── Auto-select preselected services when modal opens ─────────────────────
   useEffect(() => {
     if (!isOpen) {
@@ -674,12 +694,16 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     // Nothing is preselected before the studio is chosen - that step comes first.
     if (!studioId || !gender) return;
     if (services.length === 0) return; // wait for services to load
-    const matchedIds = services
-      .filter((s) => !isComboService(s.name))
-      .filter((s) => preselectedNames.some((kw) => s.name.toLowerCase().includes(kw)))
-      .map((s) => s.id);
+    // An exact name wins, so "leđa" picks Leđa and not 1/2 Leđa as well.
+    const pickable = services.filter((s) => !isComboService(s.name));
+    const matchedIds = [...new Set(preselectedNames.flatMap((kw) => {
+      const exact = pickable.filter((s) => s.name.toLowerCase() === kw);
+      return (exact.length > 0 ? exact : pickable.filter((s) => s.name.toLowerCase().includes(kw)))
+        .map((s) => s.id);
+    }))];
     if (matchedIds.length > 0) {
       setSelectedIds(matchedIds);
+      setPinnedIds(matchedIds);
       // Landing-page examples jump straight into the bundle on the plan step.
       if (preselectedBundle != null) {
         setBookingMode("bundle");
@@ -738,7 +762,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     bookableDaysFetchIdRef.current += 1;
     setBookableDayOptions([]);
     setLoadingBookableDays(false);
-    setStep("location"); setStudioId(null); setGender(null); setSelectedIds([]);
+    setStep("location"); setStudioId(null); setGender(null); setSelectedIds([]); setPinnedIds([]);
     setAvailability(null); setAvailabilityError(false);
     setSelectedDate(""); setSelectedTime(""); setDaySlots([]); setDaySlotsFor(null);
     setSlotsError(false); setServicesError(false); setSlotTaken(false);

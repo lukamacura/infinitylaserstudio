@@ -487,8 +487,7 @@ body {
 }
 
 /* Technology section: the machine settles in first with its glow blooming
-   behind it, then each benefit slides in from its own side while its line
-   draws toward the machine and the arrowhead lands at the end. */
+   behind it, then each wavelength slides in from its own side. */
 .tech-machine {
   opacity: 0;
   transform: translateY(1.25rem) scale(0.96);
@@ -501,32 +500,37 @@ body {
 }
 
 .tech-callout {
-  --tech-delay: calc(0.35s + var(--rv-i, 0) * 0.11s);
+  --tech-delay: calc(0.9s + var(--rv-i, 0) * 0.15s);
   opacity: 0;
   transform: translateX(var(--tech-from, 0));
   transition: opacity 0.7s var(--rv-ease) var(--tech-delay), transform 0.9s var(--rv-ease) var(--tech-delay);
 }
 
-.tech-line {
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform 0.7s var(--rv-ease) calc(var(--tech-delay) + 0.2s);
-}
-
-.tech-tip {
-  opacity: 0;
-  transition: opacity 0.3s ease-out calc(var(--tech-delay) + 0.7s);
-}
-
 [data-rv-in] .tech-machine,
-[data-rv-in] .tech-callout,
-[data-rv-in] .tech-line {
+[data-rv-in] .tech-callout {
   opacity: 1;
   transform: none;
 }
 
-[data-rv-in] .tech-tip  { opacity: 1; }
 [data-rv-in] .tech-glow { opacity: 0.15; }
+
+/* Branches grow out of the node beside the machine, then the entries land. */
+.tech-branch {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset 1s var(--rv-ease) 0.3s;
+}
+
+.tech-node,
+.tech-tip {
+  opacity: 0;
+  transition: opacity 0.4s ease-out 0.25s;
+}
+.tech-tip { transition-delay: 1.1s; }
+
+[data-rv-in] .tech-branch { stroke-dashoffset: 0; }
+[data-rv-in] .tech-node,
+[data-rv-in] .tech-tip { opacity: 1; }
 
 /* ── Price comparison: a page of math notes ───────────────────────────────────
    A sheet of squared paper taped to the page, with the sum written out by
@@ -591,12 +595,14 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  [data-rv], .tech-machine, .tech-callout, .tech-line, .tech-tip {
+  [data-rv], .tech-machine, .tech-callout {
     opacity: 1;
     transform: none;
     transition: none;
   }
   .tech-glow { opacity: 0.15; transition: none; }
+  .tech-branch { stroke-dashoffset: 0; transition: none; }
+  .tech-node, .tech-tip { opacity: 1; transition: none; }
   .notes-write { clip-path: none; transition: none; }
   .notes-draw  { opacity: 1; stroke-dashoffset: 0; transition: none; }
 }
