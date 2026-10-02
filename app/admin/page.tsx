@@ -416,11 +416,14 @@ function StaffPicker({
 
 // ── Day layout ────────────────────────────────────────────────────────────────
 // Layout reservations into columns so overlaps render side-by-side instead of stacked.
-// Returns each reservation with its assigned column index and the total columns its cluster spans.
-// `minMinutes` is the shortest card drawn: a short appointment takes up that much
-// room on screen, so whatever follows it goes beside it rather than underneath.
-type LaidOut = ReservationFull & { _col: number; _cols: number };
-function layoutDay(rs: ReservationFull[], minMinutes: number): LaidOut[] {
+// Columns follow the real times only: back-to-back appointments (one ends at 16:40,
+// the next starts at 16:40) share a column, and a second column always means a real
+// overlap. Each card also gets:
+//   _span  — how many columns it may stretch over to the right (free for its whole time),
+//   _room  — minutes until the next card below it in those columns, so a short card
+//            can be drawn taller for readability without covering its neighbour.
+type LaidOut = ReservationFull & { _col: number; _cols: number; _span: number; _room: number };
+function layoutDay(rs: ReservationFull[]): LaidOut[] {
   if (rs.length === 0) return [];
   const sorted = [...rs].sort((a, b) => {
     const sa = timeToMinutes(a.start_time);
@@ -429,20 +432,26 @@ function layoutDay(rs: ReservationFull[], minMinutes: number): LaidOut[] {
     return timeToMinutes(a.end_time) - timeToMinutes(b.end_time);
   });
 
-  const out: LaidOut[] = [];
-  let cluster: { item: ReservationFull; start: number; end: number; col: number }[] = [];
+  type Placed = { item: ReservationFull; start: number; end: number; col: number };
+  const placed: (Placed & { cols: number; span: number })[] = [];
+  let cluster: Placed[] = [];
   let clusterEnd = -Infinity;
 
   const flush = () => {
     const cols = cluster.reduce((m, c) => Math.max(m, c.col + 1), 0);
-    for (const c of cluster) out.push({ ...c.item, _col: c.col, _cols: cols });
+    for (const c of cluster) {
+      const overlapping = (o: Placed) => o !== c && o.start < c.end && o.end > c.start;
+      let span = 1;
+      while (c.col + span < cols && !cluster.some(o => o.col === c.col + span && overlapping(o))) span++;
+      placed.push({ ...c, cols, span });
+    }
     cluster = [];
     clusterEnd = -Infinity;
   };
 
   for (const r of sorted) {
     const start = timeToMinutes(r.start_time);
-    const end   = Math.max(timeToMinutes(r.end_time), start + Math.max(r.total_duration, minMinutes));
+    const end   = Math.max(timeToMinutes(r.end_time), start + r.total_duration);
     if (start >= clusterEnd) flush();
 
     // pick lowest free column
@@ -457,7 +466,16 @@ function layoutDay(rs: ReservationFull[], minMinutes: number): LaidOut[] {
   }
   flush();
 
-  return out;
+  // Nearest card below each one that it would run into on screen (horizontally
+  // overlapping, starting at or after it ends) — also across clusters.
+  return placed.map((c) => {
+    const left = c.col / c.cols;
+    const right = (c.col + c.span) / c.cols;
+    const next = placed
+      .filter(o => o !== c && o.start >= c.end && o.col / o.cols < right && (o.col + o.span) / o.cols > left)
+      .reduce((m, o) => Math.min(m, o.start), Infinity);
+    return { ...c.item, _col: c.col, _cols: c.cols, _span: c.span, _room: next - c.start };
+  });
 }
 
 const TABS = [
@@ -1348,8 +1366,7 @@ export default function AdminPage() {
         .map((id) => staffById.get(id)?.name)
         .filter((n): n is string => !!n),
       activeCount: rows.filter(isActive).length,
-      desktop: layoutDay(rows, MIN_CARD_PX_DESKTOP / PX_PER_MIN),
-      mobile:  layoutDay(rows, MIN_CARD_PX_MOBILE / PX_PER_MIN),
+      cards:   layoutDay(rows),
     };
   }), [weekDates, reservations, availability, staffSchedule, staffById]);
 
@@ -1360,7 +1377,7 @@ export default function AdminPage() {
     let hi = -Infinity;
     for (const day of days) {
       for (const w of day.windows ?? []) { lo = Math.min(lo, w.start); hi = Math.max(hi, w.end); }
-      for (const r of day.desktop) {
+      for (const r of day.cards) {
         const start = timeToMinutes(r.start_time);
         lo = Math.min(lo, start);
         hi = Math.max(hi, start + r.total_duration, timeToMinutes(r.end_time));
@@ -2539,7 +2556,7 @@ export default function AdminPage() {
   // One day's column: closed hours hatched, open hours framed, then the cards.
   function renderDayBody(day: (typeof days)[number], isMobile: boolean) {
     const isDayToday = day.dateStr === todayStr;
-    const cards = isMobile ? day.mobile : day.desktop;
+    const cards = day.cards;
     return (
       <>
         {isDayToday && <div className="absolute inset-0 bg-accent/[0.06] pointer-events-none" />}
@@ -2594,8 +2611,9 @@ export default function AdminPage() {
   function renderReservation(r: LaidOut, isMobile: boolean) {
     const topPx    = toHeight(timeToMinutes(r.start_time) - gridStart);
     const minPx    = isMobile ? MIN_CARD_PX_MOBILE : MIN_CARD_PX_DESKTOP;
-    // 2px short, so back-to-back appointments read as separate cards.
-    const heightPx = Math.max(toHeight(r.total_duration), minPx) - 2;
+    // A short appointment is drawn taller so it stays readable, but never past the
+    // start of the next card below it. 2px short, so back-to-back cards read as separate.
+    const heightPx = Math.max(toHeight(r.total_duration), Math.min(minPx, toHeight(r._room))) - 2;
     const services = r.reservation_services.map(rs => rs.services?.name).filter(Boolean).join(", ");
     const bundle   = parseBundlePromo(r.promo_code);
     const hasHealthNote = !!r.customer_note?.trim();
@@ -2606,12 +2624,14 @@ export default function AdminPage() {
 
     const cols = Math.max(1, r._cols);
     const col  = r._col;
+    const span = Math.max(1, r._span);
+    const last = col + span - 1;
     const gapPx = isMobile ? 4 : 3;
     const padPx = isMobile ? 8 : 6;
 
     const time     = `${r.start_time.slice(0, 5)}–${r.end_time.slice(0, 5)}`;
     const oneLine  = heightPx < 40;
-    const narrow   = !isMobile && cols >= 3;
+    const narrow   = !isMobile && cols / span >= 3;
     const showServices = heightPx >= 58 && !!services;
 
     const icons = (
@@ -2639,7 +2659,7 @@ export default function AdminPage() {
           top: topPx,
           height: heightPx,
           left:  `calc(${(col / cols) * 100}% + ${col === 0 ? padPx : gapPx / 2}px)`,
-          width: `calc(${100 / cols}% - ${col === 0 || col === cols - 1 ? padPx + gapPx / 2 : gapPx}px)`,
+          width: `calc(${(span / cols) * 100}% - ${(col === 0 ? padPx : gapPx / 2) + (last === cols - 1 && col > 0 ? padPx : gapPx / 2)}px)`,
         }}
       >
         <span className={`absolute left-0 inset-y-0 w-1 ${look.bar}`} />
