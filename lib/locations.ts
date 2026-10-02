@@ -40,8 +40,6 @@ export interface StudioLocation {
   image: string | null;
   /** Google Maps embed; null hides the map. */
   mapEmbed: string | null;
-  /** One-time marketing fee tracked on the finances page (RSD). */
-  marketingFee: number;
   palette: LocationPalette;
 }
 
@@ -57,7 +55,6 @@ export const LOCATIONS: readonly StudioLocation[] = [
     image: "/lokacije/novi_sad.webp",
     mapEmbed:
       "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2808.952530282901!2d19.795792112493817!3d45.248752670950566!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x475b116b6f148971%3A0xbae20345f88572f7!2sInfinity%20Laser%20Studio!5e0!3m2!1sen!2srs!4v1775850629842!5m2!1sen!2srs",
-    marketingFee: 311110,
     // Warm charcoal + rose gold - the brand palette, toned down.
     palette: {
       accent: "#D4A9A7",
@@ -78,7 +75,6 @@ export const LOCATIONS: readonly StudioLocation[] = [
     address: "JNA 30",
     image: "/lokacije/sombor.webp",
     mapEmbed: null,
-    marketingFee: 0,
     // Slate indigo + lavender - cool where Novi Sad is warm, and clear of the
     // status colours (green, amber, red) used across the calendar.
     palette: {

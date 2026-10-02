@@ -747,6 +747,16 @@ body {
   --color-sky-400: #8DBEDD;
 }
 
+/* iOS zooms the whole page into any field under 16px and leaves it zoomed -
+   on a phone every admin field gets 16px text. */
+@media (max-width: 767px) {
+  .admin-theme input:not([type="checkbox"]):not([type="radio"]),
+  .admin-theme textarea,
+  .admin-theme select {
+    font-size: 16px;
+  }
+}
+
 /* The reservation modal brings its own near-black sheets - lift them to the
    same charcoal as the rest of the admin. */
 .admin-theme .bm-theme {

@@ -4,6 +4,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
+import { usePathname } from "next/navigation";
+import { isAdminPath } from "@/lib/adminRoutes";
 
 const BookingModal = dynamic(() => import("./BookingModal"), { ssr: false });
 
@@ -14,6 +16,7 @@ const navLinks = [
 ] as const;
 
 export default function Navbar() {
+  const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const [bookingOpen, setBookingOpen] = useState(false);
   const [bookingMounted, setBookingMounted] = useState(false);
@@ -36,6 +39,9 @@ export default function Navbar() {
       mq.removeEventListener("change", onBreakpoint);
     };
   }, [menuOpen]);
+
+  // The admin pages bring their own header.
+  if (isAdminPath(pathname)) return null;
 
   return (
     <>

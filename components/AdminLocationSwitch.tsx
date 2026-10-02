@@ -26,7 +26,7 @@ export default function AdminLocationSwitch({
             type="button"
             onClick={() => onChange(loc.id)}
             aria-pressed={active}
-            className={`flex items-center gap-1.5 px-2.5 md:px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-bold font-poppins uppercase tracking-widest whitespace-nowrap transition-colors cursor-pointer ${
+            className={`flex items-center gap-1.5 h-8 md:h-auto px-2.5 md:px-3 md:py-1.5 rounded-lg text-[10px] md:text-xs font-bold font-poppins uppercase tracking-widest whitespace-nowrap transition-colors cursor-pointer ${
               active ? "shadow-sm" : "text-foreground/60 hover:text-foreground/82"
             }`}
             style={active ? { backgroundColor: loc.palette.accent, color: loc.palette.onAccent } : undefined}

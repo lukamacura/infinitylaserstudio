@@ -2,15 +2,15 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import Link from "next/link";
 import Image from "next/image";
 import {
-  LogOut, Filter, AlertCircle, AlertTriangle, CheckCircle2, ArrowDown,
+  Filter, AlertCircle, AlertTriangle, CheckCircle2, ArrowDown,
   Users, CalendarCheck, Percent, RefreshCw, X,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAdminAuth } from "@/lib/adminAuth";
 import AdminLogin from "@/components/AdminLogin";
+import AdminHeader from "@/components/AdminHeader";
 import { useAdminLocation } from "@/lib/adminLocation";
 import { LOCATIONS, locationTheme, type LocationId } from "@/lib/locations";
 import { FUNNEL_STAGES, type FunnelStage } from "@/lib/funnel";
@@ -146,39 +146,22 @@ export default function FunnelPage() {
   });
 
   return (
-    <main className="min-h-dvh flex flex-col bg-background pt-16 text-foreground admin-theme" style={locationTheme(location)}>
+    <main className="min-h-dvh flex flex-col bg-background text-foreground admin-theme" style={locationTheme(location)}>
       <style jsx global>{` .animate-promo-in { display: none !important; } `}</style>
 
-      {/* Header */}
-      <header className="bg-surface border-b-2 border-accent/40 px-4 md:px-8 py-3 md:py-5 flex items-center justify-between gap-6 shrink-0 z-20 shadow-sm sticky top-0">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 md:gap-6">
-          <div className="border-r border-foreground/10 pr-4 md:pr-6">
-            <h1 className="text-xl font-bold font-playfair tracking-tight">Infinity Laser Studio</h1>
-            <p className="text-[10px] text-foreground/50 font-bold font-poppins uppercase tracking-widest mt-0.5">Admin Panel</p>
-          </div>
-          <nav className="flex items-center gap-1 bg-foreground/3 rounded-xl p-1">
-            <Link href="/admin" className="px-3 py-1.5 rounded-lg text-xs font-bold font-poppins text-foreground/50 hover:text-foreground/76 uppercase tracking-widest transition-colors">Admin</Link>
-            <Link href="/finances" className="px-3 py-1.5 rounded-lg text-xs font-bold font-poppins text-foreground/50 hover:text-foreground/76 uppercase tracking-widest transition-colors">Finansije</Link>
-            <Link href="/stats" className="px-3 py-1.5 rounded-lg text-xs font-bold font-poppins text-foreground/50 hover:text-foreground/76 uppercase tracking-widest transition-colors">Statistike</Link>
-            <span className="px-3 py-1.5 rounded-lg bg-accent/15 text-xs font-bold font-poppins text-accent uppercase tracking-widest">Funnel</span>
-          </nav>
-        </div>
-        <button onClick={() => void signOut()} className="flex items-center gap-2 px-3 py-2 md:px-5 md:py-2.5 rounded-xl md:rounded-2xl bg-foreground/3 text-foreground/60 hover:text-red-400 hover:bg-red-400/10 transition-all font-poppins text-xs font-bold cursor-pointer">
-          <LogOut size={16} /><span className="hidden md:inline uppercase tracking-widest">Odjava</span>
-        </button>
-      </header>
+      <AdminHeader current="fnl" location={location} onLogout={() => void signOut()} />
 
       {/* Filters - one row above the data */}
-      <div className="bg-surface border-b border-foreground/5 px-4 md:px-8 py-3 md:py-4 shrink-0 z-10 shadow-xs">
-        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-1 bg-foreground/3 rounded-xl p-1 w-fit" role="group" aria-label="Period">
+      <div className="bg-surface border-b border-foreground/5 px-3 md:px-8 py-2.5 md:py-4 shrink-0 shadow-xs">
+        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3">
+          <div className="grid grid-cols-4 sm:flex items-center gap-1 bg-foreground/3 rounded-xl p-1 sm:w-fit" role="group" aria-label="Period">
             {RANGES.map((r) => (
               <button
                 key={r.key}
                 type="button"
                 onClick={() => setRange(r.key)}
                 aria-pressed={range === r.key}
-                className={`px-3 py-1.5 rounded-lg text-[11px] md:text-xs font-bold font-poppins uppercase tracking-widest transition-colors cursor-pointer ${
+                className={`h-9 sm:h-auto px-2 sm:px-3 sm:py-1.5 rounded-lg text-[11px] md:text-xs font-bold font-poppins uppercase tracking-wider sm:tracking-widest whitespace-nowrap transition-colors cursor-pointer ${
                   range === r.key ? "bg-accent text-on-accent shadow-sm" : "text-foreground/60 hover:text-foreground/82"
                 }`}
               >
@@ -187,12 +170,12 @@ export default function FunnelPage() {
             ))}
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1 bg-foreground/3 rounded-xl p-1" role="group" aria-label="Studio">
+            <div className="flex-1 sm:flex-none grid grid-cols-3 sm:flex items-center gap-1 bg-foreground/3 rounded-xl p-1" role="group" aria-label="Studio">
               <button
                 type="button"
                 onClick={() => setStudio(null)}
                 aria-pressed={studio === null}
-                className={`px-3 py-1.5 rounded-lg text-[11px] md:text-xs font-bold font-poppins uppercase tracking-widest transition-colors cursor-pointer ${
+                className={`h-9 sm:h-auto px-2 sm:px-3 sm:py-1.5 rounded-lg text-[11px] md:text-xs font-bold font-poppins uppercase tracking-wider sm:tracking-widest whitespace-nowrap transition-colors cursor-pointer ${
                   studio === null ? "bg-foreground/12 text-foreground shadow-sm" : "text-foreground/60 hover:text-foreground/82"
                 }`}
               >
@@ -206,7 +189,7 @@ export default function FunnelPage() {
                     type="button"
                     onClick={() => setStudio(loc.id)}
                     aria-pressed={active}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] md:text-xs font-bold font-poppins uppercase tracking-widest whitespace-nowrap transition-colors cursor-pointer ${
+                    className={`h-9 sm:h-auto flex items-center justify-center gap-1.5 px-2 sm:px-3 sm:py-1.5 rounded-lg text-[11px] md:text-xs font-bold font-poppins uppercase tracking-wider sm:tracking-widest whitespace-nowrap transition-colors cursor-pointer ${
                       active ? "shadow-sm" : "text-foreground/60 hover:text-foreground/82"
                     }`}
                     style={active ? { backgroundColor: loc.palette.accent, color: loc.palette.onAccent } : undefined}
@@ -225,7 +208,7 @@ export default function FunnelPage() {
               type="button"
               onClick={() => void load()}
               aria-label="Osveži"
-              className="w-9 h-9 flex items-center justify-center rounded-xl bg-foreground/3 text-foreground/60 hover:text-foreground transition-colors cursor-pointer"
+              className="w-11 h-11 sm:w-9 sm:h-9 shrink-0 flex items-center justify-center rounded-xl bg-foreground/3 text-foreground/60 hover:text-foreground transition-colors cursor-pointer"
             >
               <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
             </button>
@@ -233,8 +216,8 @@ export default function FunnelPage() {
         </div>
       </div>
 
-      <div className="flex-1 px-4 md:px-8 py-6 md:py-10">
-        <div className="max-w-5xl mx-auto flex flex-col gap-6 md:gap-8">
+      <div className="flex-1 px-3 md:px-8 py-4 md:py-10 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div className="max-w-5xl mx-auto flex flex-col gap-4 md:gap-8">
 
           {loadError && (
             <div className="flex items-center gap-3 p-4 rounded-2xl bg-red-400/10 border border-red-400/30 text-red-300 text-sm font-poppins">
@@ -244,7 +227,7 @@ export default function FunnelPage() {
           )}
 
           {/* KPI tiles */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
+          <div className="grid grid-cols-3 gap-2.5 md:gap-4">
             <Kpi
               icon={Users}
               label={studio ? "Izabralo studio" : "Otvorilo formu"}
@@ -275,8 +258,8 @@ export default function FunnelPage() {
           )}
 
           {/* Funnel */}
-          <section className="bg-surface rounded-3xl border border-foreground/8 p-4 md:p-8 shadow-sm">
-            <div className="flex items-baseline justify-between gap-4 mb-5 md:mb-7">
+          <section className="bg-surface rounded-3xl border border-foreground/8 p-3 md:p-8 shadow-sm">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-4 md:mb-7 px-1 md:px-0">
               <h2 className="text-lg md:text-2xl font-bold font-playfair">Koraci zakazivanja</h2>
               <p className="text-[10px] md:text-xs font-bold font-poppins uppercase tracking-widest text-foreground/50">
                 Broj ljudi · % od početka
@@ -299,11 +282,11 @@ export default function FunnelPage() {
                     <li key={r.key}>
                       {/* Drop between the previous step and this one */}
                       {i > 0 && (
-                        <div className="flex items-center gap-3 pl-4 md:pl-5 py-1.5">
+                        <div className="flex items-center gap-3 pl-3 md:pl-5 py-1.5">
                           <ArrowDown size={14} className="text-foreground/30 shrink-0" />
                           {prev > 0 ? (
                             <span
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] md:text-xs font-bold font-poppins"
+                              className="inline-flex flex-wrap items-center gap-x-1.5 px-2.5 py-1 rounded-full text-[11px] md:text-xs font-bold font-poppins"
                               style={{ backgroundColor: sev.bg, color: sev.color }}
                               title={sev.word}
                             >
@@ -318,7 +301,7 @@ export default function FunnelPage() {
                       )}
 
                       <div
-                        className="group relative grid grid-cols-[5.5rem_1fr_auto] md:grid-cols-[9rem_1fr_auto] items-center gap-3 md:gap-6 p-3 md:p-4 rounded-2xl bg-foreground/3 hover:bg-foreground/6 transition-colors"
+                        className="group relative grid grid-cols-[4.5rem_1fr_auto] sm:grid-cols-[5.5rem_1fr_auto] md:grid-cols-[9rem_1fr_auto] items-center gap-3 md:gap-6 p-2.5 md:p-4 rounded-2xl bg-foreground/3 hover:bg-foreground/6 transition-colors"
                         title={`${r.label}: ${r.count} ljudi (${fmtPct(share)} od početka)`}
                       >
                         <button
@@ -332,7 +315,7 @@ export default function FunnelPage() {
                             alt={r.label}
                             width={SHOT_W}
                             height={SHOT_H}
-                            sizes="(min-width: 768px) 144px, 88px"
+                            sizes="(min-width: 768px) 144px, (min-width: 640px) 88px, 72px"
                             className="w-full h-auto"
                           />
                           <span className="absolute top-1.5 left-1.5 w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center text-[11px] md:text-xs font-bold font-poppins bg-accent text-on-accent shadow">
@@ -340,8 +323,8 @@ export default function FunnelPage() {
                           </span>
                         </button>
                         <div className="min-w-0">
-                          <p className="text-sm md:text-base font-bold font-poppins">{r.label}</p>
-                          <p className="text-[11px] md:text-sm text-foreground/50 font-poppins">{r.hint}</p>
+                          <p className="text-[13px] sm:text-sm md:text-base font-bold font-poppins leading-snug">{r.label}</p>
+                          <p className="text-[11px] md:text-sm text-foreground/50 font-poppins leading-snug line-clamp-2">{r.hint}</p>
                           <div className="mt-2 h-2.5 md:h-3 rounded-full bg-foreground/6 overflow-hidden">
                             <div
                               className="h-full rounded-full transition-[width] duration-700 ease-out"
@@ -352,7 +335,7 @@ export default function FunnelPage() {
                             />
                           </div>
                         </div>
-                        <div className="text-right pl-2">
+                        <div className="text-right sm:pl-2">
                           <p className="text-lg md:text-2xl font-bold font-poppins tabular-nums leading-none">
                             {r.count.toLocaleString("sr-RS")}
                           </p>
@@ -415,15 +398,15 @@ export default function FunnelPage() {
 
 function Kpi({ icon: Icon, label, value, tint }: { icon: typeof Users; label: string; value: string; tint: string }) {
   return (
-    <div className="relative overflow-hidden bg-surface rounded-2xl md:rounded-3xl border border-foreground/8 p-4 md:p-6 shadow-sm">
+    <div className="relative overflow-hidden bg-surface rounded-2xl md:rounded-3xl border border-foreground/8 p-3 sm:p-4 md:p-6 shadow-sm min-w-0">
       <div className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: tint }} />
-      <div className="flex items-center gap-2 text-foreground/60">
-        <span className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${tint}22`, color: tint }}>
-          <Icon size={16} />
+      <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 text-foreground/60">
+        <span className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: `${tint}22`, color: tint }}>
+          <Icon size={15} />
         </span>
-        <p className="text-[10px] md:text-xs font-bold font-poppins uppercase tracking-widest">{label}</p>
+        <p className="text-[9px] sm:text-[10px] md:text-xs font-bold font-poppins uppercase tracking-wider sm:tracking-widest leading-tight">{label}</p>
       </div>
-      <p className="text-2xl md:text-4xl font-bold font-poppins tabular-nums mt-3">{value}</p>
+      <p className="text-xl sm:text-2xl md:text-4xl font-bold font-poppins tabular-nums mt-2 sm:mt-3">{value}</p>
     </div>
   );
 }

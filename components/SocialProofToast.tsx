@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CalendarCheck, X } from "lucide-react";
+import { isAdminPath } from "@/lib/adminRoutes";
 
 const NAMES = [
   "Tara", "Mina", "Katarina", "Stefana", "Svetlana",
@@ -18,7 +19,7 @@ export default function SocialProofToast() {
 
   useEffect(() => {
     if (sessionStorage.getItem(SESSION_KEY)) return;
-    if (/^\/(admin|finances|stats)(\/|$)/.test(window.location.pathname)) return;
+    if (isAdminPath(window.location.pathname)) return;
 
     const randomName = NAMES[Math.floor(Math.random() * NAMES.length)];
     // eslint-disable-next-line react-hooks/set-state-in-effect

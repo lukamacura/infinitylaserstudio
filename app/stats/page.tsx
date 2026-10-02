@@ -2,16 +2,15 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
 import {
-  LogOut, DollarSign, Target, CheckCircle2, XCircle, AlertCircle,
+  DollarSign, Target, CheckCircle2, XCircle, AlertCircle,
   TrendingUp, TrendingDown, CalendarCheck
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/fetchAll";
 import { useAdminAuth } from "@/lib/adminAuth";
 import AdminLogin from "@/components/AdminLogin";
-import AdminLocationSwitch from "@/components/AdminLocationSwitch";
+import AdminHeader from "@/components/AdminHeader";
 import { useAdminLocation } from "@/lib/adminLocation";
 import { locationTheme } from "@/lib/locations";
 
@@ -159,33 +158,17 @@ export default function MarketingPage() {
 
   // ── Dashboard screen ──────────────────────────────────────────────────────────
   return (
-    <main className="min-h-dvh flex flex-col bg-background pt-16 text-foreground admin-theme" style={locationTheme(location)}>
+    <main className="min-h-dvh flex flex-col bg-background text-foreground admin-theme" style={locationTheme(location)}>
       <style jsx global>{` .animate-promo-in { display: none !important; } `}</style>
 
-      {/* Header */}
-      <header className="bg-surface border-b-2 border-accent/40 px-4 md:px-8 py-3 md:py-5 flex items-center justify-between gap-3 shrink-0 z-20 shadow-sm sticky top-0">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 md:gap-6 min-w-0">
-          <div className="border-r border-foreground/10 pr-3 md:pr-6 shrink-0">
-            <h1 className="text-base md:text-xl font-bold font-playfair tracking-tight whitespace-nowrap">Infinity Laser Studio</h1>
-            <p className="text-[9px] md:text-[10px] text-foreground/50 font-bold font-poppins uppercase tracking-widest mt-0.5">Admin Panel</p>
-          </div>
-          <nav className="flex items-center gap-1 bg-foreground/3 rounded-xl p-1 shrink-0">
-            <Link href="/admin" className="px-2.5 md:px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-bold font-poppins text-foreground/50 hover:text-foreground/76 uppercase tracking-widest transition-colors">Admin</Link>
-            <Link href="/finances" className="px-2.5 md:px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-bold font-poppins text-foreground/50 hover:text-foreground/76 uppercase tracking-widest transition-colors">Finansije</Link>
-            <span className="px-2.5 md:px-3 py-1.5 rounded-lg bg-accent/15 text-[10px] md:text-xs font-bold font-poppins text-accent uppercase tracking-widest">Statistike</span>
-            <Link href="/fnl" className="px-2.5 md:px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-bold font-poppins text-foreground/50 hover:text-foreground/76 uppercase tracking-widest transition-colors">Funnel</Link>
-          </nav>
-          <AdminLocationSwitch
-            value={location}
-            onChange={(next) => { setAppointments([]); setLocation(next); }}
-          />
-        </div>
-        <button onClick={handleLogout} className="flex items-center gap-2 px-3 py-2 md:px-5 md:py-2.5 rounded-xl md:rounded-2xl bg-foreground/3 text-foreground/60 hover:text-red-400 hover:bg-red-400/10 transition-all font-poppins text-xs font-bold cursor-pointer">
-          <LogOut size={16} /><span className="hidden md:inline uppercase tracking-widest">Odjava</span>
-        </button>
-      </header>
+      <AdminHeader
+        current="stats"
+        location={location}
+        onLocationChange={(next) => { setAppointments([]); setLocation(next); }}
+        onLogout={handleLogout}
+      />
 
-      <div className="flex-1 max-w-6xl mx-auto w-full p-4 md:p-8 space-y-8">
+      <div className="flex-1 max-w-6xl mx-auto w-full px-3 py-4 md:p-8 space-y-4 md:space-y-8 pb-[max(1rem,env(safe-area-inset-bottom))]">
 
         {loadError && (
           <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 rounded-2xl border border-red-400/40 bg-red-400/10 text-red-300 text-sm font-semibold font-poppins">
@@ -195,17 +178,17 @@ export default function MarketingPage() {
         )}
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+        <div className="grid grid-cols-3 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-6">
 
           {/* Show-up rate — featured card */}
-          <div className="sm:col-span-2 bg-surface p-6 rounded-4xl border border-foreground/5 shadow-sm relative overflow-hidden group">
+          <div className="col-span-3 sm:col-span-2 bg-surface p-5 md:p-6 rounded-3xl md:rounded-4xl border border-foreground/5 shadow-sm relative overflow-hidden group">
             <div className="flex items-start justify-between">
               <div>
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 ${getRateBg(showUpRate)}`}>
-                  <Target className={getRateColor(showUpRate)} size={24} />
+                <div className={`w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center mb-3 md:mb-4 ${getRateBg(showUpRate)}`}>
+                  <Target className={getRateColor(showUpRate)} size={22} />
                 </div>
                 <p className="text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-[0.2em] mb-1">Stopa dolazaka (sve vreme)</p>
-                <h3 className={`text-5xl font-bold font-playfair ${getRateColor(showUpRate)}`}>{total > 0 ? `${showUpRate}%` : "—"}</h3>
+                <h3 className={`text-4xl md:text-5xl font-bold font-playfair tabular-nums ${getRateColor(showUpRate)}`}>{total > 0 ? `${showUpRate}%` : "—"}</h3>
                 {trend !== null && (
                   <div className={`flex items-center gap-1 mt-2 text-[11px] font-bold font-poppins ${trend >= 0 ? "text-accent" : "text-red-400"}`}>
                     {trend >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
@@ -214,7 +197,7 @@ export default function MarketingPage() {
                 )}
               </div>
               {total > 0 && (
-                <div className="flex flex-col items-end gap-1 mt-1">
+                <div className="hidden sm:flex flex-col items-end gap-1 mt-1">
                   <div className={`text-right px-3 py-1.5 rounded-xl ${getRateBg(showUpRate)}`}>
                     <p className={`text-2xl font-bold font-playfair ${getRateColor(showUpRate)}`}>{showUpRate}%</p>
                     <div className="w-full bg-foreground/5 rounded-full h-1.5 mt-1.5 min-w-24">
@@ -227,43 +210,51 @@ export default function MarketingPage() {
                 </div>
               )}
             </div>
+            {total > 0 && (
+              <div className="sm:hidden mt-4 w-full bg-foreground/5 rounded-full h-1.5">
+                <div
+                  className={`h-1.5 rounded-full transition-all ${showUpRate >= 80 ? "bg-accent" : showUpRate >= 60 ? "bg-amber-500" : "bg-red-400"}`}
+                  style={{ width: `${showUpRate}%` }}
+                />
+              </div>
+            )}
             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Target size={80} /></div>
           </div>
 
-          <div className="bg-surface p-6 rounded-4xl border border-foreground/5 shadow-sm relative overflow-hidden group">
+          <div className="bg-surface p-3.5 sm:p-6 rounded-3xl md:rounded-4xl border border-foreground/5 shadow-sm relative overflow-hidden group min-w-0">
             <div className="relative z-10">
-              <div className="w-12 h-12 rounded-2xl bg-accent/10 flex items-center justify-center mb-4"><CheckCircle2 className="text-accent" size={24} /></div>
-              <p className="text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-[0.2em] mb-1">Dolasci</p>
-              <h3 className="text-3xl font-bold font-playfair">{confirmed}</h3>
+              <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-accent/10 flex items-center justify-center mb-2.5 sm:mb-4"><CheckCircle2 className="text-accent w-4 h-4 sm:w-6 sm:h-6" /></div>
+              <p className="text-[9px] sm:text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-wider sm:tracking-[0.2em] mb-1 truncate">Dolasci</p>
+              <h3 className="text-2xl sm:text-3xl font-bold font-playfair tabular-nums">{confirmed}</h3>
             </div>
-            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><CalendarCheck size={80} /></div>
+            <div className="hidden sm:block absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><CalendarCheck size={80} /></div>
           </div>
 
-          <div className="bg-surface p-6 rounded-4xl border border-foreground/5 shadow-sm relative overflow-hidden group">
+          <div className="bg-surface p-3.5 sm:p-6 rounded-3xl md:rounded-4xl border border-foreground/5 shadow-sm relative overflow-hidden group min-w-0">
             <div className="relative z-10">
-              <div className="w-12 h-12 rounded-2xl bg-red-400/10 flex items-center justify-center mb-4"><XCircle className="text-red-400" size={24} /></div>
-              <p className="text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-[0.2em] mb-1">Otkazivanja</p>
-              <h3 className="text-3xl font-bold font-playfair text-red-400">{cancelled}</h3>
+              <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-red-400/10 flex items-center justify-center mb-2.5 sm:mb-4"><XCircle className="text-red-400 w-4 h-4 sm:w-6 sm:h-6" /></div>
+              <p className="text-[9px] sm:text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-wider sm:tracking-[0.2em] mb-1 truncate">Otkazivanja</p>
+              <h3 className="text-2xl sm:text-3xl font-bold font-playfair tabular-nums text-red-400">{cancelled}</h3>
             </div>
-            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><XCircle size={80} /></div>
+            <div className="hidden sm:block absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><XCircle size={80} /></div>
           </div>
 
-          <div className="sm:col-start-2 lg:col-start-auto bg-surface p-6 rounded-4xl border border-foreground/5 shadow-sm relative overflow-hidden group">
+          <div className="sm:col-start-2 lg:col-start-auto bg-surface p-3.5 sm:p-6 rounded-3xl md:rounded-4xl border border-foreground/5 shadow-sm relative overflow-hidden group min-w-0">
             <div className="relative z-10">
-              <div className="w-12 h-12 rounded-2xl bg-orange-500/10 flex items-center justify-center mb-4"><AlertCircle className="text-orange-500" size={24} /></div>
-              <p className="text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-[0.2em] mb-1">Crna lista</p>
-              <h3 className="text-3xl font-bold font-playfair text-orange-500">{blacklisted}</h3>
+              <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-orange-500/10 flex items-center justify-center mb-2.5 sm:mb-4"><AlertCircle className="text-orange-500 w-4 h-4 sm:w-6 sm:h-6" /></div>
+              <p className="text-[9px] sm:text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-wider sm:tracking-[0.2em] mb-1 truncate">Crna lista</p>
+              <h3 className="text-2xl sm:text-3xl font-bold font-playfair tabular-nums text-orange-500">{blacklisted}</h3>
             </div>
-            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><AlertCircle size={80} /></div>
+            <div className="hidden sm:block absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><AlertCircle size={80} /></div>
           </div>
         </div>
 
         {/* Monthly Breakdown Table */}
         <div className="bg-surface rounded-4xl border border-foreground/5 shadow-sm overflow-hidden">
-          <div className="px-8 py-6 border-b border-foreground/5 flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold font-playfair">Mesečni pregled</h2>
-              <p className="text-[11px] font-bold font-poppins text-foreground/50 uppercase tracking-widest mt-1">Show-up rate po mesecima — poslednjih 12 meseci</p>
+          <div className="px-4 md:px-8 py-4 md:py-6 border-b border-foreground/5 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="text-lg md:text-xl font-bold font-playfair">Mesečni pregled</h2>
+              <p className="text-[10px] md:text-[11px] font-bold font-poppins text-foreground/50 uppercase tracking-widest mt-1">Show-up rate po mesecima — poslednjih 12 meseci</p>
             </div>
             {loading && <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />}
           </div>
@@ -280,7 +271,7 @@ export default function MarketingPage() {
                 const tot = m.confirmed + m.cancelled + m.blacklisted;
                 const isCurrentMonth = m.month === new Date().getMonth() && m.year === new Date().getFullYear();
                 return (
-                  <div key={`${m.year}-${m.month}`} className={`px-5 py-4 ${isCurrentMonth ? "bg-accent/5" : ""}`}>
+                  <div key={`${m.year}-${m.month}`} className={`px-4 py-3.5 ${isCurrentMonth ? "bg-accent/5" : ""}`}>
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-bold font-poppins text-foreground/80 capitalize">
@@ -331,12 +322,12 @@ export default function MarketingPage() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-foreground/2">
-                  <th className="px-8 py-4 text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-widest">Mesec</th>
-                  <th className="px-8 py-4 text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-widest text-center">Dolasci</th>
-                  <th className="px-8 py-4 text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-widest text-center">Otkazivanja</th>
-                  <th className="px-8 py-4 text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-widest text-center">Crna lista</th>
-                  <th className="px-8 py-4 text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-widest text-center">Ukupno</th>
-                  <th className="px-8 py-4 text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-widest">Stopa dolazaka</th>
+                  <th className="px-5 lg:px-8 py-4 text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-widest">Mesec</th>
+                  <th className="px-5 lg:px-8 py-4 text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-widest text-center">Dolasci</th>
+                  <th className="px-5 lg:px-8 py-4 text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-widest text-center">Otkazivanja</th>
+                  <th className="px-5 lg:px-8 py-4 text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-widest text-center">Crna lista</th>
+                  <th className="px-5 lg:px-8 py-4 text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-widest text-center">Ukupno</th>
+                  <th className="px-5 lg:px-8 py-4 text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-widest">Stopa dolazaka</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-foreground/5">
@@ -353,7 +344,7 @@ export default function MarketingPage() {
                     const isCurrentMonth = m.month === new Date().getMonth() && m.year === new Date().getFullYear();
                     return (
                       <tr key={`${m.year}-${m.month}`} className={`hover:bg-foreground/1 transition-colors ${isCurrentMonth ? "bg-accent/5" : ""}`}>
-                        <td className="px-8 py-5">
+                        <td className="px-5 lg:px-8 py-5">
                           <div className="flex items-center gap-2">
                             <p className="text-sm font-bold font-poppins text-foreground/80 capitalize">
                               {SR_MONTHS[m.month]} {m.year}.
@@ -363,19 +354,19 @@ export default function MarketingPage() {
                             )}
                           </div>
                         </td>
-                        <td className="px-8 py-5 text-center">
+                        <td className="px-5 lg:px-8 py-5 text-center">
                           <span className="text-sm font-bold font-poppins text-accent">{m.confirmed}</span>
                         </td>
-                        <td className="px-8 py-5 text-center">
+                        <td className="px-5 lg:px-8 py-5 text-center">
                           <span className="text-sm font-bold font-poppins text-red-400">{m.cancelled}</span>
                         </td>
-                        <td className="px-8 py-5 text-center">
+                        <td className="px-5 lg:px-8 py-5 text-center">
                           <span className="text-sm font-bold font-poppins text-orange-500">{m.blacklisted > 0 ? m.blacklisted : <span className="text-foreground/38">—</span>}</span>
                         </td>
-                        <td className="px-8 py-5 text-center">
+                        <td className="px-5 lg:px-8 py-5 text-center">
                           <span className="text-sm font-medium font-poppins text-foreground/68">{tot}</span>
                         </td>
-                        <td className="px-8 py-5">
+                        <td className="px-5 lg:px-8 py-5">
                           {tot === 0 ? (
                             <span className="text-sm font-poppins text-foreground/38">—</span>
                           ) : (

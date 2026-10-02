@@ -1,18 +1,19 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import Link from "next/link";
+import { useState, useEffect, useCallback, useMemo, useRef, type TouchEvent as ReactTouchEvent } from "react";
 import {
-  ChevronLeft, ChevronRight, LogOut, X,
+  ChevronLeft, ChevronRight, X,
   Clock, User, Mail, Phone, Calendar, CalendarPlus,
   PhoneCall, PhoneOff, AlertTriangle, StickyNote, HeartPulse, Tag, Package,
-  Plus, RotateCcw, Ban, Search, Users,
+  Plus, RotateCcw, Ban, Search, Users, Pencil,
 } from "lucide-react";
 import { fetchAll, escapeLike } from "@/lib/fetchAll";
-import { supabase, timeToMinutes, type BusinessWindow } from "@/lib/supabase";
+import {
+  supabase, timeToMinutes, minutesToTime, calcTotalDuration, calcBookingDuration, type BusinessWindow,
+} from "@/lib/supabase";
 import AdminReservationModal from "@/components/AdminReservationModal";
 import AdminLogin from "@/components/AdminLogin";
-import AdminLocationSwitch from "@/components/AdminLocationSwitch";
+import AdminHeader from "@/components/AdminHeader";
 import { useAdminAuth } from "@/lib/adminAuth";
 import { useAdminLocation } from "@/lib/adminLocation";
 import { locationTheme, type LocationId } from "@/lib/locations";
@@ -27,6 +28,7 @@ import {
 } from "@/lib/staff";
 import { computeReservationPrice, type PriceResult } from "@/lib/pricing";
 import { parseBundlePromo } from "@/lib/bundles";
+import { isComboService, isFullBody, isAllowedWithFullBody } from "@/components/booking/shared";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const SLOT_PX     = 16;
@@ -105,6 +107,11 @@ function applyComboRules(selected: ServiceRef[], all: ServiceRef[]): ServiceRef[
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type ServiceRef = { id: string; name: string; price: number };
+/** A treatment with what the region editor needs: who it is for and how long it takes. */
+type ServiceInfo = ServiceRef & {
+  gender: string; active: boolean; service_duration: number; sort_order: number;
+};
+type Gender = "zene" | "muskarci";
 type CallStatus = "none" | "no_answer" | "answered";
 type ReservationFull = {
   id: string;
@@ -125,6 +132,9 @@ type ReservationFull = {
   call_attempted_at: string | null;
   reservation_services: { services: ServiceRef | null }[];
 };
+
+/** A bundle's code and how many of its treatments are still free to book. */
+type BundleUsage = { code: string; total: number; left: number };
 
 /** Serbian plural: 1 dolazak · 2–4 dolaska · 5+ dolazaka (11–14 take the last form). */
 function srPlural(n: number, one: string, few: string, many: string) {
@@ -450,6 +460,14 @@ function layoutDay(rs: ReservationFull[], minMinutes: number): LaidOut[] {
   return out;
 }
 
+const TABS = [
+  { key: "calendar", label: "Kalendar",    Icon: Calendar },
+  { key: "calls",    label: "Pozivi",      Icon: Phone },
+  { key: "clients",  label: "Klijenti",    Icon: Search },
+  { key: "hours",    label: "Radno vreme", Icon: Clock },
+] as const;
+type AdminTab = (typeof TABS)[number]["key"];
+
 // ── Countdown helper ──────────────────────────────────────────────────────────
 function hoursUntilExpiry(attemptedAt: string): number {
   const diff = Date.now() - new Date(attemptedAt).getTime();
@@ -465,7 +483,7 @@ export default function AdminPage() {
   /** Calendar, calls, clients and working hours all show this one studio. */
   const { location, setLocation } = useAdminLocation();
 
-  const [activeTab, setActiveTab]         = useState<"calendar" | "calls" | "clients" | "hours">("calendar");
+  const [activeTab, setActiveTab]         = useState<AdminTab>("calendar");
   const [expandedExpired, setExpandedExpired] = useState<string | null>(null);
 
   // Client search
@@ -494,7 +512,7 @@ export default function AdminPage() {
 
   const [reservations, setReservations]   = useState<ReservationFull[]>([]);
   const [callReservations, setCallReservations] = useState<ReservationFull[]>([]);
-  const [allServices, setAllServices]     = useState<ServiceRef[]>([]);
+  const [allServices, setAllServices]     = useState<ServiceInfo[]>([]);
   const [priceBook, setPriceBook]         = useState<PriceBook | null>(null);
   const [loading, setLoading]             = useState(false);
   const [callsLoading, setCallsLoading]   = useState(false);
@@ -502,6 +520,13 @@ export default function AdminPage() {
   const [selectedIsReturning, setSelectedIsReturning] = useState<boolean | null>(null);
   const [selectedIsBlacklisted, setSelectedIsBlacklisted] = useState(false);
   const [selectedPrice, setSelectedPrice] = useState<PriceResult | null>(null);
+  const [selectedIsFirst, setSelectedIsFirst] = useState(true);
+  const [selectedBundle, setSelectedBundle] = useState<BundleUsage | null>(null);
+  /** Region editor: the draft list of service ids, null while not editing. */
+  const [servicesDraft, setServicesDraft] = useState<string[] | null>(null);
+  const [draftGender, setDraftGender]     = useState<Gender>("zene");
+  /** Set when the longer appointment would run into another one - a second tap saves anyway. */
+  const [servicesClash, setServicesClash] = useState(false);
   const [newStatus, setNewStatus]         = useState<ReservationStatus>("pending");
   const [newNotes, setNewNotes]           = useState<string>("");
   const [saving, setSaving]               = useState(false);
@@ -578,8 +603,9 @@ export default function AdminPage() {
   // studio's price history - a reservation is priced as it was when booked.
   useEffect(() => {
     if (!authenticated) return;
-    supabase.from("services").select("id, name, price")
-      .then(({ data }) => setAllServices((data as ServiceRef[]) ?? []));
+    supabase.from("services").select("id, name, price, gender, active, service_duration, sort_order")
+      .order("sort_order")
+      .then(({ data }) => setAllServices((data as ServiceInfo[]) ?? []));
     void fetchPriceRows().then(rows => { if (rows) setPriceBook(new PriceBook(rows)); });
   }, [authenticated]);
 
@@ -935,24 +961,29 @@ export default function AdminPage() {
     void signOut();
   }
 
-  const handlePrev = () => {
-    if (window.innerWidth < 768) {
-      const next = addDays(selectedDate, -1);
-      setSelectedDate(next);
-      setWeekStart(getMonday(next));
-    } else {
-      setWeekStart(d => addDays(d, -7));
-    }
+  /** Phone calendar: move the shown day (a week = 7), loading its week if needed. */
+  const shiftDay = (n: number) => {
+    const next = addDays(selectedDate, n);
+    setSelectedDate(next);
+    setWeekStart(getMonday(next));
   };
 
-  const handleNext = () => {
-    if (window.innerWidth < 768) {
-      const next = addDays(selectedDate, 1);
-      setSelectedDate(next);
-      setWeekStart(getMonday(next));
-    } else {
-      setWeekStart(d => addDays(d, 7));
-    }
+  // Swipe left / right on the phone calendar for the next / previous day.
+  const swipe = useRef<{ x: number; y: number } | null>(null);
+  const onCalendarTouchStart = (e: ReactTouchEvent) => {
+    const t = e.touches[0];
+    swipe.current = e.touches.length === 1 ? { x: t.clientX, y: t.clientY } : null;
+  };
+  const onCalendarTouchEnd = (e: ReactTouchEvent) => {
+    const start = swipe.current;
+    swipe.current = null;
+    if (!start || window.innerWidth >= 768) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    // Clearly sideways only, so scrolling through the hours never flips the day.
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    shiftDay(dx < 0 ? 1 : -1);
   };
 
   const goToday = () => {
@@ -987,20 +1018,41 @@ export default function AdminPage() {
     setSelectedIsBlacklisted(false);
     // Show a price immediately (assume first treatment); refine once history loads.
     setSelectedPrice(priceFor(r, true));
+    setSelectedIsFirst(true);
+    setSelectedBundle(null);
+    setServicesDraft(null);
+    setServicesClash(false);
     const req = ++modalReq.current;
     if (r.customer_email) {
       // One round trip for the client's whole relevant history.
       const { data, error } = await supabase
         .from("reservations")
-        .select("id, date, start_time, status")
+        .select("id, date, start_time, status, promo_code, location")
         .ilike("customer_email", escapeLike(r.customer_email))
-        .in("status", ["confirmed", "blacklisted"]);
+        .in("status", ["confirmed", "pending", "blacklisted"]);
       // Another reservation was opened meanwhile — this answer is not for it.
       if (req !== modalReq.current) return;
       // Without the history, leave the badges out rather than guess.
       if (error) return;
 
-      const history = (data as { id: string; date: string; start_time: string; status: ReservationStatus }[] | null) ?? [];
+      const history = (data as {
+        id: string; date: string; start_time: string; status: ReservationStatus;
+        promo_code: string | null; location: LocationId;
+      }[] | null) ?? [];
+
+      // Bundle: same count as bundle_sessions_left in the database - confirmed
+      // purchases of this code at this studio, minus booked follow-ups (-r).
+      const bundle = parseBundlePromo(r.promo_code);
+      if (bundle) {
+        const code = `paket-${bundle.sessions}-${bundle.total}`;
+        const atStudio = history.filter(h => h.location === r.location);
+        const codeOf = (h: { promo_code: string | null }) => h.promo_code?.trim().toLowerCase();
+        const purchases = atStudio.filter(h => h.status === "confirmed" && codeOf(h) === code).length;
+        const redeemed  = atStudio.filter(h =>
+          (h.status === "confirmed" || h.status === "pending") && codeOf(h) === `${code}-r`).length;
+        const total = purchases * bundle.sessions;
+        setSelectedBundle({ code, total, left: Math.max(0, total - purchases - redeemed) });
+      }
       const rows = history.filter(h => h.status === "confirmed");
       const others = rows.filter(h => h.id !== r.id);
       setSelectedIsReturning(others.length > 0);
@@ -1009,6 +1061,7 @@ export default function AdminPage() {
         a.date !== b.date ? a.date.localeCompare(b.date) : a.start_time.localeCompare(b.start_time));
       const isFirst = rows.length === 0 ? true : sorted[0]?.id === r.id;
       setSelectedPrice(priceFor(r, isFirst));
+      setSelectedIsFirst(isFirst);
 
       // The blacklist marks a person, not a single booking: flag the client if
       // ANY of their other reservations was blacklisted.
@@ -1051,6 +1104,155 @@ export default function AdminPage() {
     });
     setSaving(false);
     setSelected(null);
+  }
+
+  // ── Region editor ──────────────────────────────────────────────────────────
+  // The price is never stored: every screen prices a reservation from its
+  // regions and the studio's price list at booking time. Changing the regions
+  // is therefore all it takes - the calendar, finances and stats follow.
+
+  const serviceById = useMemo(() => new Map(allServices.map(s => [s.id, s])), [allServices]);
+
+  function servicesOf(r: ReservationFull): ServiceRef[] {
+    return r.reservation_services.map(rs => rs.services).filter((s): s is ServiceRef => s !== null);
+  }
+
+  /**
+   * Length of the appointment with these regions. A first visit keeps its
+   * consultation: if the current length already covered one, the new one does too.
+   */
+  function durationFor(r: ReservationFull, ids: string[]): number | null {
+    const before = servicesOf(r).map(s => serviceById.get(s.id));
+    const after  = ids.map(id => serviceById.get(id));
+    if (before.some(s => !s) || after.some(s => !s)) return null;
+    const hadConsultation =
+      before.length > 0 && r.total_duration >= calcBookingDuration(before as ServiceInfo[]);
+    return hadConsultation
+      ? calcBookingDuration(after as ServiceInfo[])
+      : calcTotalDuration(after as ServiceInfo[]);
+  }
+
+  /** The reservation as it would be with the draft regions (for the live price preview). */
+  function withServices(r: ReservationFull, ids: string[]): ReservationFull {
+    const duration = durationFor(r, ids) ?? r.total_duration;
+    return {
+      ...r,
+      total_duration: duration,
+      end_time: `${minutesToTime(timeToMinutes(r.start_time) + duration)}:00`,
+      reservation_services: ids.map(id => {
+        const s = serviceById.get(id);
+        return { services: s ? { id: s.id, name: s.name, price: s.price } : null };
+      }),
+    };
+  }
+
+  function startServicesEdit() {
+    if (!selected) return;
+    const ids = servicesOf(selected).map(s => s.id);
+    const gender = serviceById.get(ids[0] ?? "")?.gender;
+    setDraftGender(gender === "muskarci" ? "muskarci" : "zene");
+    setServicesDraft(ids);
+    setServicesClash(false);
+  }
+
+  function toggleDraftService(id: string) {
+    setServicesClash(false);
+    setServicesDraft(prev => {
+      if (!prev) return prev;
+      if (prev.includes(id)) return prev.filter(x => x !== id);
+      const picked = serviceById.get(id);
+      // "Celo telo" already covers every region except face, chin and earrings.
+      if (picked && isFullBody(picked.name)) {
+        return [...prev.filter(x => isAllowedWithFullBody(serviceById.get(x)?.name ?? "")), id];
+      }
+      return [...prev, id];
+    });
+  }
+
+  async function handleServicesSave() {
+    if (!selected || !servicesDraft || servicesDraft.length === 0) return;
+    const duration = durationFor(selected, servicesDraft);
+    if (duration == null) {
+      setNotice("Lista usluga nije učitana. Osveži stranicu i pokušaj ponovo.");
+      return;
+    }
+    const startMin = timeToMinutes(selected.start_time);
+    const endTime  = `${minutesToTime(startMin + duration)}:00`;
+    setSaving(true);
+
+    // A longer appointment may now run into the next one - say so once.
+    if (!servicesClash && duration > selected.total_duration) {
+      const { data: day, error } = await supabase
+        .from("reservations")
+        .select("id, start_time, end_time, status")
+        .eq("date", selected.date)
+        .eq("location", selected.location)
+        .neq("id", selected.id);
+      if (error || !day) {
+        setNotice("Provera termina nije uspela. Proveri internet vezu.");
+        setSaving(false);
+        return;
+      }
+      const clash = day.some(d =>
+        isActive({ status: d.status as ReservationStatus }) &&
+        startMin < timeToMinutes(d.end_time) && startMin + duration > timeToMinutes(d.start_time));
+      if (clash) {
+        setServicesClash(true);
+        setSaving(false);
+        return;
+      }
+    }
+
+    const current = servicesOf(selected).map(s => s.id);
+    const added   = servicesDraft.filter(id => !current.includes(id));
+    const removed = current.filter(id => !servicesDraft.includes(id));
+
+    // Add first, then remove: if a step fails the reservation never ends up
+    // without regions (it would count as 0 RSD).
+    if (added.length > 0) {
+      const { error } = await supabase.from("reservation_services")
+        .insert(added.map(id => ({ reservation_id: selected.id, service_id: id })));
+      if (error) {
+        console.error("Adding regions failed:", error);
+        setNotice("Regije nisu sačuvane. Pokušaj ponovo.");
+        setSaving(false);
+        return;
+      }
+    }
+    if (removed.length > 0) {
+      const { error } = await supabase.from("reservation_services")
+        .delete().eq("reservation_id", selected.id).in("service_id", removed);
+      if (error) {
+        console.error("Removing regions failed:", error);
+        setNotice("Regije nisu do kraja sačuvane. Otvori termin ponovo i proveri.");
+        setSaving(false);
+        void fetchRange(weekStart, true);
+        return;
+      }
+    }
+    const { error: timeError } = await supabase.from("reservations")
+      .update({ total_duration: duration, end_time: endTime })
+      .eq("id", selected.id);
+    if (timeError) {
+      console.error("Updating the duration failed:", timeError);
+      setNotice("Regije su sačuvane, ali trajanje termina nije. Pokušaj ponovo.");
+    }
+
+    const next = withServices(selected, servicesDraft);
+    const patch: Partial<ReservationFull> = timeError
+      ? { reservation_services: next.reservation_services }
+      : { reservation_services: next.reservation_services, total_duration: duration, end_time: endTime };
+    patchReservation(selected.id, patch);
+    setCallReservations(prev => prev.map(r => (r.id === selected.id ? { ...r, ...patch } : r)));
+    setClientGroups(prev => prev.map(g => ({
+      ...g, reservations: g.reservations.map(r => (r.id === selected.id ? { ...r, ...patch } : r)),
+    })));
+    const updated = { ...selected, ...patch };
+    setSelected(updated);
+    setSelectedPrice(priceFor(updated, selectedIsFirst));
+    setServicesDraft(null);
+    setServicesClash(false);
+    setSaving(false);
   }
 
   /**
@@ -1194,157 +1396,93 @@ export default function AdminPage() {
 
   // ── Calendar screen ─────────────────────────────────────────────────────────
   return (
-    <main className="box-border h-dvh max-h-dvh flex flex-col bg-background overflow-hidden pt-16 text-foreground admin-theme" style={locationTheme(location)}>
+    <main className="h-dvh max-h-dvh flex flex-col bg-background overflow-hidden text-foreground admin-theme" style={locationTheme(location)}>
       <style jsx global>{` .animate-promo-in { display: none !important; } `}</style>
 
-      {/* Header */}
-      <header className="bg-surface border-b-2 border-accent/40 px-4 md:px-8 py-3 md:py-5 flex items-center justify-between gap-6 shrink-0 z-20 shadow-sm">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 md:gap-6 min-w-0">
-          <div className="hidden md:block border-r border-foreground/10 pr-6">
-            <h1 className="text-xl font-bold font-playfair tracking-tight">Infinity Laser Studio</h1>
-            <p className="text-[10px] text-foreground/50 font-bold font-poppins uppercase tracking-widest mt-0.5">Control Center</p>
-          </div>
-
-          <nav className="flex items-center gap-1 bg-foreground/3 rounded-xl p-1 shrink-0">
-            <span className="px-2.5 md:px-3 py-1.5 rounded-lg bg-accent/15 text-[10px] md:text-xs font-bold font-poppins text-accent uppercase tracking-widest">Admin</span>
-            <Link href="/finances" className="px-2.5 md:px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-bold font-poppins text-foreground/50 hover:text-foreground/76 uppercase tracking-widest transition-colors">Finansije</Link>
-            <Link href="/stats" className="px-2.5 md:px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-bold font-poppins text-foreground/50 hover:text-foreground/76 uppercase tracking-widest transition-colors">Statistike</Link>
-            <Link href="/fnl" className="px-2.5 md:px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-bold font-poppins text-foreground/50 hover:text-foreground/76 uppercase tracking-widest transition-colors">Funnel</Link>
-          </nav>
-
-          <AdminLocationSwitch value={location} onChange={handleLocationChange} />
-
-          {/* Is the studio working right now */}
-          <div className="hidden sm:flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-foreground/3 border border-foreground/5">
-            <span className="relative flex w-2.5 h-2.5 shrink-0">
-              {openNow && <span className="absolute inset-0 rounded-full bg-green-400/60 animate-ping" />}
-              <span className={`relative w-2.5 h-2.5 rounded-full ${openNow ? "bg-green-400" : "bg-foreground/25"}`} />
-            </span>
-            <div className="leading-tight">
-              <p className={`text-[11px] font-bold font-poppins uppercase tracking-wider ${openNow ? "text-green-400" : "text-foreground/68"}`}>
-                {openNow ? `Otvoreno do ${fmtMin(openNow.end)}` : opensLater ? `Otvara se u ${fmtMin(opensLater.start)}` : "Zatvoreno"}
-              </p>
-              <p className="text-[10px] font-medium font-poppins text-foreground/55 tabular-nums">
-                Danas: {fmtWindows(todayWindows) ?? "ne radi"}
-              </p>
-            </div>
-          </div>
-
-          {/* Legend — what a card's look means */}
-          <div className="hidden xl:flex items-center gap-4 text-[11px] font-bold font-poppins text-foreground/60 uppercase tracking-wider">
-            <span className="flex items-center gap-2">
-              <span className="w-4 h-3.5 rounded border-l-4 border-green-400 bg-green-400/20" />
-              Potvrđeno
-            </span>
-            <span className="flex items-center gap-2">
-              <span className="w-4 h-3.5 rounded border border-dashed border-red-400/60 bg-red-400/10" />
-              Otkazano
-            </span>
-            <span className="flex items-center gap-2">
-              <span className="w-4 h-3.5 rounded border border-foreground/30 bg-foreground/10" />
-              Crna lista
-            </span>
+      <AdminHeader current="admin" location={location} onLocationChange={handleLocationChange} onLogout={handleLogout}>
+        {/* Is the studio working right now */}
+        <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-foreground/3 border border-foreground/5">
+          <span className="relative flex w-2.5 h-2.5 shrink-0">
+            {openNow && <span className="absolute inset-0 rounded-full bg-green-400/60 animate-ping" />}
+            <span className={`relative w-2.5 h-2.5 rounded-full ${openNow ? "bg-green-400" : "bg-foreground/25"}`} />
+          </span>
+          <div className="leading-tight">
+            <p className={`text-[11px] font-bold font-poppins uppercase tracking-wider ${openNow ? "text-green-400" : "text-foreground/68"}`}>
+              {openNow ? `Otvoreno do ${fmtMin(openNow.end)}` : opensLater ? `Otvara se u ${fmtMin(opensLater.start)}` : "Zatvoreno"}
+            </p>
+            <p className="text-[10px] font-medium font-poppins text-foreground/55 tabular-nums">
+              Danas: {fmtWindows(todayWindows) ?? "ne radi"}
+            </p>
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="flex items-center gap-2 px-3 py-2 md:px-5 md:py-2.5 rounded-xl md:rounded-2xl bg-foreground/3 text-foreground/60 hover:text-red-400 hover:bg-red-400/10 transition-all font-poppins text-xs font-bold cursor-pointer"
-        >
-          <LogOut size={16} />
-          <span className="hidden md:inline uppercase tracking-widest">Odjava</span>
-        </button>
-      </header>
+        {/* Legend — what a card's look means */}
+        <div className="hidden 2xl:flex items-center gap-4 text-[11px] font-bold font-poppins text-foreground/60 uppercase tracking-wider">
+          <span className="flex items-center gap-2">
+            <span className="w-4 h-3.5 rounded border-l-4 border-green-400 bg-green-400/20" />
+            Potvrđeno
+          </span>
+          <span className="flex items-center gap-2">
+            <span className="w-4 h-3.5 rounded border border-dashed border-red-400/60 bg-red-400/10" />
+            Otkazano
+          </span>
+          <span className="flex items-center gap-2">
+            <span className="w-4 h-3.5 rounded border border-foreground/30 bg-foreground/10" />
+            Crna lista
+          </span>
+        </div>
+      </AdminHeader>
 
-      {/* Navigation */}
-      <div className="bg-surface border-b border-foreground/5 px-4 md:px-8 py-3 md:py-4 shrink-0 z-10 shadow-xs">
-        <div className="max-w-400 mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* Toolbar — tablet / desktop. On a phone the tabs live in the bottom bar
+          and the week controls sit on top of the calendar itself. */}
+      <div className="hidden md:block bg-surface border-b border-foreground/5 px-8 py-4 shrink-0 z-10 shadow-xs">
+        <div className="max-w-400 mx-auto flex items-center justify-between gap-4">
 
           {/* Tab Switcher */}
-          <div className="flex items-center bg-foreground/3 rounded-2xl p-1 shadow-inner self-start md:self-auto">
-            <button
-              onClick={() => setActiveTab("calendar")}
-              className={`h-9 px-5 flex items-center gap-2 rounded-xl text-xs font-bold font-poppins uppercase tracking-widest transition-all ${
-                activeTab === "calendar"
-                  ? "bg-accent/15 text-accent shadow-sm"
-                  : "text-foreground/60 hover:text-foreground/76"
-              }`}
-            >
-              <Calendar size={14} />
-              <span className="hidden sm:inline">Kalendar</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("calls")}
-              className={`h-9 px-5 flex items-center gap-2 rounded-xl text-xs font-bold font-poppins uppercase tracking-widest transition-all ${
-                activeTab === "calls"
-                  ? "bg-accent/15 text-accent shadow-sm"
-                  : "text-foreground/60 hover:text-foreground/76"
-              }`}
-            >
-              <Phone size={14} />
-              <span className="hidden sm:inline">Pozivi</span>
-              {badgeCount > 0 && (
-                <span className="min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold flex items-center justify-center bg-amber-400 text-[#241703]">
-                  {badgeCount}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab("clients")}
-              className={`h-9 px-5 flex items-center gap-2 rounded-xl text-xs font-bold font-poppins uppercase tracking-widest transition-all ${
-                activeTab === "clients"
-                  ? "bg-accent/15 text-accent shadow-sm"
-                  : "text-foreground/60 hover:text-foreground/76"
-              }`}
-            >
-              <Search size={14} />
-              <span className="hidden sm:inline">Klijenti</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("hours")}
-              className={`h-9 px-5 flex items-center gap-2 rounded-xl text-xs font-bold font-poppins uppercase tracking-widest transition-all ${
-                activeTab === "hours"
-                  ? "bg-accent/15 text-accent shadow-sm"
-                  : "text-foreground/60 hover:text-foreground/76"
-              }`}
-            >
-              <Clock size={14} />
-              <span className="hidden sm:inline">Radno vreme</span>
-            </button>
+          <div className="flex items-center bg-foreground/3 rounded-2xl p-1 shadow-inner">
+            {TABS.map(({ key, label, Icon }) => (
+              <button
+                key={key}
+                onClick={() => setActiveTab(key)}
+                className={`h-9 px-5 flex items-center gap-2 rounded-xl text-xs font-bold font-poppins uppercase tracking-widest transition-all cursor-pointer ${
+                  activeTab === key
+                    ? "bg-accent/15 text-accent shadow-sm"
+                    : "text-foreground/60 hover:text-foreground/76"
+                }`}
+              >
+                <Icon size={14} />
+                <span className="hidden lg:inline">{label}</span>
+                {key === "calls" && badgeCount > 0 && (
+                  <span className="min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold flex items-center justify-center bg-amber-400 text-[#241703]">
+                    {badgeCount}
+                  </span>
+                )}
+              </button>
+            ))}
           </div>
 
           {/* Calendar nav — only visible in calendar tab */}
           {activeTab === "calendar" && (
             <>
-              <div className="flex items-center justify-between md:justify-start gap-4 flex-1">
+              <div className="flex items-center gap-4 flex-1">
                 <div className="flex items-center bg-foreground/3 rounded-2xl p-1 shadow-inner">
-                  <button onClick={handlePrev} className="w-10 h-10 md:w-9 md:h-9 flex items-center justify-center rounded-xl hover:bg-foreground/8 transition-all active:scale-90"><ChevronLeft size={20}/></button>
-                  <div className="px-4 md:px-8 text-center min-w-35 md:min-w-55">
-                    <p className="text-[10px] font-bold font-poppins uppercase tracking-[0.2em] text-foreground/50 leading-none mb-1 md:hidden">
-                      {SR_DAYS_LONG[selectedDate.getDay() === 0 ? 6 : selectedDate.getDay() - 1]}
-                    </p>
-                    <p className="hidden md:block text-[10px] font-bold font-poppins uppercase tracking-[0.2em] text-foreground/50 leading-none mb-1">Pregled nedelje</p>
-                    <p className="text-sm md:text-base font-bold font-poppins truncate">
-                      <span className="md:hidden">{selectedDate.getDate()}. {SR_MONTHS[selectedDate.getMonth()]}</span>
-                      <span className="hidden md:inline">{fmtShort(weekStart)} – {fmtShort(weekEnd)}</span>
-                    </p>
+                  <button onClick={() => setWeekStart(d => addDays(d, -7))} aria-label="Prethodna nedelja" className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-foreground/8 transition-all active:scale-90 cursor-pointer"><ChevronLeft size={20}/></button>
+                  <div className="px-6 lg:px-8 text-center min-w-48 lg:min-w-55">
+                    <p className="text-[10px] font-bold font-poppins uppercase tracking-[0.2em] text-foreground/50 leading-none mb-1">Pregled nedelje</p>
+                    <p className="text-base font-bold font-poppins truncate">{fmtShort(weekStart)} – {fmtShort(weekEnd)}</p>
                   </div>
-                  <button onClick={handleNext} className="w-10 h-10 md:w-9 md:h-9 flex items-center justify-center rounded-xl hover:bg-foreground/8 transition-all active:scale-90"><ChevronRight size={20}/></button>
+                  <button onClick={() => setWeekStart(d => addDays(d, 7))} aria-label="Sledeća nedelja" className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-foreground/8 transition-all active:scale-90 cursor-pointer"><ChevronRight size={20}/></button>
                 </div>
-                <button onClick={goToday} className="hidden md:flex h-11 px-6 items-center justify-center rounded-2xl border-2 border-accent/30 text-accent text-xs font-bold font-poppins hover:bg-accent/10 transition-all shadow-sm">DANAS</button>
+                <button onClick={goToday} className="h-11 px-6 flex items-center justify-center rounded-2xl border-2 border-accent/30 text-accent text-xs font-bold font-poppins hover:bg-accent/10 transition-all shadow-sm cursor-pointer">DANAS</button>
               </div>
 
-              <div className="flex gap-2">
-                <button onClick={goToday} className="md:hidden flex-1 h-12 rounded-2xl border-2 border-accent/30 text-accent text-xs font-bold font-poppins active:bg-accent/5 transition-colors">DANAS</button>
-                <button
-                  onClick={() => setReservationModalOpen(true)}
-                  className="flex-2 md:flex-none h-12 md:h-11 flex items-center justify-center gap-2 px-6 md:px-10 rounded-2xl bg-accent text-on-accent text-xs font-bold font-poppins hover:shadow-lg hover:shadow-accent/20 transition-all active:scale-95"
-                >
-                  <CalendarPlus size={18} />
-                  <span className="uppercase tracking-widest">Nova rezervacija</span>
-                </button>
-              </div>
+              <button
+                onClick={() => setReservationModalOpen(true)}
+                className="h-11 flex items-center justify-center gap-2 px-6 lg:px-10 rounded-2xl bg-accent text-on-accent text-xs font-bold font-poppins hover:shadow-lg hover:shadow-accent/20 transition-all active:scale-95 cursor-pointer"
+              >
+                <CalendarPlus size={18} />
+                <span className="uppercase tracking-widest">Novi termin</span>
+              </button>
             </>
           )}
         </div>
@@ -1360,7 +1498,7 @@ export default function AdminPage() {
       {/* ── Calls Tab ───────────────────────────────────────────────────────── */}
       {activeTab === "calls" && (
         <div className="flex-1 min-h-0 overflow-auto overscroll-y-contain custom-scrollbar">
-          <div className="max-w-2xl mx-auto px-4 py-6 space-y-3">
+          <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-3">
             {callsLoading && (
               <div className="flex justify-center py-12">
                 <div className="w-10 h-10 border-3 border-accent border-t-transparent rounded-full animate-spin shadow-lg" />
@@ -1397,7 +1535,8 @@ export default function AdminPage() {
                   }`}
                 >
                   {/* Row */}
-                  <div className="p-4 flex items-start gap-4">
+                  <div className="p-4 flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-4">
+                    <div className="flex items-start gap-3 sm:gap-4 flex-1 min-w-0">
                     {/* Status icon */}
                     <div className={`shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${
                       isExpired ? "bg-red-400/10" : isNoAnswerRecent ? "bg-amber-400/10" : "bg-foreground/3"
@@ -1430,28 +1569,34 @@ export default function AdminPage() {
                           </span>
                         )}
                       </div>
-                      <p className="text-[12px] font-medium font-poppins text-foreground/68 mt-0.5">
-                        {r.customer_phone ?? "—"}
-                      </p>
+                      {r.customer_phone ? (
+                        <a href={`tel:${r.customer_phone.replace(/\s/g, "")}`} className="inline-block text-[13px] font-semibold font-poppins text-accent mt-0.5 tabular-nums underline-offset-2 hover:underline">
+                          {r.customer_phone}
+                        </a>
+                      ) : (
+                        <p className="text-[12px] font-medium font-poppins text-foreground/68 mt-0.5">—</p>
+                      )}
                       <p className="text-[11px] font-poppins text-foreground/50 mt-1">
                         {fmtFull(new Date(`${r.date}T00:00:00`))} · {r.start_time.slice(0, 5)} – {r.end_time.slice(0, 5)}
                       </p>
                     </div>
 
+                    </div>
+
                     {/* Actions */}
-                    <div className="shrink-0 flex flex-col gap-2 items-end">
+                    <div className="grid grid-cols-2 sm:flex sm:flex-col gap-2 sm:items-stretch sm:shrink-0">
                       {isExpired ? (
                         <>
                           <button
                             onClick={() => handleCallAnswered(r.id)}
-                            className="h-9 px-4 rounded-xl bg-green-400/10 text-green-400 text-[11px] font-bold font-poppins border border-green-400/30 hover:bg-green-400/20 transition-all active:scale-95 flex items-center gap-1.5"
+                            className="h-11 sm:h-9 px-4 rounded-xl bg-green-400/10 text-green-400 text-[11px] font-bold font-poppins border border-green-400/30 hover:bg-green-400/20 transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
                           >
                             <PhoneCall size={13} />
                             Javio se
                           </button>
                           <button
                             onClick={() => setExpandedExpired(showConfirm ? null : r.id)}
-                            className="h-9 px-4 rounded-xl bg-red-400/10 text-red-400 text-[11px] font-bold font-poppins border border-red-400/30 hover:bg-red-400/20 transition-all active:scale-95"
+                            className="h-11 sm:h-9 px-4 rounded-xl bg-red-400/10 text-red-400 text-[11px] font-bold font-poppins border border-red-400/30 hover:bg-red-400/20 transition-all active:scale-95 cursor-pointer"
                           >
                             Otkaži?
                           </button>
@@ -1460,14 +1605,14 @@ export default function AdminPage() {
                         <>
                           <button
                             onClick={() => handleCallAnswered(r.id)}
-                            className="h-9 px-4 rounded-xl bg-green-400/10 text-green-400 text-[11px] font-bold font-poppins border border-green-400/30 hover:bg-green-400/20 transition-all active:scale-95 flex items-center gap-1.5"
+                            className="h-11 sm:h-9 px-4 rounded-xl bg-green-400/10 text-green-400 text-[11px] font-bold font-poppins border border-green-400/30 hover:bg-green-400/20 transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
                           >
                             <PhoneCall size={13} />
                             Javio se
                           </button>
                           <button
                             onClick={() => handleCallNoAnswer(r.id)}
-                            className="h-9 px-4 rounded-xl bg-foreground/3 text-foreground/68 text-[11px] font-bold font-poppins border border-foreground/5 hover:bg-amber-400/10 hover:text-amber-300 hover:border-amber-400/30 transition-all active:scale-95 flex items-center gap-1.5"
+                            className="h-11 sm:h-9 px-4 rounded-xl bg-foreground/3 text-foreground/68 text-[11px] font-bold font-poppins border border-foreground/5 hover:bg-amber-400/10 hover:text-amber-300 hover:border-amber-400/30 transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
                           >
                             <PhoneOff size={13} />
                             Nije se javio
@@ -1511,7 +1656,7 @@ export default function AdminPage() {
       {/* ── Clients Tab ─────────────────────────────────────────────────────── */}
       {activeTab === "clients" && (
         <div className="flex-1 min-h-0 overflow-auto overscroll-y-contain custom-scrollbar">
-          <div className="max-w-3xl mx-auto px-4 py-6">
+          <div className="max-w-3xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
 
             {/* Search field */}
             <div className="relative mb-5">
@@ -1668,7 +1813,7 @@ export default function AdminPage() {
       {/* ── Working Hours Tab ────────────────────────────────────────────────── */}
       {activeTab === "hours" && (
         <div className="flex-1 min-h-0 overflow-auto overscroll-y-contain custom-scrollbar">
-          <div className="max-w-3xl mx-auto px-4 py-6">
+          <div className="max-w-3xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
             {/* Team */}
             <div className="mb-8">
               <h2 className="text-lg font-bold font-playfair">Zaposleni</h2>
@@ -1754,15 +1899,48 @@ export default function AdminPage() {
             {loading && <div className="admin-loading-bar h-full w-1/3 bg-accent" />}
           </div>
 
-          <div className="flex-1 min-h-0 overflow-auto overscroll-y-contain custom-scrollbar">
+          <div
+            className="flex-1 min-h-0 overflow-auto overscroll-y-contain custom-scrollbar"
+            onTouchStart={onCalendarTouchStart}
+            onTouchEnd={onCalendarTouchEnd}
+          >
             <div className="max-w-400 mx-auto min-w-full">
 
               {/* Day headers */}
               <div className="sticky top-0 z-20 bg-surface border-b border-foreground/8 shadow-md shadow-black/20">
 
-                {/* Phone — the whole week as a strip, then the chosen day's hours */}
+                {/* Phone — week controls, the week as a strip, then the chosen day */}
                 <div className="md:hidden">
-                  <div className="grid grid-cols-7 gap-1 px-2 pt-2">
+                  <div className="flex items-center gap-1.5 px-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => shiftDay(-7)}
+                      aria-label="Prethodna nedelja"
+                      className="w-9 h-9 flex items-center justify-center rounded-xl text-foreground/70 active:bg-foreground/8 transition-colors cursor-pointer"
+                    >
+                      <ChevronLeft size={20} />
+                    </button>
+                    <p className="flex-1 text-center text-[13px] font-bold font-poppins tabular-nums truncate">
+                      {fmtShort(weekStart)} – {fmtShort(weekEnd)}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => shiftDay(7)}
+                      aria-label="Sledeća nedelja"
+                      className="w-9 h-9 flex items-center justify-center rounded-xl text-foreground/70 active:bg-foreground/8 transition-colors cursor-pointer"
+                    >
+                      <ChevronRight size={20} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={goToday}
+                      disabled={ds === todayStr}
+                      className="h-8 px-3 rounded-lg border border-accent/40 text-accent text-[10px] font-bold font-poppins uppercase tracking-widest active:bg-accent/10 transition-colors cursor-pointer disabled:border-foreground/10 disabled:text-foreground/40 disabled:cursor-default"
+                    >
+                      Danas
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-7 gap-1 px-2 pt-1.5">
                     {days.map((day, i) => {
                       const isSelected = day.dateStr === mobileDay.dateStr;
                       const isDayToday = day.dateStr === todayStr;
@@ -1772,28 +1950,37 @@ export default function AdminPage() {
                           type="button"
                           onClick={() => setSelectedDate(day.date)}
                           aria-pressed={isSelected}
-                          className={`flex flex-col items-center py-1.5 rounded-xl border transition-colors cursor-pointer ${
+                          className={`h-14 flex flex-col items-center justify-center rounded-xl border transition-colors cursor-pointer ${
                             isSelected
-                              ? "bg-accent border-accent text-on-accent"
+                              ? "bg-accent border-accent text-on-accent shadow-md shadow-accent/20"
                               : isDayToday
                               ? "border-accent/50 text-accent"
                               : day.windows
                               ? "border-transparent text-foreground/82 active:bg-foreground/5"
-                              : "border-transparent text-foreground/50 active:bg-foreground/5"
+                              : "border-transparent text-foreground/45 active:bg-foreground/5"
                           }`}
                         >
-                          <span className="text-[9px] font-bold font-poppins uppercase tracking-wider opacity-70">{SR_DAYS_SHORT[i]}</span>
-                          <span className="text-base font-bold font-poppins leading-tight tabular-nums">{day.date.getDate()}</span>
-                          <span className="text-[9px] font-bold font-poppins leading-none h-2.5 tabular-nums">
-                            {day.activeCount > 0 ? day.activeCount : day.windows ? "" : "✕"}
+                          <span className="text-[9px] font-bold font-poppins uppercase tracking-wider opacity-70 leading-none">{SR_DAYS_SHORT[i]}</span>
+                          <span className="text-base font-bold font-poppins leading-tight tabular-nums mt-0.5">{day.date.getDate()}</span>
+                          {/* Appointments that day: a count, or a cross when closed */}
+                          <span className="h-3 flex items-center justify-center">
+                            {day.activeCount > 0 ? (
+                              <span className={`min-w-4 px-1 rounded-full text-[9px] font-bold font-poppins leading-3 tabular-nums ${
+                                isSelected ? "bg-on-accent/20" : "bg-accent/15 text-accent"
+                              }`}>
+                                {day.activeCount}
+                              </span>
+                            ) : !day.windows ? (
+                              <X size={9} strokeWidth={3} className="opacity-60" />
+                            ) : null}
                           </span>
                         </button>
                       );
                     })}
                   </div>
-                  <div className="flex items-center justify-between gap-3 px-3 py-2">
+                  <div className="flex items-center justify-between gap-2 px-3 py-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className={`shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-bold font-poppins tabular-nums ${
+                      <span className={`shrink-0 px-2 py-1 rounded-lg text-[11px] font-bold font-poppins tabular-nums ${
                         mobileDay.windows ? "bg-accent/15 text-accent" : "bg-foreground/5 text-foreground/60"
                       }`}>
                         {fmtWindows(mobileDay.windows) ?? "Zatvoreno"}
@@ -1801,15 +1988,15 @@ export default function AdminPage() {
                       <span className="text-[11px] font-medium font-poppins text-foreground/60 truncate">
                         {mobileDay.activeCount} {srPlural(mobileDay.activeCount, "termin", "termina", "termina")}
                         {mobileDay.staffNames.length > 0 ? ` · ${mobileDay.staffNames.join(", ")}` : ""}
-                        {mobileDay.hasOverride ? " · izuzetak" : ""}
+                        {mobileDay.hasOverride && <span className="text-rose font-bold"> · izuzetak</span>}
                       </span>
                     </div>
                     <button
                       type="button"
                       onClick={() => openOverride(mobileDay.dateStr)}
-                      className="shrink-0 h-8 px-3 rounded-lg border border-foreground/10 text-[10px] font-bold font-poppins uppercase tracking-wider text-foreground/68 active:bg-foreground/5 transition-colors cursor-pointer flex items-center gap-1.5"
+                      className="shrink-0 h-8 px-2.5 rounded-lg border border-foreground/10 text-[10px] font-bold font-poppins uppercase tracking-wider text-foreground/68 active:bg-foreground/5 transition-colors cursor-pointer flex items-center gap-1.5"
                     >
-                      <Clock size={12} /> Izmeni dan
+                      <Clock size={12} /> Izmeni
                     </button>
                   </div>
                 </div>
@@ -1884,7 +2071,7 @@ export default function AdminPage() {
                 </div>
 
                 {/* Mobile Col */}
-                <div className="md:hidden relative" style={{ height: gridHeight }}>
+                <div key={mobileDay.dateStr} className="md:hidden relative admin-fade-in" style={{ height: gridHeight }}>
                   {renderDayBody(mobileDay, true)}
                 </div>
 
@@ -1900,9 +2087,56 @@ export default function AdminPage() {
         </div>
       )}
 
+      {/* Bottom tab bar — phone */}
+      <nav
+        aria-label="Admin"
+        className="md:hidden shrink-0 z-20 bg-surface border-t border-foreground/8 shadow-[0_-8px_24px_rgb(0_0_0/0.25)] pb-[env(safe-area-inset-bottom)]"
+      >
+        <div className="grid grid-cols-5 h-16">
+          {TABS.map(({ key, label, Icon }, i) => {
+            const active = activeTab === key;
+            const tab = (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setActiveTab(key)}
+                aria-current={active ? "page" : undefined}
+                className={`flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
+                  active ? "text-accent" : "text-foreground/55 active:text-foreground/80"
+                }`}
+              >
+                <span className={`relative h-7 w-12 flex items-center justify-center rounded-full transition-colors duration-200 ${active ? "bg-accent/15" : ""}`}>
+                  <Icon size={19} strokeWidth={active ? 2.4 : 2} />
+                  {key === "calls" && badgeCount > 0 && (
+                    <span className="absolute -top-1 right-0.5 min-w-4.5 h-4.5 px-1 rounded-full text-[10px] font-bold font-poppins flex items-center justify-center bg-amber-400 text-[#241703] ring-2 ring-surface">
+                      {badgeCount}
+                    </span>
+                  )}
+                </span>
+                <span className="text-[10px] font-semibold font-poppins leading-none whitespace-nowrap">{label}</span>
+              </button>
+            );
+            // The new-reservation button sits in the middle, within thumb reach.
+            return i === 2 ? [
+              <div key="new" className="flex items-start justify-center">
+                <button
+                  type="button"
+                  onClick={() => setReservationModalOpen(true)}
+                  aria-label="Novi termin"
+                  className="-mt-5 w-14 h-14 rounded-2xl bg-accent text-on-accent flex items-center justify-center shadow-lg shadow-accent/30 ring-4 ring-background active:scale-95 transition-transform cursor-pointer"
+                >
+                  <Plus size={26} strokeWidth={2.5} />
+                </button>
+              </div>,
+              tab,
+            ] : tab;
+          })}
+        </div>
+      </nav>
+
       {/* Error toast */}
       {notice && (
-        <div className="fixed bottom-6 inset-x-0 z-[60] flex justify-center px-4 pointer-events-none">
+        <div className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] md:bottom-6 inset-x-0 z-[60] flex justify-center px-4 pointer-events-none">
           <button
             type="button"
             role="alert"
@@ -1919,13 +2153,13 @@ export default function AdminPage() {
       {selected && (
         <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-0 sm:p-4">
           <div className="absolute inset-0 bg-black/75 admin-fade-in" onClick={() => setSelected(null)} />
-          <div className="relative z-10 bg-surface border border-foreground/10 rounded-t-[2.5rem] sm:rounded-3xl shadow-2xl shadow-black/60 w-full max-w-xl max-h-[92dvh] overflow-hidden flex flex-col pb-[env(safe-area-inset-bottom)] admin-sheet-in">
-            <div className="md:hidden w-12 h-1.5 bg-foreground/10 rounded-full mx-auto mt-4 mb-2" />
+          <div className="relative z-10 bg-surface border border-foreground/10 rounded-t-4xl sm:rounded-3xl shadow-2xl shadow-black/60 w-full max-w-xl max-h-[92dvh] overflow-hidden flex flex-col pb-[env(safe-area-inset-bottom)] admin-sheet-in">
+            <div className="sm:hidden w-10 h-1.5 bg-foreground/15 rounded-full mx-auto mt-3" />
 
-            <div className="flex items-center justify-between px-8 py-6 border-b border-foreground/5">
+            <div className="flex items-center justify-between px-5 sm:px-8 py-4 sm:py-6 border-b border-foreground/5">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="text-2xl font-bold font-playfair">Rezervacija</h2>
+                  <h2 className="text-xl sm:text-2xl font-bold font-playfair">Rezervacija</h2>
                   {selectedIsReturning === true && (
                     <span className="text-[10px] font-bold font-poppins uppercase tracking-widest text-accent bg-accent/10 px-2.5 py-1 rounded-lg border border-accent/15">
                       Postojeći klijent
@@ -1945,23 +2179,29 @@ export default function AdminPage() {
                 </div>
                 <p className="text-[11px] font-bold font-poppins text-foreground/50 uppercase tracking-widest mt-1">Detaljni pregled klijenta</p>
               </div>
-              <button onClick={() => setSelected(null)} className="w-12 h-12 flex items-center justify-center rounded-2xl bg-foreground/3 text-foreground/60 hover:bg-red-400/10 hover:text-red-400 transition-all cursor-pointer shrink-0 ml-3"><X size={24}/></button>
+              <button onClick={() => setSelected(null)} aria-label="Zatvori" className="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center rounded-xl sm:rounded-2xl bg-foreground/3 text-foreground/60 hover:bg-red-400/10 hover:text-red-400 transition-all cursor-pointer shrink-0 ml-3"><X size={24}/></button>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-8 py-8 space-y-8 custom-scrollbar">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex-1 overflow-y-auto overscroll-contain px-5 sm:px-8 py-5 sm:py-8 space-y-5 sm:space-y-8 custom-scrollbar">
+              <div className="grid grid-cols-2 gap-2.5 sm:gap-4">
                 {[
                   { icon: User,     label: "Klijent", value: selected.customer_name },
-                  { icon: Phone,    label: "Telefon", value: selected.customer_phone ?? "—" },
-                  { icon: Mail,     label: "E-mail",  value: selected.customer_email },
                   { icon: Clock,    label: "Vreme",   value: `${selected.start_time.slice(0, 5)} – ${selected.end_time.slice(0, 5)}` },
-                ].map(({ icon: Icon, label, value }) => (
-                  <div key={label} className="p-4 rounded-2xl bg-foreground/2 border border-foreground/3">
-                    <div className="flex items-center gap-3 mb-1">
+                  { icon: Phone,    label: "Telefon", value: selected.customer_phone ?? "—",
+                    href: selected.customer_phone ? `tel:${selected.customer_phone.replace(/\s/g, "")}` : undefined },
+                  { icon: Mail,     label: "E-mail",  value: selected.customer_email,
+                    href: selected.customer_email ? `mailto:${selected.customer_email}` : undefined },
+                ].map(({ icon: Icon, label, value, href }) => (
+                  <div key={label} className="min-w-0 p-3 sm:p-4 rounded-2xl bg-foreground/2 border border-foreground/3">
+                    <div className="flex items-center gap-2 sm:gap-3 mb-1">
                       <Icon size={14} className="text-foreground/38" />
                       <span className="text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-wider">{label}</span>
                     </div>
-                    <p className="text-sm font-semibold font-poppins text-foreground/80 truncate px-0.5">{value}</p>
+                    {href ? (
+                      <a href={href} className="block text-sm font-semibold font-poppins text-accent truncate px-0.5 underline-offset-2 hover:underline">{value}</a>
+                    ) : (
+                      <p className="text-sm font-semibold font-poppins text-foreground/80 truncate px-0.5">{value}</p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1976,14 +2216,131 @@ export default function AdminPage() {
               </div>
 
               <div className="space-y-3">
-                <p className="text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-widest px-1">Usluge</p>
-                <div className="flex flex-wrap gap-2">
-                  {selected.reservation_services.map(rs => rs.services && (
-                    <span key={rs.services.id} className="px-5 py-2.5 bg-surface border border-foreground/5 rounded-2xl text-[13px] font-bold font-poppins text-foreground/82 shadow-sm">
-                      {rs.services.name}
-                    </span>
-                  ))}
+                <div className="flex items-center justify-between gap-3 px-1">
+                  <p className="text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-widest">Usluge</p>
+                  {servicesDraft === null && priceBook && allServices.length > 0 && (
+                    <button
+                      onClick={startServicesEdit}
+                      className="inline-flex items-center gap-1.5 text-[10px] font-bold font-poppins uppercase tracking-widest text-accent hover:opacity-80 transition-opacity cursor-pointer"
+                    >
+                      <Pencil size={12} />
+                      Izmeni regije
+                    </button>
+                  )}
                 </div>
+                {servicesDraft === null ? (
+                  <div className="flex flex-wrap gap-2">
+                    {selected.reservation_services.map(rs => rs.services && (
+                      <span key={rs.services.id} className="px-3.5 sm:px-5 py-2 sm:py-2.5 bg-surface border border-foreground/5 rounded-xl sm:rounded-2xl text-[13px] font-bold font-poppins text-foreground/82 shadow-sm">
+                        {rs.services.name}
+                      </span>
+                    ))}
+                  </div>
+                ) : (() => {
+                  const draft      = withServices(selected, servicesDraft);
+                  const draftPrice = servicesDraft.length > 0 ? priceFor(draft, selectedIsFirst) : null;
+                  const fullBody   = servicesDraft.some(id => isFullBody(serviceById.get(id)?.name ?? ""));
+                  // Only regions that had a price in this studio when the
+                  // appointment was booked - anything else would count as 0 RSD.
+                  const pickable = allServices.filter(s =>
+                    s.gender === draftGender && s.active && !isComboService(s.name) &&
+                    priceBook?.priceAt(s.id, selected.location, selected.created_at) != null);
+                  const changed =
+                    servicesDraft.length !== selected.reservation_services.length ||
+                    servicesDraft.some(id => !selected.reservation_services.some(rs => rs.services?.id === id));
+                  return (
+                    <div className="rounded-2xl border border-accent/20 bg-accent/3 p-3 sm:p-4 space-y-4">
+                      <div className="flex gap-1.5 p-1 rounded-xl bg-foreground/4 w-fit">
+                        {([["zene", "Žene"], ["muskarci", "Muškarci"]] as const).map(([g, label]) => (
+                          <button
+                            key={g}
+                            onClick={() => setDraftGender(g)}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold font-poppins uppercase tracking-widest transition-colors cursor-pointer ${
+                              draftGender === g ? "bg-accent text-on-accent" : "text-foreground/60 hover:text-foreground/80"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        {pickable.map(s => {
+                          const on = servicesDraft.includes(s.id);
+                          const blocked = !on && fullBody && !isAllowedWithFullBody(s.name);
+                          return (
+                            <button
+                              key={s.id}
+                              onClick={() => toggleDraftService(s.id)}
+                              disabled={blocked}
+                              aria-pressed={on}
+                              className={`px-3 py-2 rounded-xl border text-[12px] font-bold font-poppins transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
+                                on
+                                  ? "bg-accent/15 border-accent/50 text-accent"
+                                  : "bg-surface border-foreground/8 text-foreground/70 hover:border-foreground/20"
+                              }`}
+                            >
+                              {on ? "✓ " : "+ "}{s.name}
+                            </button>
+                          );
+                        })}
+                        {/* Regions of the other gender stay visible so they can be taken off. */}
+                        {servicesDraft
+                          .map(id => serviceById.get(id))
+                          .filter((s): s is ServiceInfo => !!s && !pickable.includes(s))
+                          .map(s => (
+                            <button
+                              key={s.id}
+                              onClick={() => toggleDraftService(s.id)}
+                              className="px-3 py-2 rounded-xl border bg-accent/15 border-accent/50 text-accent text-[12px] font-bold font-poppins cursor-pointer"
+                            >
+                              ✓ {s.name}
+                            </button>
+                          ))}
+                      </div>
+
+                      <div className="flex items-end justify-between gap-3 pt-3 border-t border-foreground/8">
+                        <p className="text-[11px] font-poppins text-foreground/64 leading-relaxed">
+                          {servicesDraft.length === 0
+                            ? "Izaberi bar jednu regiju."
+                            : <>Novo vreme: <span className="font-bold text-foreground/82">{draft.start_time.slice(0, 5)} – {draft.end_time.slice(0, 5)}</span> ({draft.total_duration} min)</>}
+                        </p>
+                        {draftPrice && (
+                          <div className="text-right shrink-0">
+                            {selectedPrice && selectedPrice.finalPrice !== draftPrice.finalPrice && (
+                              <p className="text-[11px] font-medium font-poppins text-foreground/50 line-through leading-none">{selectedPrice.finalPrice.toLocaleString("sr-RS")} RSD</p>
+                            )}
+                            <p className="text-lg font-bold font-poppins text-accent leading-tight mt-0.5">{draftPrice.finalPrice.toLocaleString("sr-RS")} RSD</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {servicesClash && (
+                        <p className="flex items-start gap-2 text-[11px] font-poppins text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded-xl px-3 py-2 leading-relaxed">
+                          <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                          Duži termin se preklapa sa drugim terminom tog dana. Klikni ponovo da ipak sačuvaš.
+                        </p>
+                      )}
+
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => { setServicesDraft(null); setServicesClash(false); }}
+                          disabled={saving}
+                          className="h-11 px-4 rounded-xl bg-foreground/4 border border-foreground/10 text-foreground/76 text-[11px] font-bold tracking-widest font-poppins uppercase hover:bg-foreground/8 transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          Odustani
+                        </button>
+                        <button
+                          onClick={handleServicesSave}
+                          disabled={saving || servicesDraft.length === 0 || !changed}
+                          className="flex-1 h-11 rounded-xl bg-accent text-on-accent text-[11px] font-bold tracking-widest font-poppins uppercase disabled:opacity-40 transition-all active:scale-95 cursor-pointer"
+                        >
+                          {saving ? "Čuvam…" : servicesClash ? "Sačuvaj ipak" : "Sačuvaj regije"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Cena i popust */}
@@ -2035,6 +2392,25 @@ export default function AdminPage() {
                       <p className="text-lg font-bold font-poppins text-accent leading-tight mt-0.5">{selectedPrice.finalPrice.toLocaleString("sr-RS")} RSD</p>
                     </div>
                   </div>
+                  {/* Bundle: the code to type for the next treatment + what's left of it. */}
+                  {selectedBundle && (
+                    <div className="mt-3 pt-3 border-t border-foreground/5 grid grid-cols-2 gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-wider">Kod paketa</p>
+                        <p className="text-sm font-bold font-poppins text-foreground select-all break-all mt-0.5">{selectedBundle.code}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-wider">Preostalo</p>
+                        {selectedBundle.total > 0 ? (
+                          <p className={`text-sm font-bold font-poppins mt-0.5 ${selectedBundle.left > 0 ? "text-accent" : "text-foreground/60"}`}>
+                            {selectedBundle.left} od {selectedBundle.total} tretmana
+                          </p>
+                        ) : (
+                          <p className="text-sm font-bold font-poppins text-red-400 mt-0.5">Kupovina nije pronađena</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   {/* The student discount is the one code nobody could verify while
                       booking - this is where it gets settled against a real index. */}
                   {selectedPrice.studentOff && (
@@ -2080,18 +2456,18 @@ export default function AdminPage() {
 
             {/* Status + save stay pinned below the scroll area so they are
                 always reachable, however long the details get. */}
-            <div className="shrink-0 border-t border-foreground/8 bg-surface px-8 pt-4 pb-5 space-y-3">
-              <div className="grid grid-cols-3 gap-3">
+            <div className="shrink-0 border-t border-foreground/8 bg-surface px-5 sm:px-8 pt-3 sm:pt-4 pb-4 sm:pb-5 space-y-3">
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
                 {(Object.entries(STATUS_STYLES) as [ReservationStatus, typeof STATUS_STYLES[ReservationStatus]][]).filter(([key]) => key !== "pending").map(([key, s]) => (
                   <button
                     key={key}
                     onClick={() => setNewStatus(key)}
-                    className={`h-14 rounded-2xl border-2 font-bold font-poppins transition-all flex flex-col items-center justify-center gap-1 ${
+                    className={`h-13 sm:h-14 rounded-2xl border-2 font-bold font-poppins transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
                       newStatus === key ? `${s.bg} ${s.border} ${s.text} shadow-md` : "bg-surface border-foreground/5 text-foreground/38 grayscale hover:grayscale-0 hover:border-foreground/10"
                     }`}
                   >
                     <span className={`w-2 h-2 rounded-full ${s.dot}`} />
-                    <span className="text-[10px] uppercase tracking-widest">{s.label}</span>
+                    <span className="text-[10px] uppercase tracking-wider sm:tracking-widest">{s.label}</span>
                   </button>
                 ))}
               </div>
@@ -2099,7 +2475,7 @@ export default function AdminPage() {
               <button
                 onClick={handleStatusSave}
                 disabled={saving || (newStatus === selected.status && (newNotes.trim() || "") === (selected.notes ?? ""))}
-                className="w-full h-14 rounded-2xl bg-accent text-on-accent text-sm font-bold tracking-[0.2em] font-poppins shadow-xl shadow-accent/20 disabled:opacity-40 transition-all active:scale-95 cursor-pointer uppercase"
+                className="w-full h-13 sm:h-14 rounded-2xl bg-accent text-on-accent text-sm font-bold tracking-[0.2em] font-poppins shadow-xl shadow-accent/20 disabled:opacity-40 transition-all active:scale-95 cursor-pointer uppercase"
               >
                 {saving ? "..." : "Sačuvaj izmene"}
               </button>
@@ -2112,8 +2488,8 @@ export default function AdminPage() {
       {overrideDate && (
         <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-0 sm:p-4">
           <div className="absolute inset-0 bg-black/75 admin-fade-in" onClick={() => setOverrideDate(null)} />
-          <div className="relative z-10 bg-surface border border-foreground/10 rounded-t-[2.5rem] sm:rounded-3xl shadow-2xl shadow-black/60 w-full max-w-md overflow-hidden flex flex-col pb-[env(safe-area-inset-bottom)] admin-sheet-in">
-            <div className="md:hidden w-12 h-1.5 bg-foreground/10 rounded-full mx-auto mt-4 mb-1" />
+          <div className="relative z-10 bg-surface border border-foreground/10 rounded-t-4xl sm:rounded-3xl shadow-2xl shadow-black/60 w-full max-w-md max-h-[92dvh] overflow-y-auto overscroll-contain flex flex-col pb-[env(safe-area-inset-bottom)] admin-sheet-in">
+            <div className="sm:hidden w-10 h-1.5 bg-foreground/15 rounded-full mx-auto mt-3" />
             <div className="flex items-center justify-between px-6 py-5 border-b border-foreground/5">
               <div className="min-w-0">
                 <h2 className="text-lg font-bold font-playfair">Raspored za dan</h2>
@@ -2124,7 +2500,7 @@ export default function AdminPage() {
               <button onClick={() => setOverrideDate(null)} className="w-11 h-11 flex items-center justify-center rounded-2xl bg-foreground/3 text-foreground/60 hover:bg-red-400/10 hover:text-red-400 transition-all cursor-pointer shrink-0 ml-3"><X size={22} /></button>
             </div>
 
-            <div className="px-6 py-6 space-y-4">
+            <div className="px-5 sm:px-6 py-5 sm:py-6 space-y-4">
               <p className="text-[11px] font-poppins text-foreground/64 leading-relaxed">
                 {overrideIsException
                   ? "Ovaj dan ima poseban raspored (izuzetak). Izmeni ga ili ga vrati na nedeljni šablon."

@@ -19,7 +19,7 @@ import { parseBundlePromo, bundleRedeemCode } from "@/lib/bundles";
 import { STUDENT_PROMO_CODE, isStudentPromoCode } from "@/lib/pricing";
 import { fetchPriceRows, PriceBook } from "@/lib/prices";
 import { getLocation, fullAddress, type LocationId } from "@/lib/locations";
-import { escapeLike } from "@/lib/fetchAll";
+import { escapeLike, fetchAll } from "@/lib/fetchAll";
 import {
   type Gender, type DayOption,
   getIcon, getRegionArt, preloadRegionArt, RegionThumb, CARD_IN_MS, THUMB_SIZES, HERO_THUMB_SIZES,
@@ -48,11 +48,22 @@ interface AdminReservationModalProps {
 type Step = 1 | 2 | 3 | 4 | 5 | "success" | "preparation";
 
 /**
- * Build bookable days for Admin. Unlike the public site (2-week horizon), admin can
- * schedule across a much larger window — any open day per the effective schedule
- * (weekly template + overrides). Closed days (e.g. Sundays) are skipped.
+ * Admin may book outside working hours, on any day (Sundays and closed days
+ * included) - only taken times are off limits. This is the span offered.
  */
-function buildAdminDayOptions(totalDuration: number, availability: AvailabilityData): DayOption[] {
+const ADMIN_DAY_WINDOWS = [{ start: 7 * 60, end: 22 * 60 }];
+
+/** True when the slot (start..start+duration) lies inside the studio's working hours for that date. */
+function isWithinWorkingHours(dateStr: string, slot: string, duration: number, availability: AvailabilityData): boolean {
+  const start = timeToMinutes(slot);
+  return (resolveWindows(dateStr, availability) ?? []).some((w) => start >= w.start && start + duration <= w.end);
+}
+
+/**
+ * Build bookable days for Admin. Unlike the public site (2-week horizon), admin can
+ * schedule across a much larger window, every day, outside working hours too.
+ */
+function buildAdminDayOptions(totalDuration: number): DayOption[] {
   const now = new Date();
   const days: DayOption[] = [];
 
@@ -61,8 +72,7 @@ function buildAdminDayOptions(totalDuration: number, availability: AvailabilityD
     d.setDate(d.getDate() + i);
     const dateStr = toDateStr(d);
 
-    const windows = resolveWindows(dateStr, availability);
-    if (!windows) continue; // closed day (e.g. Sunday)
+    const windows = ADMIN_DAY_WINDOWS;
     const isToday = i === 0;
 
     if (isToday) {
@@ -129,6 +139,13 @@ export default function AdminReservationModal({
   const [slotsFor, setSlotsFor]           = useState<string | null>(null);
   const [slotsError, setSlotsError]       = useState(false);
   const [slotsReloadKey, setSlotsReloadKey] = useState(0);
+  /**
+   * Reservations across the whole admin horizon, by date - used to hide days
+   * with no free slot. null = not loaded (or failed): every open day is shown
+   * and the time step re-checks.
+   */
+  const [busyByDate, setBusyByDate]       = useState<Map<string, { start_time: string; end_time: string; status: string }[]> | null>(null);
+  const [loadingBusy, setLoadingBusy]     = useState(false);
   /** Synchronous double-submit guard (state updates land a render too late). */
   const submitLockRef = useRef(false);
   const [form, setForm]                   = useState({ name: "", email: "", phone: "", notes: "" });
@@ -201,7 +218,13 @@ export default function AdminReservationModal({
   const priceShown = totalPrice === finalPrice ? finalPrice : (displayedPrice ?? totalPrice);
 
   // Day options rebuild whenever slot duration (incl. consultation) or schedule changes
-  const dayOptions = buildAdminDayOptions(slotDuration, availability);
+  // and hides days that are fully booked (once the reservations are loaded).
+  const dayOptions = buildAdminDayOptions(slotDuration).filter((day) => {
+    if (!busyByDate) return true;
+    const dayWindows = ADMIN_DAY_WINDOWS;
+    const minStart = day.isToday ? new Date().getHours() * 60 + new Date().getMinutes() : undefined;
+    return getAvailableSlots(busyByDate.get(day.date) ?? [], slotDuration, minStart, dayWindows).length > 0;
+  });
 
   // Read the clock on every render - the modal stays mounted between opens.
   const nowDate = new Date();
@@ -210,9 +233,8 @@ export default function AdminReservationModal({
   // For Admin: no 2-hour buffer
   const minStart = isToday ? nowMinutes : undefined;
 
-  const windows = selectedDate ? resolveWindows(selectedDate, availability) : null;
-  const availableSlots = windows?.length
-    ? getAvailableSlots(daySlots, slotDuration, minStart, windows)
+  const availableSlots = selectedDate
+    ? getAvailableSlots(daySlots, slotDuration, minStart, ADMIN_DAY_WINDOWS)
     : [];
 
   // ── Side-effects ──────────────────────────────────────────────────────────
@@ -321,6 +343,44 @@ export default function AdminReservationModal({
       );
     return () => { cancelled = true; };
   }, [selectedDate, step, slotsKey, location]);
+
+  // Step 3: reservations for the whole horizon, refetched every time the day
+  // step opens, so fully booked days are hidden.
+  useEffect(() => {
+    if (!isOpen || step !== 3) return;
+    let cancelled = false;
+    const from = new Date();
+    const to = new Date(from);
+    to.setDate(to.getDate() + ADMIN_HORIZON_DAYS - 1);
+    setLoadingBusy(true);
+    setBusyByDate(null);
+    fetchAll<{ date: string; start_time: string; end_time: string; status: string }>((a, b) =>
+      supabase
+        .from("reservations")
+        .select("date, start_time, end_time, status")
+        .eq("location", location)
+        .gte("date", toDateStr(from))
+        .lte("date", toDateStr(to))
+        .order("id")
+        .range(a, b),
+    )
+      .then(
+        (rows) => {
+          if (cancelled) return;
+          const byDate = new Map<string, { start_time: string; end_time: string; status: string }[]>();
+          for (const r of rows) {
+            const list = byDate.get(r.date) ?? [];
+            list.push({ start_time: r.start_time, end_time: r.end_time, status: r.status });
+            byDate.set(r.date, list);
+          }
+          setBusyByDate(byDate);
+        },
+        // Unavailable: show every open day, the time step re-checks.
+        () => { if (!cancelled) setBusyByDate(null); },
+      )
+      .finally(() => { if (!cancelled) setLoadingBusy(false); });
+    return () => { cancelled = true; };
+  }, [isOpen, step, location]);
 
   // Every step starts at the top - otherwise a long previous step (services)
   // leaves the next one scrolled past its opening.
@@ -693,7 +753,7 @@ export default function AdminReservationModal({
                 <ArrowLeft size={18} className="sm:w-[22px] sm:h-[22px]" />
               </button>
             )}
-            <h2 id="arm-title" className={`text-2xl sm:text-3xl md:text-4xl font-bold font-playfair ${gender ? "bm-metal-text" : ""}`}>Nova rezervacija</h2>
+            <h2 id="arm-title" className={`text-2xl sm:text-3xl md:text-4xl font-bold font-playfair ${gender ? "bm-metal-text" : ""}`}>Novi termin</h2>
           </div>
           <button onClick={handleClose} className="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center rounded-full hover:bg-foreground/5 transition-colors cursor-pointer" aria-label="Zatvori">
             <X size={20} className="sm:w-6 sm:h-6" />
@@ -912,7 +972,11 @@ export default function AdminReservationModal({
           {step === 3 && (
             <div className="flex flex-col gap-4">
               <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/60 font-poppins mb-1">IZABERI DAN</p>
-              {dayOptions.length === 0 ? (
+              {loadingBusy ? (
+                <div className="flex items-center justify-center py-8 text-foreground/60">
+                  <Loader2 size={22} className="animate-spin" />
+                </div>
+              ) : dayOptions.length === 0 ? (
                 <div className="flex items-center gap-2 sm:gap-3 p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-foreground/5 text-foreground/68 text-sm sm:text-base font-poppins">
                   <AlertCircle size={16} />
                   Nema dostupnih dana.
@@ -984,22 +1048,29 @@ export default function AdminReservationModal({
                 </div>
               ) : (
                 <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-1.5 sm:gap-2.5">
-                  {availableSlots.map((slot, index) => (
+                  {availableSlots.map((slot, index) => {
+                    // Outside working hours: still bookable, just shown dimmer.
+                    const offHours = !isWithinWorkingHours(selectedDate, slot, slotDuration, availability);
+                    return (
                     <button
                       key={slot}
                       type="button"
+                      title={offHours ? "Van radnog vremena" : undefined}
                       onClick={() => handleTimeSelect(slot)}
                       className="bm-card-in py-2.5 sm:py-3.5 rounded-lg sm:rounded-xl text-sm sm:text-base font-semibold font-poppins transition-colors cursor-pointer"
                       style={{
                         ...cascade(index, 25, 17),
                         ...(selectedTime === slot
                           ? { backgroundColor: accent.hex, color: accent.onHex }
-                          : { backgroundColor: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.75)" }),
+                          : offHours
+                            ? { backgroundColor: "transparent", color: "rgba(255,255,255,0.45)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.12)" }
+                            : { backgroundColor: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.75)" }),
                       }}
                     >
                       {slot}
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

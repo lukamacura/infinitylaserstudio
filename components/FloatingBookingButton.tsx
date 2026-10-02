@@ -4,12 +4,13 @@ import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import { ArrowRight } from "lucide-react";
+import { isAdminPath } from "@/lib/adminRoutes";
 
 const BookingModal = dynamic(() => import("./BookingModal"), { ssr: false });
 
 export default function FloatingBookingButton() {
   const pathname = usePathname();
-  const isPrivatePage = /^\/(admin|finances|stats)(\/|$)/.test(pathname ?? "");
+  const isPrivatePage = isAdminPath(pathname);
   const [isOpen, setIsOpen] = useState(false);
   const [visible, setVisible] = useState(false);
   const [mounted, setMounted] = useState(false);
