@@ -42,10 +42,10 @@ export const metadata: Metadata = {
   },
   description:
     "Trajno uklanjanje dlaka laserskom epilacijom u Novom Sadu i Somboru. Profesionalni tretmani, moderna oprema, medicinski tim. Zakaži termin.",
-  // The share picture is app/opengraph-image.jpg - every page inherits it.
+  // The share picture is app/opengraph-image.jpg (square logo) - every page inherits it.
   openGraph: OG_BASE,
   twitter: {
-    card: "summary_large_image",
+    card: "summary",
   },
   robots: { index: true, follow: true },
 };
