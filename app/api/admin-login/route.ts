@@ -10,7 +10,8 @@ import type { Database } from "@/lib/database.types";
  * `admin_users`) read or change reservations.
  *
  * Server-only env vars (never NEXT_PUBLIC_):
- *   ADMIN_PASSWORD             - the admin panel password
+ *   ADMIN_PASSWORD             - the admin panel password (/admin, /stats)
+ *   FINANCE_PASSWORD           - the finance panel password (/finances)
  *   SUPABASE_SERVICE_ROLE_KEY  - Supabase → Settings → API keys → service_role
  *   ADMIN_EMAIL (optional)     - internal account name, no email is ever sent
  */
@@ -44,20 +45,23 @@ async function ensureAdminUser(admin: SupabaseClient<Database>): Promise<string>
 }
 
 export async function POST(req: NextRequest) {
-  const expected   = process.env.ADMIN_PASSWORD;
+  let password = "";
+  let panel: unknown;
+  try {
+    const body = (await req.json()) as { password?: unknown; panel?: unknown };
+    password = typeof body.password === "string" ? body.password : "";
+    panel = body.panel;
+  } catch { /* empty body → wrong password */ }
+
+  const finances   = panel === "finances";
+  const expected   = finances ? process.env.FINANCE_PASSWORD : process.env.ADMIN_PASSWORD;
   const url        = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey    = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!expected || !url || !anonKey || !serviceKey) {
-    console.error("[admin-login] ADMIN_PASSWORD / SUPABASE_SERVICE_ROLE_KEY not set");
+    console.error(`[admin-login] ${finances ? "FINANCE_PASSWORD" : "ADMIN_PASSWORD"} / SUPABASE_SERVICE_ROLE_KEY not set`);
     return NextResponse.json({ ok: false, error: "config" }, { status: 500 });
   }
-
-  let password = "";
-  try {
-    const body = (await req.json()) as { password?: unknown };
-    password = typeof body.password === "string" ? body.password : "";
-  } catch { /* empty body → wrong password */ }
 
   if (!passwordMatches(password, expected)) {
     // Slow down guessing.

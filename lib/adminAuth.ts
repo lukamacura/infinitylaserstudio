@@ -8,8 +8,26 @@ import { supabase } from "./supabase";
  * hands back a Supabase session for the admin account. The database only lets
  * a user listed in `admin_users` read or change reservations (see
  * sql/secure_booking_phase1.sql) - nothing secret lives in the browser bundle.
+ *
+ * The finance panel has its own password (FINANCE_PASSWORD): an admin session
+ * alone does not open it, it must be unlocked once per browser session.
  */
-export function useAdminAuth() {
+export type AdminPanel = "admin" | "finances";
+
+const FINANCE_UNLOCK_KEY = "ils-finances-unlocked";
+
+function financeUnlocked(): boolean {
+  try { return sessionStorage.getItem(FINANCE_UNLOCK_KEY) === "1"; } catch { return false; }
+}
+
+function setFinanceUnlocked(on: boolean) {
+  try {
+    if (on) sessionStorage.setItem(FINANCE_UNLOCK_KEY, "1");
+    else sessionStorage.removeItem(FINANCE_UNLOCK_KEY);
+  } catch { /* storage blocked - the panel just asks again */ }
+}
+
+export function useAdminAuth(panel: AdminPanel = "admin") {
   /** null = still checking the saved session. */
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
 
@@ -21,31 +39,36 @@ export function useAdminAuth() {
         if (active) setAuthenticated(false);
         return;
       }
+      if (panel === "finances" && !financeUnlocked()) {
+        if (active) setAuthenticated(false);
+        return;
+      }
       const { data } = await supabase.rpc("is_admin");
       if (active) setAuthenticated(data === true);
     }
 
     supabase.auth.getSession().then(({ data }) => check(!!data.session));
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_OUT") setAuthenticated(false);
+      if (event === "SIGNED_OUT") { setFinanceUnlocked(false); setAuthenticated(false); }
       else if (event === "SIGNED_IN") void check(!!session);
     });
     return () => {
       active = false;
       sub.subscription.unsubscribe();
     };
-  }, []);
+  }, [panel]);
 
   /** Returns an error message, or null on success. */
   async function signIn(password: string): Promise<string | null> {
-    // The password is checked on the server (ADMIN_PASSWORD env var), which
-    // answers with a session for the admin account.
+    // The password is checked on the server (ADMIN_PASSWORD, or
+    // FINANCE_PASSWORD for the finance panel), which answers with a session
+    // for the admin account.
     let res: Response;
     try {
       res = await fetch("/api/admin-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password, panel }),
       });
     } catch {
       return "Nema veze sa serverom. Proverite internet i pokušajte ponovo.";
@@ -68,11 +91,13 @@ export function useAdminAuth() {
       await supabase.auth.signOut();
       return "Ovaj nalog nema admin pristup.";
     }
+    if (panel === "finances") setFinanceUnlocked(true);
     setAuthenticated(true);
     return null;
   }
 
   async function signOut() {
+    setFinanceUnlocked(false);
     await supabase.auth.signOut();
     setAuthenticated(false);
   }

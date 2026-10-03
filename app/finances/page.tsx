@@ -84,7 +84,7 @@ function applyComboRules(selected: ServiceWithPrice[], all: ServiceWithPrice[]):
 
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function FinancesPage() {
-  const { authenticated: authState, signIn, signOut } = useAdminAuth();
+  const { authenticated: authState, signIn, signOut } = useAdminAuth("finances");
   const authenticated = authState === true;
   /** Every number on this page belongs to one studio. */
   const { location, setLocation } = useAdminLocation();
