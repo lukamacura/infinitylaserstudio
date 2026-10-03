@@ -3,13 +3,21 @@ import { LOCATIONS } from "./locations";
 export const SITE_URL = "https://www.infinitylaserstudio.com";
 
 /**
- * A page that sets its own `openGraph` replaces the layout's whole object, so
- * every page spreads this in to keep the site name and locale.
+ * A page that sets its own `openGraph` replaces the layout's whole object -
+ * including the image from app/opengraph-image.jpg - so every page spreads
+ * this in to keep the site name, locale and share picture.
  */
 export const OG_BASE = {
   type: "website",
   locale: "sr_RS",
   siteName: "Infinity Laser Studio",
+  images: {
+    url: "/opengraph-image.jpg",
+    width: 1200,
+    height: 1200,
+    type: "image/jpeg",
+    alt: "Infinity Laser Studio - laserska epilacija u Novom Sadu i Somboru",
+  },
 } as const;
 
 const POSTAL_CODES: Record<string, string> = { novi_sad: "21000", sombor: "25000" };
