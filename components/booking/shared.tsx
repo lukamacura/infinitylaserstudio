@@ -222,6 +222,8 @@ export interface DayOption {
   label: string;      // "Ponedeljak"
   shortDate: string;  // "24. feb"
   isToday: boolean;
+  /** Free start times that day - unknown when reservations could not be loaded. */
+  freeSlots?: number;
 }
 
 export function formatPrice(price: number): string {

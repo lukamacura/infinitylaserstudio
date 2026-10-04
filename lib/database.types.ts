@@ -367,6 +367,7 @@ export type Database = {
       }
       public_is_returning: { Args: { p_email: string }; Returns: boolean }
       public_track_funnel: { Args: { p_session: string; p_stage: string; p_location?: string | null }; Returns: undefined }
+      public_popular_services: { Args: Record<string, never>; Returns: { service_id: string; rank: number }[] }
       admin_booking_funnel: {
         Args: { p_from: string; p_to: string; p_location?: string | null }
         Returns: { stage: string; sessions: number }[]

@@ -5,7 +5,7 @@ import type { CSSProperties } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
-  X, ArrowLeft, Loader2, CheckCircle2, AlertCircle, Info, MapPin, ChevronRight,
+  X, ArrowLeft, Loader2, CheckCircle2, AlertCircle, Info, MapPin, ChevronRight, CalendarCheck,
 } from "lucide-react";
 import {
   supabase, calcBookingDuration, calcTotalDuration, getAvailableSlots,
@@ -49,6 +49,19 @@ interface BookingModalProps {
 
 type Step = "location" | 1 | 2 | "plan" | 3 | 4 | 5 | "success" | "preparation";
 type BookingMode = "single" | "bundle";
+
+/** "Utorak, 7. okt" */
+function formatDateShort(dateStr: string): string {
+  const d = new Date(`${dateStr}T00:00:00`);
+  return `${SR_DAYS_FULL[monIdx(d)]}, ${d.getDate()}. ${SR_MONTHS_SHORT[d.getMonth()]}`;
+}
+
+/** "1 slobodan termin", "3 slobodna termina", "12 slobodnih termina". */
+function freeSlotsLabel(n: number): string {
+  const one = n % 10 === 1 && n % 100 !== 11;
+  const few = n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14);
+  return `${n} ${one ? "slobodan termin" : few ? "slobodna termina" : "slobodnih termina"}`;
+}
 
 /**
  * Candidate days within the rolling public horizon where the booking duration fits
@@ -160,6 +173,11 @@ const SERVICES_TTL_MS = 5 * 60 * 1000;
 const servicesCache = new Map<Gender, { at: number; data: Service[] }>();
 let priceBook: PriceBook | null = null;
 let servicesRequest: Promise<void> | null = null;
+/** Service id → popularity rank (1 = most booked), from the last 90 days. */
+let popularRanks = new Map<string, number>();
+
+/** How many most-picked regions are lifted to the top of the list. */
+const POPULAR_SHOWN = 3;
 
 function freshServices(gender: Gender, location: LocationId): Service[] | null {
   const cached = servicesCache.get(gender);
@@ -177,9 +195,12 @@ function loadAllServices(): Promise<void> {
   const request: Promise<void> = Promise.all([
     supabase.from("services").select("*").eq("active", true).order("sort_order"),
     fetchPriceRows(),
+    // Only reorders the list - a failure (or the SQL not applied yet) keeps the usual order.
+    Promise.resolve(supabase.rpc("public_popular_services")).then(({ data }) => data ?? [], () => []),
   ]).then(
-    ([{ data, error }, prices]) => {
+    ([{ data, error }, prices, popular]) => {
       if (error || !data || !prices) return;
+      popularRanks = new Map(popular.map((p) => [p.service_id, p.rank]));
       priceBook = new PriceBook(prices);
       const at = Date.now();
       for (const g of ["zene", "muskarci"] as const) {
@@ -356,6 +377,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   const [fieldErrors, setFieldErrors]     = useState({ name: false, email: false, phone: false, policy: false });
   const [acceptedPolicy, setAcceptedPolicy] = useState(true);
   const [showPolicyInfo, setShowPolicyInfo] = useState(false);
+  /** The code field stays behind a link until asked for - an open field sends people off hunting for a coupon. */
+  const [showPromo, setShowPromo]           = useState(false);
   const [submitting, setSubmitting]       = useState(false);
   const [submitError, setSubmitError]     = useState<string | null>(null);
   const [bookingRef, setBookingRef]       = useState<string | null>(null);
@@ -427,15 +450,25 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   const presetGender: Gender | null =
     preselectedGender ?? (preselectedNames && preselectedNames.length > 0 ? "zene" : null);
   /** Step 2 list - "Celo telo" leads, it is the offer we most want booked. */
-  const pickableServices = useMemo(() => {
+  const { pickableServices, popularIds } = useMemo(() => {
     const visible = services.filter((s) => !isComboService(s.name));
     const pinned = visible.filter((s) => pinnedIds.includes(s.id));
     const rest = visible.filter((s) => !pinnedIds.includes(s.id));
-    return [
-      ...pinned,
-      ...rest.filter((s) => isFullBody(s.name)),
-      ...rest.filter((s) => !isFullBody(s.name)),
-    ];
+    // The most booked regions come right after "Celo telo" (which already leads)
+    // and are marked "Najčešće"; every other region stays below as before.
+    const popular = rest
+      .filter((s) => !isFullBody(s.name) && popularRanks.has(s.id))
+      .sort((a, b) => popularRanks.get(a.id)! - popularRanks.get(b.id)!)
+      .slice(0, POPULAR_SHOWN);
+    return {
+      pickableServices: [
+        ...pinned,
+        ...rest.filter((s) => isFullBody(s.name)),
+        ...popular,
+        ...rest.filter((s) => !isFullBody(s.name) && !popular.includes(s)),
+      ],
+      popularIds: new Set(popular.map((s) => s.id)),
+    };
   }, [services, pinnedIds]);
 
   // ── Bundle ("Napravi svoj paket") ───────────────────────────────────────────
@@ -637,12 +670,13 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       // Reservations unavailable: offer every open day, the time step re-checks.
       const filtered = !byDate
         ? candidates
-        : candidates.filter((day) => {
+        : candidates.flatMap((day) => {
             const windows = resolveWindows(day.date, availability);
-            if (!windows) return false;
+            if (!windows) return [];
             const minStart = day.date === todayStr ? minStartToday : undefined;
             const res = byDate.get(day.date) ?? [];
-            return getAvailableSlots(res, slotDuration, minStart, windows).length > 0;
+            const freeSlots = getAvailableSlots(res, slotDuration, minStart, windows).length;
+            return freeSlots > 0 ? [{ ...day, freeSlots }] : [];
           });
 
       setBookableDayOptions(filtered);
@@ -792,6 +826,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     setFieldErrors({ name: false, email: false, phone: false, policy: false });
     setAcceptedPolicy(true);
     setShowPolicyInfo(false);
+    setShowPromo(false);
     setSubmitError(null); setBookingRef(null);
     setPromoCode(""); setPromoStatus("idle"); setAppliedPromoCode(null);
     setPromoKind("none"); setCheckingPromo(false); setPromoErrorMsg(null);
@@ -987,7 +1022,15 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       policy: !acceptedPolicy,
     };
     setFieldErrors(errors);
-    if (errors.name || errors.email || errors.phone || errors.policy) return;
+    if (errors.name || errors.email || errors.phone || errors.policy) {
+      // On a phone the field at fault is often under the keyboard or the
+      // sticky button - bring it into view so the tap visibly does something.
+      const first = (["name", "email", "phone", "policy"] as const).find((k) => errors[k]);
+      const el = document.getElementById(`bm-${first}`);
+      el?.focus({ preventScroll: true });
+      el?.scrollIntoView({ block: "center", behavior: "smooth" });
+      return;
+    }
     if (!selectedDate || !selectedTime) {
       setStep(selectedDate ? 4 : 3);
       return;
@@ -1533,7 +1576,17 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm sm:text-base font-semibold font-poppins">{service.name}</p>
+                      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm sm:text-base font-semibold font-poppins">
+                        {service.name}
+                        {popularIds.has(service.id) && (
+                          <span
+                            className="px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold tracking-widest border"
+                            style={{ color: accent.hex, borderColor: `${accent.hex}66`, backgroundColor: `${accent.hex}14` }}
+                          >
+                            NAJČEŠĆE
+                          </span>
+                        )}
+                      </p>
                       <span className="text-xs sm:text-sm text-foreground/40 font-poppins mt-0.5">
                         {formatPrice(service.price)} RSD
                       </span>
@@ -1750,6 +1803,11 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                           {day.label}
                         </p>
                         <p className="text-xs sm:text-sm text-foreground/50 font-poppins mt-0.5">{day.shortDate}</p>
+                        {day.freeSlots != null && (
+                          <p className="text-[10px] sm:text-xs text-foreground/40 font-poppins mt-1">
+                            {freeSlotsLabel(day.freeSlots)}
+                          </p>
+                        )}
                       </button>
                     );
                   })}
@@ -1818,6 +1876,17 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
           {step === 5 && (
             // Personal + health data: always masked in Clarity recordings.
             <div className="flex flex-col gap-4 sm:gap-6" data-clarity-mask="true">
+              {/* What is being booked - the last screen shows it's nearly done. */}
+              {selectedDate && selectedTime && (
+                <div className="flex items-center gap-3 px-3.5 sm:px-5 py-2.5 sm:py-3.5 rounded-xl sm:rounded-2xl border" style={{ borderColor: `${accent.hex}33`, backgroundColor: `${accent.hex}0D` }}>
+                  <CalendarCheck size={18} className="shrink-0" style={{ color: accent.hex }} />
+                  <p className="text-xs sm:text-sm font-poppins text-foreground/80 leading-snug">
+                    <span className="font-semibold text-foreground">{formatDateShort(selectedDate)} u {selectedTime}</span>
+                    <span className="text-foreground/50"> · {studio.name}</span>
+                  </p>
+                </div>
+              )}
+
               <div>
                 <label htmlFor="bm-name" className="block text-xs sm:text-sm text-foreground/50 font-poppins mb-1 sm:mb-1.5">Ime i prezime *</label>
                 <input
@@ -1922,7 +1991,27 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               </div>
 
               {/* Promo / bundle code - hidden while buying a bundle (mutually exclusive) */}
-              {!bundleActive && (
+              {!bundleActive && !showPromo && !promoCode && promoKind === "none" && (
+                <div className="flex flex-wrap gap-x-4 gap-y-2 -mt-1 sm:-mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowPromo(true)}
+                    className="text-xs sm:text-sm font-poppins text-foreground/55 hover:text-foreground/80 underline underline-offset-2 cursor-pointer transition-colors"
+                  >
+                    Imaš promo kod ili kod paketa?
+                  </button>
+                  {isReturningCustomer !== true && (
+                    <button
+                      type="button"
+                      onClick={() => { setShowPromo(true); setPromoCode(STUDENT_PROMO_CODE); setPromoStatus("idle"); setPromoErrorMsg(null); }}
+                      className="text-xs sm:text-sm font-poppins text-foreground/45 hover:text-foreground/70 underline underline-offset-2 cursor-pointer transition-colors"
+                    >
+                      Student? −20% na prvi tretman
+                    </button>
+                  )}
+                </div>
+              )}
+              {!bundleActive && (showPromo || !!promoCode || promoKind !== "none") && (
                 <div>
                   <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/40 font-poppins mb-2">PROMO ILI KOD PAKETA</p>
                   <div className="flex gap-2">
@@ -2076,6 +2165,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                   }`}
                 >
                   <input
+                    id="bm-policy"
                     type="checkbox"
                     checked={acceptedPolicy}
                     onChange={(e) => {
@@ -2087,6 +2177,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                   />
                   <span className="flex-1 text-xs sm:text-sm md:text-base font-semibold text-foreground/80 font-poppins leading-relaxed">
                     Prihvatam uslove otkazivanja.
+                    <span className="block text-[11px] sm:text-xs font-normal text-foreground/50 mt-0.5">Besplatno otkazivanje ili pomeranje do 24h pre termina.</span>
                   </span>
                   <button
                     type="button"
@@ -2327,6 +2418,12 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                     </span>
                   ) : "POTVRDI TERMIN"}
                 </button>
+              )}
+              {step === 5 && (
+                <p className="text-center text-[10px] sm:text-xs font-poppins text-foreground/50 mt-2 sm:mt-2.5">
+                  <span className="mr-1" style={{ color: accent.hex }}>✓</span>
+                  Vraćamo novac ako se ne rešiš 70–90% dlačica
+                </p>
               )}
 
               {step === "success" && (
