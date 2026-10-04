@@ -6,6 +6,7 @@ import Image from "next/image";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   X, ArrowLeft, Loader2, CheckCircle2, AlertCircle, Info, MapPin, ChevronRight, CalendarCheck,
+  Clock, Wallet, RotateCcw,
 } from "lucide-react";
 import {
   supabase, calcBookingDuration, calcTotalDuration, getAvailableSlots,
@@ -22,7 +23,8 @@ import {
 } from "@/lib/bundles";
 import { STUDENT_PROMO_CODE, isStudentPromoCode } from "@/lib/pricing";
 import { fetchPriceRows, PriceBook } from "@/lib/prices";
-import { trackFunnel, type FunnelStage } from "@/lib/funnel";
+import { trackFunnel, type FunnelStage, type FunnelSource } from "@/lib/funnel";
+import { JOURNEY_STEPS } from "@/lib/journey";
 import {
   LOCATIONS, DEFAULT_LOCATION, getLocation, fullAddress, type LocationId,
 } from "@/lib/locations";
@@ -45,6 +47,8 @@ interface BookingModalProps {
   preselectedGender?: "zene" | "muskarci";
   /** Skip the studio step and open with this studio chosen. */
   preselectedStudio?: LocationId;
+  /** What opened the modal, recorded with the funnel's first stage (/fnl). */
+  source?: FunnelSource;
 }
 
 type Step = "location" | 1 | 2 | "plan" | 3 | 4 | 5 | "success" | "preparation";
@@ -330,7 +334,7 @@ const BUNDLE_IMAGES: Record<number, string> = {
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
-export default function BookingModal({ isOpen, onClose, preselectedNames, preselectedBundle, preselectedGender, preselectedStudio }: BookingModalProps) {
+export default function BookingModal({ isOpen, onClose, preselectedNames, preselectedBundle, preselectedGender, preselectedStudio, source }: BookingModalProps) {
   const fbclidRef = useRef(
     typeof window !== "undefined"
       ? new URLSearchParams(window.location.search).get("fbclid")
@@ -763,7 +767,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       5: ["time"],
       success: ["booked"],
     };
-    for (const stage of reached[step] ?? []) trackFunnel(stage, studioId);
+    for (const stage of reached[step] ?? []) trackFunnel(stage, studioId, source);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, step]);
 
@@ -1361,7 +1365,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
           {/* ══ STEP "location": Studio ═════════════════════════════════════ */}
           {step === "location" && (
-            <div className="flex flex-col gap-4 sm:grid sm:grid-cols-2 py-2">
+            <div className="flex flex-col gap-5 sm:gap-7 py-2">
+            <div className="flex flex-col gap-4 sm:grid sm:grid-cols-2">
               {LOCATIONS.map((loc, index) => {
                 const isSelected = studioId === loc.id;
                 return (
@@ -1399,6 +1404,44 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                   </button>
                 );
               })}
+            </div>
+
+            {/* Most who open the form leave here without picking a city - not
+                lost, just not committed yet. Say it is quick and free to undo. */}
+            <ul className="flex flex-col gap-2 px-1 text-xs sm:text-sm font-poppins text-foreground/65">
+              {([
+                [Clock,     "Zakazivanje traje 1 minut"],
+                [Wallet,    "Ništa ne plaćaš unapred"],
+                [RotateCcw, "Besplatno otkazivanje do 24h pre termina"],
+              ] as const).map(([Icon, text]) => (
+                <li key={text} className="flex items-center gap-2.5">
+                  <Icon size={15} className="shrink-0 text-accent" aria-hidden="true" />
+                  {text}
+                </li>
+              ))}
+            </ul>
+
+            {/* The same road as the hero: a light travels Danas → Zauvek (CSS, see `.journey`). */}
+            <div className="rounded-2xl sm:rounded-3xl border border-accent/20 bg-surface/60 px-4 sm:px-6 py-5 sm:py-6">
+              <ol className="journey journey-row relative grid grid-cols-3">
+                <li className="journey-track" aria-hidden="true">
+                  <span className="journey-fill" />
+                  <span className="journey-head" />
+                </li>
+                {JOURNEY_STEPS.map((s, i) => (
+                  <li key={s.phase} className="journey-step relative flex flex-col gap-3 pr-2">
+                    <span className="journey-dot">
+                      <span className="journey-dot-on" />
+                      {i === JOURNEY_STEPS.length - 1 && <span className="journey-dot-pulse" />}
+                    </span>
+                    <div className="journey-text">
+                      <p className="text-[9px] sm:text-[11px] font-semibold text-accent tracking-[0.16em] uppercase leading-none font-poppins">{s.phase}</p>
+                      <p className="mt-1.5 text-[13px] sm:text-base font-semibold text-foreground leading-tight font-poppins">{s.label}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
             </div>
           )}
 

@@ -366,7 +366,14 @@ export type Database = {
         Returns: { date: string; start_time: string; end_time: string; status: string }[]
       }
       public_is_returning: { Args: { p_email: string }; Returns: boolean }
-      public_track_funnel: { Args: { p_session: string; p_stage: string; p_location?: string | null }; Returns: undefined }
+      public_track_funnel: {
+        Args: { p_session: string; p_stage: string; p_location?: string | null; p_source?: string | null; p_utm?: string | null }
+        Returns: undefined
+      }
+      admin_funnel_sources: {
+        Args: { p_from: string; p_to: string; p_location?: string | null }
+        Returns: { source: string; utm: string; opened: number; picked_studio: number; booked: number }[]
+      }
       public_popular_services: { Args: Record<string, never>; Returns: { service_id: string; rank: number }[] }
       admin_booking_funnel: {
         Args: { p_from: string; p_to: string; p_location?: string | null }

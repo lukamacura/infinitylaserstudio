@@ -388,6 +388,24 @@ body {
   }
 }
 
+/* The booking form's first step: always the horizontal (desktop) layout. */
+.journey-row .journey-track {
+  left: 5px;
+  top: 5px;
+  bottom: auto;
+  width: 66.667%;
+  height: 1px;
+}
+.journey-row .journey-fill {
+  background: linear-gradient(to right, var(--accent-deep), var(--accent));
+  animation-name: journeyFillX;
+}
+.journey-row .journey-head {
+  top: 50%;
+  left: 100%;
+  animation-name: journeyHeadX;
+}
+
 @keyframes journeyFillX {
   0%, 5%   { scale: 0 1; opacity: 1; animation-timing-function: var(--journey-ease); }
   35%, 42% { scale: 0.5 1; opacity: 1; animation-timing-function: var(--journey-ease); }

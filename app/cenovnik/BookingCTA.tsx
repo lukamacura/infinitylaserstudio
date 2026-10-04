@@ -19,7 +19,7 @@ export default function BookingCTA() {
       >
         ZAKAŽI TERMIN
       </button>
-      {mounted && <BookingModal isOpen={open} onClose={() => setOpen(false)} />}
+      {mounted && <BookingModal isOpen={open} onClose={() => setOpen(false)} source="cenovnik" />}
     </>
   );
 }

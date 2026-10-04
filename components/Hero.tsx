@@ -2,6 +2,7 @@
 
 import Image, { getImageProps } from "next/image";
 import { ArrowRight } from "lucide-react";
+import { JOURNEY_STEPS as steps } from "@/lib/journey";
 
 // One photo serves both layouts: full-bleed behind the text on phones, inside
 // the arch on desktop. `sizes` tells the browser how wide it is in each.
@@ -14,12 +15,6 @@ const { props: photo } = getImageProps({
   fetchPriority: "high",
   loading: "eager",
 });
-
-const steps = [
-  { phase: "Danas",        label: "Svaki dan se briješ" },
-  { phase: "6-8 tretmana", label: "Epilacija" },
-  { phase: "Zauvek",       label: "Glatka koža" },
-] as const;
 
 const stats = [
   { value: "2000+",  label: "Klijenata" },

@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { isAdminPath } from "@/lib/adminRoutes";
+import { rememberVisitUtm } from "@/lib/funnel";
 
 const BookingModal = dynamic(() => import("./BookingModal"), { ssr: false });
 
@@ -15,6 +16,9 @@ export default function FloatingBookingButton() {
   const [visible, setVisible] = useState(false);
   const [mounted, setMounted] = useState(false);
   if (isOpen && !mounted) setMounted(true);
+
+  // Mounted on every page, so it is the one place that sees the landing URL.
+  useEffect(() => { rememberVisitUtm(); }, []);
 
   useEffect(() => {
     function onScroll() {
@@ -65,7 +69,7 @@ export default function FloatingBookingButton() {
         </button>
       </span>
 
-      {mounted && <BookingModal isOpen={isOpen} onClose={() => setIsOpen(false)} />}
+      {mounted && <BookingModal isOpen={isOpen} onClose={() => setIsOpen(false)} source="plutajuce" />}
     </>
   );
 }

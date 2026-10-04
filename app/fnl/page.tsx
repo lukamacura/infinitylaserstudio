@@ -54,6 +54,20 @@ function rangeStart(key: RangeKey): Date {
 
 type Row = { key: FunnelStage; label: string; hint: string; count: number };
 
+type SourceRow = { source: string; utm: string; opened: number; picked_studio: number; booked: number };
+
+/** What opened the form, in the owner's words (see FunnelSource in lib/funnel.ts). */
+const SOURCE_LABELS: Record<string, string> = {
+  hero:      "Dugme na vrhu stranice",
+  plutajuce: "Plutajuće dugme (dole)",
+  navbar:    "Meni",
+  footer:    "Dugme u futeru",
+  zajednica: "Sekcija zajednica",
+  cenovnik:  "Stranica cenovnik",
+  link:      "Link koji sam otvara formu",
+  nepoznato: "Pre početka merenja",
+};
+
 /** Phone screenshots of each step (public/fnl/<stage>.webp, 390×844 screens at 560px wide). */
 const SHOT_W = 560;
 const SHOT_H = 1212;
@@ -68,6 +82,7 @@ export default function FunnelPage() {
   const [range, setRange]       = useState<RangeKey>("30");
   const [studio, setStudio]     = useState<LocationId | null>(null);
   const [counts, setCounts]     = useState<Record<string, number> | null>(null);
+  const [sources, setSources]   = useState<SourceRow[]>([]);
   const [loading, setLoading]   = useState(false);
   /** Why the numbers are missing, in words for the owner. */
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -80,12 +95,21 @@ export default function FunnelPage() {
   const load = useCallback(async () => {
     const seq = ++loadSeq.current;
     setLoading(true);
-    const { data, error } = await supabase.rpc("admin_booking_funnel", {
+    const args = {
       p_from: rangeStart(range).toISOString(),
       p_to: new Date(Date.now() + 60_000).toISOString(),
       p_location: studio,
-    });
+    };
+    const [{ data, error }, bySource] = await Promise.all([
+      supabase.rpc("admin_booking_funnel", args),
+      supabase.rpc("admin_funnel_sources", args),
+    ]);
     if (seq !== loadSeq.current) return;
+    // The breakdown is extra - without it (sql/funnel_source.sql not run) the funnel still shows.
+    if (bySource.error) console.error("[fnl] sources failed:", bySource.error.code, bySource.error.message);
+    setSources((bySource.data ?? []).map((r) => ({
+      ...r, opened: Number(r.opened), picked_studio: Number(r.picked_studio), booked: Number(r.booked),
+    })));
     setLoading(false);
     if (error) {
       console.error("[fnl] load failed:", error.code, error.message);
@@ -348,6 +372,42 @@ export default function FunnelPage() {
               </ol>
             )}
           </section>
+
+          {/* Where people opened the form from */}
+          {sources.length > 0 && (
+            <section className="bg-surface rounded-3xl border border-foreground/8 p-3 md:p-8 shadow-sm">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-3 md:mb-5 px-1 md:px-0">
+                <h2 className="text-lg md:text-2xl font-bold font-playfair">Odakle dolaze</h2>
+                <p className="text-[10px] md:text-xs font-bold font-poppins uppercase tracking-widest text-foreground/50">
+                  Otvorilo · izabralo grad · zakazalo
+                </p>
+              </div>
+              <ul className="flex flex-col gap-1.5">
+                {sources.map((s) => {
+                  const studioPct = s.opened > 0 ? (s.picked_studio / s.opened) * 100 : 0;
+                  const bookedPct = s.opened > 0 ? (s.booked / s.opened) * 100 : 0;
+                  return (
+                    <li
+                      key={`${s.source}|${s.utm}`}
+                      className="grid grid-cols-[1fr_auto] md:grid-cols-[1fr_6rem_8rem_8rem] items-center gap-x-4 gap-y-1 p-3 md:px-4 rounded-2xl bg-foreground/3 font-poppins"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-[13px] md:text-sm font-bold leading-snug">{SOURCE_LABELS[s.source] ?? s.source}</p>
+                        {s.utm && <p className="text-[11px] md:text-xs text-foreground/50">iz reklame / izvora: {s.utm}</p>}
+                      </div>
+                      <p className="text-right text-lg md:text-xl font-bold tabular-nums">{s.opened.toLocaleString("sr-RS")}</p>
+                      <p className="col-span-2 md:col-span-1 text-[11px] md:text-sm text-foreground/60 md:text-right tabular-nums">
+                        {s.picked_studio.toLocaleString("sr-RS")} izabralo grad <span className="text-foreground/40">({fmtPct(studioPct)})</span>
+                      </p>
+                      <p className="col-span-2 md:col-span-1 text-[11px] md:text-sm text-foreground/60 md:text-right tabular-nums">
+                        {s.booked.toLocaleString("sr-RS")} zakazalo <span className="text-foreground/40">({fmtPct(bookedPct)})</span>
+                      </p>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
 
           {/* Legend */}
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] md:text-xs font-poppins text-foreground/60">

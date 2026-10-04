@@ -229,7 +229,7 @@ export default function Navbar() {
       </div>
     </nav>
 
-    {bookingMounted && <BookingModal isOpen={bookingOpen} onClose={() => setBookingOpen(false)} />}
+    {bookingMounted && <BookingModal isOpen={bookingOpen} onClose={() => setBookingOpen(false)} source="navbar" />}
     </>
   );
 }

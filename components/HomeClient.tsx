@@ -16,6 +16,7 @@ import Footer from "@/components/Footer";
 import WistiaVideo from "@/components/WistiaVideo";
 import ScrollReveal from "@/components/ScrollReveal";
 import type { LocationId } from "@/lib/locations";
+import type { FunnelSource } from "@/lib/funnel";
 
 // Heavy (Supabase + framer-motion) and never visible on first paint — load it on demand.
 const BookingModal = dynamic(() => import("@/components/BookingModal"), { ssr: false });
@@ -74,7 +75,10 @@ export default function HomeClient() {
   const [preselectedBundle, setPreselectedBundle] = useState<number | undefined>(undefined);
   const [preselectedGender, setPreselectedGender] = useState<Gender | undefined>(undefined);
   const [preselectedStudio, setPreselectedStudio] = useState<LocationId | undefined>(undefined);
-  function open() {
+  /** Which button (or link) opened the modal - for /fnl. */
+  const [bookingSource, setBookingSource] = useState<FunnelSource>("hero");
+  function open(source: FunnelSource) {
+    setBookingSource(source);
     setPreselectedNames([]);
     setPreselectedBundle(undefined);
     setPreselectedGender(undefined);
@@ -105,6 +109,7 @@ export default function HomeClient() {
     setPreselectedBundle(undefined);
     setPreselectedGender(gender);
     setPreselectedStudio(studio);
+    setBookingSource("link");
     setBookingOpen(true);
   }, []);
 
@@ -127,7 +132,7 @@ export default function HomeClient() {
 
   return (
     <main>
-      <Hero onOpen={open} />
+      <Hero onOpen={() => open("hero")} />
       <StatsSection />
       <CostComparison />
       <ServiceHighlights />
@@ -135,10 +140,10 @@ export default function HomeClient() {
       <BrandStory />
       <TeamSection />
       {/* <MenSection onOpen={open} /> */}
-<CommunitySection onOpen={open} />
+<CommunitySection onOpen={() => open("zajednica")} />
       <FAQSection />
       <LocationsSection />
-      <Footer onOpen={open} />
+      <Footer onOpen={() => open("footer")} />
       <ScrollReveal />
       {bookingMounted && <BookingModal
         isOpen={bookingOpen}
@@ -147,6 +152,7 @@ export default function HomeClient() {
         preselectedBundle={preselectedBundle}
         preselectedGender={preselectedGender}
         preselectedStudio={preselectedStudio}
+        source={bookingSource}
       />}
 
     </main>

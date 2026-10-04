@@ -35,18 +35,53 @@ function sessionId(): string | null {
   }
 }
 
+/**
+ * What opened the form - a button (hero, plutajuce, navbar, footer, zajednica,
+ * cenovnik) or a link that opens it by itself (link). Shown on /fnl.
+ */
+export type FunnelSource = "hero" | "plutajuce" | "navbar" | "footer" | "zajednica" | "cenovnik" | "link";
+
+const UTM_KEY = "ils_funnel_utm";
+
+/**
+ * Remembers where this visit came from, on landing - the form may be opened
+ * pages later, after the ad's URL is gone. utm_source wins; a bare Facebook
+ * click id still says "meta". The first landing of the tab is kept.
+ */
+export function rememberVisitUtm() {
+  try {
+    if (sessionStorage.getItem(UTM_KEY) !== null) return;
+    const params = new URLSearchParams(window.location.search);
+    const utm = params.get("utm_source")?.trim().toLowerCase().slice(0, 60)
+      || (params.has("fbclid") ? "meta" : "");
+    sessionStorage.setItem(UTM_KEY, utm);
+  } catch { /* storage blocked - simply not recorded */ }
+}
+
+function visitUtm(): string | null {
+  try {
+    return sessionStorage.getItem(UTM_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
 /** Stages already sent from this tab - going back and forth sends nothing new. */
 const sent = new Set<FunnelStage>();
 
 /** Fire-and-forget. Tracking must never be able to break the booking flow. */
-export function trackFunnel(stage: FunnelStage, location: LocationId | null = null) {
+export function trackFunnel(stage: FunnelStage, location: LocationId | null = null, source?: FunnelSource) {
   try {
     if (sent.has(stage)) return;
     sent.add(stage);
     const id = sessionId();
     if (!id) return;
     void supabase
-      .rpc("public_track_funnel", { p_session: id, p_stage: stage, p_location: location })
+      .rpc("public_track_funnel", {
+        p_session: id, p_stage: stage, p_location: location,
+        // Where the visit and the click came from ride along with the first stage only.
+        ...(stage === "open" ? { p_source: source ?? null, p_utm: visitUtm() } : {}),
+      })
       .then(() => {}, () => {});
   } catch { /* ignore */ }
 }

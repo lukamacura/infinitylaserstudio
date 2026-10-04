@@ -14,7 +14,7 @@ export default function CenovnikFooter() {
   return (
     <>
       <Footer onOpen={() => setOpen(true)} />
-      {mounted && <BookingModal isOpen={open} onClose={() => setOpen(false)} />}
+      {mounted && <BookingModal isOpen={open} onClose={() => setOpen(false)} source="footer" />}
     </>
   );
 }
