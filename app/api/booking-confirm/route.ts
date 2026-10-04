@@ -5,7 +5,7 @@ import { parseBundlePromo } from "@/lib/bundles";
 import { isIlsPromoCode, isStudentPromoCode } from "@/lib/pricing";
 import { DEFAULT_LOCATION, getLocation, isLocationId } from "@/lib/locations";
 import {
-  bookingEmailHtml, bookingEmailSubject, bookingEmailText,
+  bookingEmailHtml, bookingEmailSubject, bookingEmailText, formatEmailDate,
   type BookingDiscount, type BookingEmailData,
 } from "@/lib/email/bookingEmail";
 
@@ -25,6 +25,8 @@ import {
  *   BOOKING_REPLY_TO (optional)     - where a client's reply lands
  *   BOOKING_NOTIFY_EMAIL (optional) - gets a hidden copy of every confirmation
  *   SUPABASE_SERVICE_ROLE_KEY  - to read the reservation
+ *   N8N_WEBHOOK_URL (optional)    - n8n webhook that posts the booking to the admin group
+ *   N8N_WEBHOOK_SECRET (optional) - sent as X-Booking-Secret so n8n can reject strangers
  */
 const REPLY_TO_DEFAULT = "ana.infinitystudio@gmail.com";
 
@@ -34,8 +36,59 @@ const TIME_RE = /^\d{2}:\d{2}$/;
 type ReservationRow = Pick<
   Database["public"]["Tables"]["reservations"]["Row"],
   "id" | "customer_name" | "customer_email" | "date" | "start_time" | "end_time" |
-  "total_duration" | "promo_code" | "location" | "status"
+  "total_duration" | "promo_code" | "location" | "status" | "customer_phone" | "customer_note"
 >;
+
+const DISCOUNT_LABEL: Record<BookingDiscount, string | null> = {
+  none: null,
+  student: "Studentski −20% (uz indeks)",
+  promo: "Promo −10%",
+  bundle: "Paket - plaća se ceo na prvom tretmanu",
+  bundle_redeem: "Tretman iz paketa - već plaćen",
+};
+
+/**
+ * Tells the admin group about the new booking through n8n. Built from the
+ * verified reservation, like the email. Never fails the request - a missed
+ * notification must not look like a failed booking to the client.
+ */
+async function notifyAdmins(row: ReservationRow, d: BookingEmailData): Promise<void> {
+  const webhookUrl = process.env.N8N_WEBHOOK_URL;
+  if (!webhookUrl) return;
+  try {
+    const res = await fetch(webhookUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Booking-Secret": process.env.N8N_WEBHOOK_SECRET ?? "",
+      },
+      body: JSON.stringify({
+        booking_ref:    d.bookingRef,
+        location:       d.studio.id,
+        location_name:  d.studio.name,
+        customer_name:  row.customer_name,
+        customer_phone: row.customer_phone ?? "",
+        customer_email: row.customer_email,
+        customer_note:  row.customer_note ?? "",
+        date:           row.date,
+        date_label:     formatEmailDate(row.date),
+        start_time:     d.startTime,
+        end_time:       d.endTime,
+        duration:       d.durationMinutes,
+        services:       d.services,
+        list_price:     d.listPrice,
+        final_price:    d.finalPrice,
+        discount:       d.discount,
+        discount_label: DISCOUNT_LABEL[d.discount] ?? "",
+        promo_code:     row.promo_code ?? "",
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) console.error("[booking-confirm] n8n responded with status", res.status);
+  } catch (err) {
+    console.error("[booking-confirm] failed to notify n8n:", err);
+  }
+}
 
 function isPrice(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v) && v >= 0 && v < 10_000_000;
@@ -107,7 +160,7 @@ export async function POST(req: NextRequest) {
     });
     const { data: rows, error } = await admin
       .from("reservations")
-      .select("id, customer_name, customer_email, date, start_time, end_time, total_duration, promo_code, location, status")
+      .select("id, customer_name, customer_email, customer_phone, customer_note, date, start_time, end_time, total_duration, promo_code, location, status")
       .eq("date", date)
       .eq("start_time", `${start_time}:00`);
     if (error || !rows) {
@@ -148,7 +201,7 @@ export async function POST(req: NextRequest) {
     };
 
     const notify = process.env.BOOKING_NOTIFY_EMAIL;
-    const res = await fetch("https://api.resend.com/emails", {
+    const [res] = await Promise.all([fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -165,7 +218,7 @@ export async function POST(req: NextRequest) {
         html: bookingEmailHtml(data),
         text: bookingEmailText(data),
       }),
-    });
+    }), notifyAdmins(row, data)]);
 
     if (!res.ok) {
       console.error("[booking-confirm] Resend responded with", res.status, await res.text().catch(() => ""));
