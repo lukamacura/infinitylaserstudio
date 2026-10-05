@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
 import {
   Filter, AlertCircle, AlertTriangle, CheckCircle2, ArrowDown,
-  Users, CalendarCheck, Percent, RefreshCw, X,
+  Users, CalendarCheck, Percent, RefreshCw, X, Globe, Search, Link2, History, MousePointerClick,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAdminAuth } from "@/lib/adminAuth";
@@ -58,15 +58,57 @@ type SourceRow = { source: string; utm: string; opened: number; picked_studio: n
 
 /** What opened the form, in the owner's words (see FunnelSource in lib/funnel.ts). */
 const SOURCE_LABELS: Record<string, string> = {
-  hero:      "Dugme na vrhu stranice",
-  plutajuce: "Plutajuće dugme (dole)",
-  navbar:    "Meni",
-  footer:    "Dugme u futeru",
-  zajednica: "Sekcija zajednica",
-  cenovnik:  "Stranica cenovnik",
-  link:      "Link koji sam otvara formu",
-  nepoznato: "Pre početka merenja",
+  hero:      "dugme na vrhu",
+  plutajuce: "plutajuće dugme",
+  navbar:    "meni",
+  footer:    "futer",
+  zajednica: "sekcija zajednica",
+  cenovnik:  "cenovnik",
 };
+
+/**
+ * utm_source values Meta fills in for its ads ({{site_source_name}}): ig, fb,
+ * msg (Messenger), an (Audience Network), th (Threads) - plus our own "meta"
+ * for a bare fbclid. All one ad, just shown in different places.
+ */
+const META_UTM = /^(ig|insta|instagram|fb|facebook|meta|msg|messenger|an|th|threads)/;
+
+type Tally = { opened: number; booked: number };
+const tally = (): Tally => ({ opened: 0, booked: 0 });
+const add = (t: Tally, r: SourceRow) => { t.opened += r.opened; t.booked += r.booked; };
+
+/** A few clear groups: the ad (split by how it opened the form), then everything without an ad. */
+function groupSources(rows: SourceRow[]) {
+  const ad = { all: tally(), link: tally(), site: tally(), instagram: 0, facebook: 0, rest: 0 };
+  const link = tally();
+  const site = tally();
+  const before = tally();
+  const other = { ...tally(), names: [] as string[] };
+  const buttons = new Map<string, number>();
+
+  for (const r of rows) {
+    const u = r.utm.toLowerCase();
+    if (u && META_UTM.test(u)) {
+      add(ad.all, r);
+      add(r.source === "link" ? ad.link : ad.site, r);
+      if (/^(ig|insta)/.test(u)) ad.instagram += r.opened;
+      else if (/^(fb|facebook)/.test(u)) ad.facebook += r.opened;
+      else ad.rest += r.opened;
+    } else if (u) {
+      add(other, r);
+      if (!other.names.includes(u)) other.names.push(u);
+    } else if (r.source === "link") {
+      add(link, r);
+    } else if (r.source === "nepoznato") {
+      add(before, r);
+    } else {
+      add(site, r);
+      buttons.set(r.source, (buttons.get(r.source) ?? 0) + r.opened);
+    }
+  }
+  const topButton = [...buttons.entries()].sort((x, y) => y[1] - x[1])[0]?.[0];
+  return { ad, link, site, before, other, topButton: topButton ? SOURCE_LABELS[topButton] ?? topButton : null };
+}
 
 /** Phone screenshots of each step (public/fnl/<stage>.webp, 390×844 screens at 560px wide). */
 const SHOT_W = 560;
@@ -374,40 +416,64 @@ export default function FunnelPage() {
           </section>
 
           {/* Where people opened the form from */}
-          {sources.length > 0 && (
-            <section className="bg-surface rounded-3xl border border-foreground/8 p-3 md:p-8 shadow-sm">
-              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-3 md:mb-5 px-1 md:px-0">
-                <h2 className="text-lg md:text-2xl font-bold font-playfair">Odakle dolaze</h2>
-                <p className="text-[10px] md:text-xs font-bold font-poppins uppercase tracking-widest text-foreground/50">
-                  Otvorilo · izabralo grad · zakazalo
-                </p>
-              </div>
-              <ul className="flex flex-col gap-1.5">
-                {sources.map((s) => {
-                  const studioPct = s.opened > 0 ? (s.picked_studio / s.opened) * 100 : 0;
-                  const bookedPct = s.opened > 0 ? (s.booked / s.opened) * 100 : 0;
-                  return (
-                    <li
-                      key={`${s.source}|${s.utm}`}
-                      className="grid grid-cols-[1fr_auto] md:grid-cols-[1fr_6rem_8rem_8rem] items-center gap-x-4 gap-y-1 p-3 md:px-4 rounded-2xl bg-foreground/3 font-poppins"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-[13px] md:text-sm font-bold leading-snug">{SOURCE_LABELS[s.source] ?? s.source}</p>
-                        {s.utm && <p className="text-[11px] md:text-xs text-foreground/50">iz reklame / izvora: {s.utm}</p>}
+          {sources.length > 0 && (() => {
+            const g = groupSources(sources);
+            const platforms = [
+              g.ad.instagram > 0 && `Instagram ${g.ad.instagram.toLocaleString("sr-RS")}`,
+              g.ad.facebook > 0 && `Facebook ${g.ad.facebook.toLocaleString("sr-RS")}`,
+              g.ad.rest > 0 && `ostalo ${g.ad.rest.toLocaleString("sr-RS")}`,
+            ].filter(Boolean).join(" · ");
+            return (
+              <section className="bg-surface rounded-3xl border border-foreground/8 p-3 md:p-8 shadow-sm">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-3 md:mb-5 px-1 md:px-0">
+                  <h2 className="text-lg md:text-2xl font-bold font-playfair">Odakle dolaze</h2>
+                  <p className="text-[10px] md:text-xs font-bold font-poppins uppercase tracking-widest text-foreground/50">
+                    Otvorilo formu · zakazalo
+                  </p>
+                </div>
+                <ul className="flex flex-col gap-1.5">
+                  {g.ad.all.opened > 0 && (
+                    <li className="rounded-2xl bg-foreground/3">
+                      <SourceLine
+                        icon={<span className="flex -space-x-2"><InstagramLogo /><FacebookLogo /></span>}
+                        label="Reklama (Instagram / Facebook)"
+                        detail={platforms}
+                        t={g.ad.all}
+                      />
+                      <div className="flex flex-col gap-1 px-2 pb-2 md:px-3 md:pb-3">
+                        {g.ad.link.opened > 0 && (
+                          <SourceLine sub icon={<IconBadge Icon={Link2} />} label="Direktan link" detail="forma se otvorila odmah" t={g.ad.link} />
+                        )}
+                        {g.ad.site.opened > 0 && (
+                          <SourceLine sub icon={<IconBadge Icon={MousePointerClick} />} label="Preko sajta" detail="pogledali sajt, pa kliknuli dugme" t={g.ad.site} />
+                        )}
                       </div>
-                      <p className="text-right text-lg md:text-xl font-bold tabular-nums">{s.opened.toLocaleString("sr-RS")}</p>
-                      <p className="col-span-2 md:col-span-1 text-[11px] md:text-sm text-foreground/60 md:text-right tabular-nums">
-                        {s.picked_studio.toLocaleString("sr-RS")} izabralo grad <span className="text-foreground/40">({fmtPct(studioPct)})</span>
-                      </p>
-                      <p className="col-span-2 md:col-span-1 text-[11px] md:text-sm text-foreground/60 md:text-right tabular-nums">
-                        {s.booked.toLocaleString("sr-RS")} zakazalo <span className="text-foreground/40">({fmtPct(bookedPct)})</span>
-                      </p>
                     </li>
-                  );
-                })}
-              </ul>
-            </section>
-          )}
+                  )}
+                  {g.link.opened > 0 && (
+                    <li className="rounded-2xl bg-foreground/3">
+                      <SourceLine icon={<IconBadge Icon={Link2} />} label="Direktan link (bez reklame)" detail="link poslat porukom, bio, QR..." t={g.link} />
+                    </li>
+                  )}
+                  {g.site.opened > 0 && (
+                    <li className="rounded-2xl bg-foreground/3">
+                      <SourceLine icon={<IconBadge Icon={Globe} />} label="Sa sajta (bez reklame)" detail={g.topButton && `najčešće: ${g.topButton}`} t={g.site} />
+                    </li>
+                  )}
+                  {g.other.opened > 0 && (
+                    <li className="rounded-2xl bg-foreground/3">
+                      <SourceLine icon={<IconBadge Icon={Search} />} label="Drugi izvor" detail={g.other.names.join(", ")} t={g.other} />
+                    </li>
+                  )}
+                  {g.before.opened > 0 && (
+                    <li className="rounded-2xl bg-foreground/3 opacity-70">
+                      <SourceLine icon={<IconBadge Icon={History} />} label="Pre početka merenja" detail="izvor nije zapisan" t={g.before} />
+                    </li>
+                  )}
+                </ul>
+              </section>
+            );
+          })()}
 
           {/* Legend */}
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] md:text-xs font-poppins text-foreground/60">
@@ -468,5 +534,63 @@ function Kpi({ icon: Icon, label, value, tint }: { icon: typeof Users; label: st
       </div>
       <p className="text-xl sm:text-2xl md:text-4xl font-bold font-poppins tabular-nums mt-2 sm:mt-3">{value}</p>
     </div>
+  );
+}
+
+function SourceLine({ icon, label, detail, t, sub = false }: {
+  icon: React.ReactNode; label: string; detail?: string | null | false; t: Tally; sub?: boolean;
+}) {
+  const pct = t.opened > 0 ? (t.booked / t.opened) * 100 : 0;
+  return (
+    <div className={`flex items-center gap-3 font-poppins ${sub ? "p-2 md:px-3 rounded-xl bg-foreground/4" : "p-3 md:px-4"}`}>
+      <span className="shrink-0 flex items-center justify-center min-w-9">{icon}</span>
+      <div className="min-w-0 flex-1">
+        <p className={`font-bold leading-snug ${sub ? "text-[12px] md:text-[13px]" : "text-[13px] md:text-sm"}`}>{label}</p>
+        {detail && <p className="text-[11px] md:text-xs text-foreground/50 truncate">{detail}</p>}
+      </div>
+      <div className="text-right shrink-0">
+        <p className={`font-bold tabular-nums leading-none ${sub ? "text-base md:text-lg" : "text-lg md:text-xl"}`}>{t.opened.toLocaleString("sr-RS")}</p>
+        <p className="text-[11px] md:text-xs text-foreground/60 tabular-nums mt-1 inline-flex items-center gap-1">
+          <CalendarCheck size={12} className="text-green-400" />
+          {t.booked.toLocaleString("sr-RS")} <span className="text-foreground/40">({fmtPct(pct)})</span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function IconBadge({ Icon }: { Icon: typeof Users }) {
+  return (
+    <span className="w-9 h-9 rounded-xl flex items-center justify-center bg-foreground/6 text-foreground/70">
+      <Icon size={17} />
+    </span>
+  );
+}
+
+function InstagramLogo() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-9 h-9 rounded-xl ring-2 ring-surface" aria-label="Instagram" role="img">
+      <defs>
+        <radialGradient id="ig-grad" cx="0.3" cy="1.07" r="1.2">
+          <stop offset="0" stopColor="#FDD56C" />
+          <stop offset="0.3" stopColor="#F77737" />
+          <stop offset="0.6" stopColor="#E1306C" />
+          <stop offset="1" stopColor="#833AB4" />
+        </radialGradient>
+      </defs>
+      <rect width="24" height="24" rx="6" fill="url(#ig-grad)" />
+      <rect x="5.5" y="5.5" width="13" height="13" rx="4" fill="none" stroke="#fff" strokeWidth="1.7" />
+      <circle cx="12" cy="12" r="3.1" fill="none" stroke="#fff" strokeWidth="1.7" />
+      <circle cx="16.1" cy="7.9" r="0.95" fill="#fff" />
+    </svg>
+  );
+}
+
+function FacebookLogo() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-9 h-9 rounded-xl ring-2 ring-surface" aria-label="Facebook" role="img">
+      <rect width="24" height="24" rx="6" fill="#1877F2" />
+      <path d="M15.6 24v-8.7h2.9l.45-3.4H15.6V9.75c0-.98.27-1.65 1.68-1.65h1.8V5.07a24 24 0 0 0-2.62-.13c-2.6 0-4.37 1.58-4.37 4.48v2.5H9.15v3.4h2.94V24z" fill="#fff" />
+    </svg>
   );
 }
