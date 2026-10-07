@@ -68,8 +68,12 @@ const STAFF_PHOTOS: Record<string, string> = {
   tanja: "/team/tanja.webp",
 };
 
+/** Titles skipped when finding the first name ("Dr Ana Kasap" → "ana"). */
+const TITLES = new Set(["dr", "dr.", "др", "др."]);
+
 export function staffPhoto(name: string): string | null {
-  return STAFF_PHOTOS[name.trim().toLowerCase()] ?? null;
+  const first = name.trim().toLowerCase().split(/\s+/).find((w) => !TITLES.has(w));
+  return (first && STAFF_PHOTOS[first]) ?? null;
 }
 
 /**
