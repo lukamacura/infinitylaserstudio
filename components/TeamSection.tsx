@@ -3,7 +3,7 @@
 import Reveal from "@/components/Reveal";
 import Image from "next/image";
 
-const members = [
+const members: { name: string; role?: string; quote: string; bio: string; src: string; accent: string }[] = [
   {
     name: "Mila",
     role: "Medicinska sestra",
@@ -18,6 +18,13 @@ const members = [
     quote: "Rezultati govore. Osmesi potvrđuju.",
     bio: "Mirna ruka, brz tretman i uvek raspoložena za razgovor. Tanja se stara da se iz ordinacije izađe s osmehom - i bez dlaka. Specijalizovana za tretmane lica i osetljivih zona.",
     src: "/team/tanja.webp",
+    accent: "#9E6769",
+  },
+  {
+    name: "Branka",
+    quote: "Za mene je Infinity više od posla.",
+    bio: "Branka se trudi da svakome pristupi lično - sasluša je, prilagodi tretman njenoj koži i potrebama i pobrine se da se oseća sigurno od prvog do poslednjeg tretmana.",
+    src: "/team/branka.webp",
     accent: "#9E6769",
   },
 ];
@@ -83,7 +90,7 @@ export default function TeamSection() {
                 {/* Name on photo */}
                 <div className="absolute bottom-0 left-0 right-0 p-5">
                   <p className="font-playfair text-2xl text-white leading-none">{m.name}</p>
-                  <p className="font-poppins text-xs text-white/80 mt-0.5 tracking-wide">{m.role}</p>
+                  {m.role && <p className="font-poppins text-xs text-white/80 mt-0.5 tracking-wide">{m.role}</p>}
                 </div>
 
                 {/* Accent dot */}

@@ -2,7 +2,7 @@
 // Used by the finances dashboard and the admin calendar so both compute the exact
 // same final price and discount labels for every reservation.
 
-import { parseBundlePromo } from "./bundles";
+import { parseBundlePromo, roundTo100 } from "./bundles";
 
 /**
  * The automatic 50% "first treatment" discount was removed on 29.05.2026.
@@ -29,11 +29,35 @@ export function isStudentPromoCode(raw: string | null | undefined): boolean {
   return !!raw && raw.trim().toLowerCase() === STUDENT_PROMO_CODE;
 }
 
+/**
+ * Link discount: −20% for anyone who arrives on `?promo=popust20` - new or
+ * returning, single session or bundle. On a single session the code is stored
+ * on the reservation; on a bundle the cut is already in the bundle total, so a
+ * bundle reservation keeps its usual paket-N-<total> code.
+ */
+export const LINK_PROMO_CODE = "popust20";
+export const LINK_DISCOUNT_PCT = 20;
+
+export function isLinkPromoCode(raw: string | null | undefined): boolean {
+  return !!raw && raw.trim().toLowerCase() === LINK_PROMO_CODE;
+}
+
+/** Single-session price after the link discount. */
+export function linkSinglePrice(listPrice: number): number {
+  return Math.round(listPrice * (1 - LINK_DISCOUNT_PCT / 100));
+}
+
+/** Bundle total after the link discount - rounded to 00 like every bundle price. */
+export function linkBundleTotal(bundleTotal: number): number {
+  return roundTo100(bundleTotal * (1 - LINK_DISCOUNT_PCT / 100));
+}
+
 export type DiscountKind =
   | "fifty"
   | "promo"
   | "fifty_promo"
   | "student"
+  | "link"
   | "bundle"
   | "bundle_redeem"
   | "none";
@@ -49,11 +73,15 @@ export interface PriceResult {
   promoOff: boolean;
   /** −20% student code applied (pending a student ID at the studio). */
   studentOff: boolean;
-  /** The applied promo code (only when promoOff or studentOff). */
+  /** −20% popust20 link code applied. */
+  linkOff: boolean;
+  /** The applied promo code (only when promoOff, studentOff or linkOff). */
   promoCode: string | null;
   /** Number of treatments in the bundle (only when kind is a bundle). */
   bundleSessions: number | null;
   kind: DiscountKind;
+  /** finalPrice was typed in by hand in the admin panel (reservations.price_override). */
+  overridden: boolean;
 }
 
 /**
@@ -66,6 +94,21 @@ export interface PriceResult {
  *   a first treatment, so it also cannot meet the (retired) 50% discount.
  */
 export function computeReservationPrice(opts: {
+  listPrice: number;
+  isFirstTreatment: boolean;
+  createdAt: string | null;
+  promoCode: string | null;
+  /** A price corrected by hand in the admin panel - wins over every rule below. */
+  priceOverride?: number | null;
+}): PriceResult {
+  const computed = computeRulePrice(opts);
+  const override = opts.priceOverride;
+  return override != null
+    ? { ...computed, finalPrice: Number(override), overridden: true }
+    : computed;
+}
+
+function computeRulePrice(opts: {
   listPrice: number;
   isFirstTreatment: boolean;
   createdAt: string | null;
@@ -84,9 +127,11 @@ export function computeReservationPrice(opts: {
       fiftyOff: false,
       promoOff: false,
       studentOff: false,
+      linkOff: false,
       promoCode: promoCode!.trim(),
       bundleSessions: bundle.sessions,
       kind: bundle.redeem ? "bundle_redeem" : "bundle",
+      overridden: false,
     };
   }
 
@@ -95,17 +140,20 @@ export function computeReservationPrice(opts: {
   const fiftyOff = isFirstTreatment && bookedBeforeCutoff;
   const promoOff = isIlsPromoCode(promoCode);
   const studentOff = isStudentPromoCode(promoCode);
+  const linkOff = isLinkPromoCode(promoCode);
 
   let finalPrice = listPrice;
   if (fiftyOff) finalPrice = Math.round(finalPrice * 0.5);
   if (promoOff) finalPrice = Math.round(finalPrice * 0.9);
   if (studentOff) finalPrice = Math.round(finalPrice * 0.8);
+  if (linkOff) finalPrice = linkSinglePrice(finalPrice);
 
   const kind: DiscountKind =
     fiftyOff && promoOff ? "fifty_promo"
       : fiftyOff ? "fifty"
       : promoOff ? "promo"
       : studentOff ? "student"
+      : linkOff ? "link"
       : "none";
 
   return {
@@ -114,8 +162,10 @@ export function computeReservationPrice(opts: {
     fiftyOff,
     promoOff,
     studentOff,
-    promoCode: promoOff || studentOff ? promoCode!.trim() : null,
+    linkOff,
+    promoCode: promoOff || studentOff || linkOff ? promoCode!.trim() : null,
     bundleSessions: null,
     kind,
+    overridden: false,
   };
 }

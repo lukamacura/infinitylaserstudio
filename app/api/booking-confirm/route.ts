@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
 import { parseBundlePromo } from "@/lib/bundles";
-import { isIlsPromoCode, isStudentPromoCode } from "@/lib/pricing";
+import { isIlsPromoCode, isLinkPromoCode, isStudentPromoCode, linkSinglePrice } from "@/lib/pricing";
 import { DEFAULT_LOCATION, getLocation, isLocationId } from "@/lib/locations";
 import {
   bookingEmailHtml, bookingEmailSubject, bookingEmailText, formatEmailDate,
@@ -42,6 +42,7 @@ type ReservationRow = Pick<
 const DISCOUNT_LABEL: Record<BookingDiscount, string | null> = {
   none: null,
   student: "Studentski −20% (uz indeks)",
+  link: "Popust −20% (link)",
   promo: "Promo −10%",
   bundle: "Paket - plaća se ceo na prvom tretmanu",
   bundle_redeem: "Tretman iz paketa - već plaćen",
@@ -117,6 +118,9 @@ function priceFor(promoCode: string | null, listPrice: number): {
   }
   if (isStudentPromoCode(promoCode)) {
     return { discount: "student", finalPrice: Math.round(listPrice * 0.8), bundleSessions: null };
+  }
+  if (isLinkPromoCode(promoCode)) {
+    return { discount: "link", finalPrice: linkSinglePrice(listPrice), bundleSessions: null };
   }
   if (isIlsPromoCode(promoCode)) {
     return { discount: "promo", finalPrice: Math.round(listPrice * 0.9), bundleSessions: null };

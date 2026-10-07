@@ -295,6 +295,21 @@ export function isAllowedWithFullBody(name: string): boolean {
   return isFullBody(name) || FULL_BODY_ALLOWED.some((k) => n.includes(k));
 }
 
+// ── "Celo lice" exclusivity ─────────────────────────────────────────────────
+// Whole face already covers earrings and chin, so those can't be added with it.
+const FULL_FACE_KEY = "celo lice";
+const FULL_FACE_COVERED = ["nausnice", "brada"];
+
+export function isFullFace(name: string): boolean {
+  return name.toLowerCase().includes(FULL_FACE_KEY);
+}
+
+/** Services already covered by "Celo lice". */
+export function isCoveredByFullFace(name: string): boolean {
+  const n = name.toLowerCase();
+  return !isFullFace(name) && FULL_FACE_COVERED.some((k) => n.includes(k));
+}
+
 /**
  * Given the currently selected services and all loaded services,
  * returns the effective list for price/duration calculation:

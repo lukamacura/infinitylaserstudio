@@ -48,6 +48,7 @@ type ReservationFull = {
   notes: string | null;
   created_at: string;
   promo_code: string | null;
+  price_override: number | null;
   reservation_services: { services: ServiceWithPrice | null }[];
 };
 type UserHistory = {
@@ -225,6 +226,7 @@ export default function FinancesPage() {
       isFirstTreatment: isFirst,
       createdAt: r.created_at,
       promoCode: r.promo_code,
+      priceOverride: r.price_override,
     });
 
     return { totalPrice, effectiveServices, ...price };
@@ -338,7 +340,7 @@ export default function FinancesPage() {
               <li className="px-6 py-16 text-center opacity-20"><Wallet size={40} className="mx-auto mb-2"/><p className="font-poppins text-sm font-medium uppercase tracking-widest">Nema podataka</p></li>
             ) : (
               calculated.map(r => {
-                const { finalPrice, effectiveServices, fiftyOff, promoOff, studentOff, promoCode, listPrice } = r.calc;
+                const { finalPrice, effectiveServices, fiftyOff, promoOff, studentOff, linkOff, promoCode, listPrice, overridden } = r.calc;
                 const services = effectiveServices.map(s => s.name).join(", ");
                 const d = new Date(`${r.date}T00:00:00`);
                 return (
@@ -360,11 +362,13 @@ export default function FinancesPage() {
                           <p className="shrink-0 text-[10px] font-medium font-poppins text-foreground/38 line-through tabular-nums">{listPrice.toLocaleString("sr-RS")}</p>
                         )}
                       </div>
-                      {(fiftyOff || promoOff || studentOff) && (
+                      {(fiftyOff || promoOff || studentOff || linkOff || overridden) && (
                         <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                           {fiftyOff && <span className="px-1.5 py-0.5 rounded-md bg-rose/10 text-[9px] font-bold text-rose uppercase tracking-wider">−50% prvi put</span>}
                           {promoOff && <span className="px-1.5 py-0.5 rounded-md bg-green-400/10 text-[9px] font-bold text-green-400 uppercase tracking-wider">−10% promo{promoCode ? ` · ${promoCode}` : ""}</span>}
                           {studentOff && <span className="px-1.5 py-0.5 rounded-md bg-amber-400/10 text-[9px] font-bold text-amber-300 uppercase tracking-wider">−20% student</span>}
+                          {linkOff && <span className="px-1.5 py-0.5 rounded-md bg-green-400/10 text-[9px] font-bold text-green-400 uppercase tracking-wider">−20% link</span>}
+                          {overridden && <span className="px-1.5 py-0.5 rounded-md bg-sky-400/10 text-[9px] font-bold text-sky-300 uppercase tracking-wider">Korigovano</span>}
                         </div>
                       )}
                     </div>
@@ -389,7 +393,7 @@ export default function FinancesPage() {
                   <tr><td colSpan={4} className="px-8 py-20 text-center opacity-20"><Wallet size={48} className="mx-auto mb-2"/><p className="font-poppins text-sm font-medium uppercase tracking-widest">Nema podataka</p></td></tr>
                 ) : (
                   calculated.map(r => {
-                    const { finalPrice, effectiveServices, fiftyOff, promoOff, studentOff, promoCode, listPrice } = r.calc;
+                    const { finalPrice, effectiveServices, fiftyOff, promoOff, studentOff, linkOff, promoCode, listPrice, overridden } = r.calc;
                     const services = effectiveServices.map(s => s.name).join(", ");
                     const hasDiscount = finalPrice !== listPrice;
                     const d = new Date(`${r.date}T00:00:00`);
@@ -425,6 +429,16 @@ export default function FinancesPage() {
                               {studentOff && (
                                 <div className="flex items-center gap-1 text-[9px] font-bold text-amber-300 uppercase tracking-widest">
                                   <Tag size={10} /> −20% student
+                                </div>
+                              )}
+                              {linkOff && (
+                                <div className="flex items-center gap-1 text-[9px] font-bold text-green-400 uppercase tracking-widest">
+                                  <Tag size={10} /> −20% link · {promoCode}
+                                </div>
+                              )}
+                              {overridden && (
+                                <div className="flex items-center gap-1 text-[9px] font-bold text-sky-300 uppercase tracking-widest">
+                                  <Tag size={10} /> Korigovana cena
                                 </div>
                               )}
                             </div>

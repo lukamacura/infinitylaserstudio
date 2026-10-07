@@ -442,7 +442,7 @@ export default function FunnelPage() {
                       />
                       <div className="flex flex-col gap-1 px-2 pb-2 md:px-3 md:pb-3">
                         {g.ad.link.opened > 0 && (
-                          <SourceLine sub icon={<IconBadge Icon={Link2} />} label="Direktan link" detail="forma se otvorila odmah" t={g.ad.link} />
+                          <SourceLine sub icon={<IconBadge Icon={Link2} />} label="Direktan link (na BookingModal)" detail="forma se otvorila odmah" t={g.ad.link} />
                         )}
                         {g.ad.site.opened > 0 && (
                           <SourceLine sub icon={<IconBadge Icon={MousePointerClick} />} label="Preko sajta" detail="pogledali sajt, pa kliknuli dugme" t={g.ad.site} />

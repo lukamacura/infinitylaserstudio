@@ -19,7 +19,7 @@ const PHONE_DISPLAY = "065 373 8991";
 const PHONE_LINK = "+381653738991";
 const SITE_URL = "https://www.infinitylaserstudio.com";
 
-export type BookingDiscount = "none" | "student" | "promo" | "bundle" | "bundle_redeem";
+export type BookingDiscount = "none" | "student" | "link" | "promo" | "bundle" | "bundle_redeem";
 
 export interface BookingEmailData {
   customerName: string;
@@ -72,6 +72,8 @@ function priceNote(d: BookingEmailData): string | null {
       return "Ovaj tretman je već plaćen u okviru Vašeg paketa.";
     case "promo":
       return "Promo popust −10% je uračunat u cenu.";
+    case "link":
+      return "Popust −20% je uračunat u cenu.";
     default:
       return null;
   }

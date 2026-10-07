@@ -612,6 +612,22 @@ body {
   .notes-paper { --sq: 1.75rem; rotate: -1.4deg; }
 }
 
+/* Booking confirmation: the "email sent" pill drops in, then the sheet is
+   laid down on the modal before the writing starts. */
+@keyframes bmMailIn {
+  from { opacity: 0; transform: translateY(-0.5rem) scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes bmPaperIn {
+  from { opacity: 0; transform: translateY(1.5rem) rotate(3deg) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+.bm-mail-in  { animation: bmMailIn 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) 0.15s both; }
+.bm-paper-in { animation: bmPaperIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .bm-mail-in, .bm-paper-in { animation: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   [data-rv], .tech-machine, .tech-callout {
     opacity: 1;
@@ -809,6 +825,16 @@ body {
     radial-gradient(110% 60% at 50% -12%, rgba(220, 168, 166, 0.10), transparent 65%),
     linear-gradient(180deg, #282024 0%, #1C1619 60%);
 }
+
+/* Confirmed appointment cards on the calendar - a fresher green than the muted
+   status green above, so they stand out on the dark background. */
+.admin-card-confirmed {
+  background-color: color-mix(in srgb, #6FD394 25%, transparent);
+  border: 1px solid color-mix(in srgb, #6FD394 55%, transparent);
+}
+.admin-card-confirmed:hover { background-color: color-mix(in srgb, #6FD394 35%, transparent); }
+.admin-card-confirmed-bar   { background-color: #6FD394; }
+.admin-card-confirmed-sub   { color: #A6E8BD; }
 
 @keyframes adminFadeIn {
   from { opacity: 0; }

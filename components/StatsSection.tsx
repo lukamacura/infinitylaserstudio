@@ -13,7 +13,7 @@ const GOOGLE_REVIEWS_URL =
 
 // Klijentkinjin video sa Instagrama. Naslovna slika je sačuvana lokalno
 // (Instagram CDN linkovi ističu), a klik vodi na objavu.
-const REEL_URL = "https://www.instagram.com/p/Dc8LbuGt-5B/";
+const REEL_URL = "https://www.instagram.com/p/Dc3FRfQN-kX/";
 const REEL_COVER = "/ugc/reel-cover.jpg";
 
 // Posters live in /public/regije/zene/<slug>.webp
@@ -124,15 +124,12 @@ export default function StatsSection() {
             </p>
             <div className="flex items-center gap-2 mt-4">
               <Stars />
-              <p className="font-poppins text-xs text-foreground/60">
-                <span className="font-semibold text-foreground/85">{GOOGLE_RATING}</span> prosečna ocena na Google-u
-              </p>
             </div>
           </div>
         </div>
 
-        {/* 2000+ */}
-        <div data-rv="zoom" style={step(1)} className={`${card} col-span-1 lg:col-span-3 flex flex-col p-5 sm:p-6`}>
+        {/* 5/5 on Google */}
+        <div data-rv="zoom" style={step(1)} className={`${card} notes-body col-span-1 lg:col-span-3 flex flex-col p-5 sm:p-6`}>
           {/* The studio's Google profile, edge to edge and uncropped - the box keeps the image's own ratio */}
           <div className="relative -mx-5 -mt-5 sm:-mx-6 sm:-mt-6 aspect-[634/570]">
             <Image
@@ -144,11 +141,22 @@ export default function StatsSection() {
             />
             {/* Only the empty strip under the text melts into the card */}
             <div className="absolute inset-x-0 bottom-0 h-[10%] bg-linear-to-t from-surface to-transparent" />
+            {/* Rating and review count circled in red pen, same stroke as the calculator's total */}
+            <svg className="absolute inset-0 h-full w-full overflow-visible" viewBox="0 0 634 570" fill="none" preserveAspectRatio="none" aria-hidden>
+              <path
+                className="notes-draw"
+                style={{ "--w": 1.5 } as CSSProperties}
+                pathLength={1}
+                d="M64 417 C178 405 386 405 469 419 C526 430 511 456 386 465 C243 473 53 467 17 446 C-14 425 100 408 308 411"
+                stroke="#C8405B"
+                strokeWidth="6"
+                strokeLinecap="round"
+              />
+            </svg>
           </div>
 
-          <p className="metal-text mt-auto pt-2 font-playfair text-[2.5rem] sm:text-6xl leading-none">2000+</p>
-          <p className="font-poppins text-sm font-semibold text-foreground/85 mt-4">Zadovoljnih klijenata</p>
-          <p className="font-poppins text-xs text-foreground/50 mt-0.5">koji su rekli zbogom brijaču</p>
+          <p className="metal-text mt-auto pt-2 font-playfair text-[2.5rem] sm:text-6xl leading-none">5.0</p>
+          <p className="font-poppins text-sm font-semibold text-foreground/85 mt-4">prosečna ocena</p>
         </div>
 
         {/* 70-90% */}
@@ -235,7 +243,6 @@ export default function StatsSection() {
 
           <div className="absolute inset-x-4 bottom-4">
             <p className="font-playfair text-2xl text-white leading-tight">Iskustvo iz prve ruke</p>
-            <p className="font-poppins text-xs text-white/70 mt-1">Klijentkinja o svom tretmanu.</p>
             <span className="mt-4 flex items-center justify-between gap-3 rounded-full bg-white/12 pl-5 pr-1.5 py-1.5 font-poppins text-sm font-semibold text-white ring-1 ring-white/20 backdrop-blur-md transition-colors duration-300 group-hover:bg-white/20">
               Pogledaj na Instagramu
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-black transition-transform duration-300 ease-out group-hover:rotate-45">

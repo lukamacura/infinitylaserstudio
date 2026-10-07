@@ -148,6 +148,7 @@ export type Database = {
           id: string
           location: string
           notes: string | null
+          price_override: number | null
           promo_code: string | null
           start_time: string
           status: string
@@ -166,6 +167,7 @@ export type Database = {
           id?: string
           location?: string
           notes?: string | null
+          price_override?: number | null
           promo_code?: string | null
           start_time: string
           status?: string
@@ -184,6 +186,7 @@ export type Database = {
           id?: string
           location?: string
           notes?: string | null
+          price_override?: number | null
           promo_code?: string | null
           start_time?: string
           status?: string
@@ -366,6 +369,10 @@ export type Database = {
         Returns: { date: string; start_time: string; end_time: string; status: string }[]
       }
       public_is_returning: { Args: { p_email: string }; Returns: boolean }
+      public_staff_days: {
+        Args: { p_from: string; p_to: string; p_location: string }
+        Returns: { date: string; names: string[] }[]
+      }
       public_track_funnel: {
         Args: { p_session: string; p_stage: string; p_location?: string | null; p_source?: string | null; p_utm?: string | null }
         Returns: undefined

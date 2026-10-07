@@ -5,8 +5,8 @@ import type { CSSProperties } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
-  X, ArrowLeft, Loader2, CheckCircle2, AlertCircle, Info, MapPin, ChevronRight, CalendarCheck,
-  Clock, Wallet, RotateCcw,
+  X, ArrowLeft, Loader2, AlertCircle, Info, MapPin, ChevronRight, CalendarCheck,
+  Clock, Wallet, RotateCcw, Phone,
 } from "lucide-react";
 import {
   supabase, calcBookingDuration, calcTotalDuration, getAvailableSlots,
@@ -21,10 +21,15 @@ import {
   eligibleBundleSizes, computeBundle, parseBundlePromo,
   bundlePurchaseCode, bundleRedeemCode, type BundleResult,
 } from "@/lib/bundles";
-import { STUDENT_PROMO_CODE, isStudentPromoCode } from "@/lib/pricing";
+import {
+  STUDENT_PROMO_CODE, isStudentPromoCode, LINK_PROMO_CODE, LINK_DISCOUNT_PCT,
+  linkSinglePrice, linkBundleTotal,
+} from "@/lib/pricing";
+import { hasLinkPromo } from "@/lib/linkPromo";
 import { fetchPriceRows, PriceBook } from "@/lib/prices";
 import { trackFunnel, type FunnelStage, type FunnelSource } from "@/lib/funnel";
 import { JOURNEY_STEPS } from "@/lib/journey";
+import { fetchPublicStaffDays, staffPhoto } from "@/lib/staff";
 import {
   LOCATIONS, DEFAULT_LOCATION, getLocation, fullAddress, type LocationId,
 } from "@/lib/locations";
@@ -33,9 +38,10 @@ import {
   getIcon, getRegionArt, preloadRegionArt, RegionThumb, CARD_IN_MS, THUMB_SIZES, HERO_THUMB_SIZES,
   SR_DAYS_FULL, SR_MONTHS_SHORT, monIdx, toDateStr, formatDateFull, formatPrice, EMAIL_REGEX,
   lockBodyScroll, unlockBodyScroll,
-  isComboService, isFullBody, isAllowedWithFullBody, applyComboRules,
+  isComboService, isFullBody, isAllowedWithFullBody, isFullFace, isCoveredByFullFace, applyComboRules,
   ACCENTS, GENDER_OPTIONS, COL_W, cascade, Skeleton, PREPARATION_STEPS,
 } from "@/components/booking/shared";
+import BookingSuccess from "@/components/booking/BookingSuccess";
 
 interface BookingModalProps {
   isOpen: boolean;
@@ -65,6 +71,35 @@ function freeSlotsLabel(n: number): string {
   const one = n % 10 === 1 && n % 100 !== 11;
   const few = n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14);
   return `${n} ${one ? "slobodan termin" : few ? "slobodna termina" : "slobodnih termina"}`;
+}
+
+/** Overlapping round photos of who works a day (initial when there is no photo). */
+function StaffAvatars({ names }: { names: string[] }) {
+  return (
+    <div className="flex items-center gap-1.5 mt-2 min-w-0 max-w-full" aria-label={`Radi: ${names.join(", ")}`}>
+      <div className="flex -space-x-1.5 shrink-0">
+        {names.map((name) => {
+          const src = staffPhoto(name);
+          return (
+            <span
+              key={name}
+              title={name}
+              className="relative w-6 h-6 sm:w-7 sm:h-7 rounded-full overflow-hidden ring-2 ring-background bg-foreground/15 flex items-center justify-center"
+            >
+              {src ? (
+                <Image src={src} alt="" fill sizes="28px" className="object-cover object-top" />
+              ) : (
+                <span className="text-[10px] sm:text-xs font-bold font-poppins text-foreground/70">
+                  {name.charAt(0).toUpperCase()}
+                </span>
+              )}
+            </span>
+          );
+        })}
+      </div>
+      <span className="text-[10px] sm:text-xs text-foreground/50 font-poppins truncate">{names.join(", ")}</span>
+    </div>
+  );
 }
 
 /**
@@ -279,6 +314,24 @@ const SOCIAL_PROOF: Record<Gender, { mark: string; line: string }> = {
   muskarci: { mark: "◆", line: "Preko 2000 ljudi se uspešno rešilo dlačica" },
 };
 
+/** Shown under the date and time pickers - a way out when no offered slot fits. */
+function CallUsHint() {
+  return (
+    <p className="flex flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5 text-xs sm:text-sm text-foreground/50 font-poppins text-center">
+      <Phone size={14} className="shrink-0" />
+      Ako ti ništa ne odgovara, pozovi nas:
+      <a
+        href="tel:+381653738991"
+        className="font-semibold text-foreground/80 underline underline-offset-2 hover:text-foreground"
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onClick={() => (window as any).fbq?.("track", "Contact")}
+      >
+        065 373 8991
+      </a>
+    </p>
+  );
+}
+
 const STEP_LABELS: Record<Step, string> = {
   location: "Koji grad ti je najbliži?",
   1: "Za koga je tretman?",
@@ -382,7 +435,6 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   const [acceptedPolicy, setAcceptedPolicy] = useState(true);
   const [showPolicyInfo, setShowPolicyInfo] = useState(false);
   /** The code field stays behind a link until asked for - an open field sends people off hunting for a coupon. */
-  const [showPromo, setShowPromo]           = useState(false);
   const [submitting, setSubmitting]       = useState(false);
   const [submitError, setSubmitError]     = useState<string | null>(null);
   const [bookingRef, setBookingRef]       = useState<string | null>(null);
@@ -394,12 +446,12 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   const [checkingPromo, setCheckingPromo]       = useState(false);
   /** Why a code was refused - a plain "invalid" reads as wrong for a real code. */
   const [promoErrorMsg, setPromoErrorMsg]       = useState<string | null>(null);
+  /** Arrived on ?promo=popust20 - −20% on everything, single sessions and bundles. */
+  const [linkDiscount] = useState(hasLinkPromo);
 
   // Step "plan" state
   const [bookingMode, setBookingMode] = useState<BookingMode>("single");
   const [bundleSize, setBundleSize]   = useState<number | null>(null);
-  const [displayedPrice, setDisplayedPrice]   = useState(0);
-  const animFrameRef = useRef<number>(0);
   const appliedPreselect = useRef(false);
   /** Scrollable step body - reset to top on every step change */
   const scrollBodyRef = useRef<HTMLDivElement>(null);
@@ -428,11 +480,15 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   /** Schedule failed to load - say so, instead of claiming there are no free days. */
   const [availabilityError, setAvailabilityError] = useState(false);
   const [availabilityReloadKey, setAvailabilityReloadKey] = useState(0);
+  /** "YYYY-MM-DD" → who works that day at the chosen studio (absent = not set in admin, show nothing). */
+  const [staffByDate, setStaffByDate] = useState<Record<string, string[]>>({});
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const selectedServices = services.filter((s) => selectedIds.includes(s.id));
   /** Whole body is selected - lock out every region except earrings, chin & whole face. */
   const fullBodySelected = selectedServices.some((s) => isFullBody(s.name));
+  /** Whole face is selected - earrings & chin are already covered by it. */
+  const fullFaceSelected = selectedServices.some((s) => isFullFace(s.name));
   const { effective: effectiveServices, appliedCombos } = applyComboRules(selectedServices, services);
   /** With 10 min consultation - used for day/slot picking so first-time bookings always fit. */
   const slotDuration =
@@ -482,22 +538,38 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       ? computeBundle(effectiveServices, bundleSize)
       : null;
   const bundleActive = bookingMode === "bundle" && bundleResult != null;
+  /** A bundle's price card - the link discount comes on top of the bundle's own. */
+  function bundleOffer(b: BundleResult) {
+    const finalTotal = linkDiscount ? linkBundleTotal(b.finalTotal) : b.finalTotal;
+    return {
+      finalTotal,
+      savings: b.originalTotal - finalTotal,
+      pct: Math.round((1 - finalTotal / b.originalTotal) * 100),
+    };
+  }
+  const bundleDeal = bundleResult ? bundleOffer(bundleResult) : null;
 
-  // ── Discounts (mutually exclusive: bundle > redeem > student) ───────────────
+  // ── Discounts (mutually exclusive: bundle > redeem > student > link) ────────
+  // The link discount also rides on a bundle (see bundleOffer); the student
+  // code is refused while it is on - both are −20% and they never stack.
   const redeemActive =
     !bundleActive && promoKind === "bundle_redeem" && promoStatus === "valid" &&
     appliedPromoCode != null;
   const studentActive =
     !bundleActive && !redeemActive && promoKind === "student" && promoStatus === "valid";
+  /** Link discount on a single session. */
+  const linkActive = linkDiscount && !bundleActive && !redeemActive && !studentActive;
 
   const listTotal = bundleActive ? bundleResult!.originalTotal : totalPrice;
   const finalPrice = bundleActive
-    ? bundleResult!.finalTotal
+    ? bundleDeal!.finalTotal
     : redeemActive
       ? 0
       : studentActive
         ? Math.round(totalPrice * 0.8)
-        : totalPrice;
+        : linkActive
+          ? linkSinglePrice(totalPrice)
+          : totalPrice;
   const savingsVsList = listTotal - finalPrice;
 
   // For today: slots must start ≥ now+120min. Read the clock on every render -
@@ -553,6 +625,19 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     return () => { cancelled = true; };
   }, [isOpen, studioId, availabilityReloadKey]);
 
+  // Who works which day at the chosen studio - purely decorative, so failures show nothing.
+  useEffect(() => {
+    if (!isOpen || !studioId) return;
+    let cancelled = false;
+    setStaffByDate({});
+    const from = new Date();
+    const to = new Date(from);
+    to.setDate(to.getDate() + PUBLIC_HORIZON_DAYS);
+    void fetchPublicStaffDays(studioId, toDateStr(from), toDateStr(to))
+      .then((byDate) => { if (!cancelled) setStaffByDate(byDate); });
+    return () => { cancelled = true; };
+  }, [isOpen, studioId]);
+
   useEffect(() => {
     if (!gender) return;
     preloadRegionArt(gender);
@@ -579,29 +664,6 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     });
     return () => { cancelled = true; };
   }, [gender, studioId, servicesReloadKey]);
-
-  // ── Animated price count-down on success screen ───────────────────────────
-  useEffect(() => {
-    if (step !== "success") return;
-    const target = finalPrice;
-    const from   = listTotal;
-
-    if (from === target) { setDisplayedPrice(target); return; }
-
-    const DURATION = 900;
-    const startTime = performance.now();
-
-    function animate(now: number) {
-      const elapsed  = now - startTime;
-      const progress = Math.min(elapsed / DURATION, 1);
-      const eased    = 1 - Math.pow(1 - progress, 3); // ease-out cubic
-      setDisplayedPrice(Math.round(from + (target - from) * eased));
-      if (progress < 1) animFrameRef.current = requestAnimationFrame(animate);
-    }
-
-    animFrameRef.current = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(animFrameRef.current);
-  }, [step, finalPrice, listTotal]);
 
   // Reservations for the chosen day - refetched every time the time step opens,
   // so coming back to a day never shows slots that were booked in the meantime.
@@ -830,7 +892,6 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     setFieldErrors({ name: false, email: false, phone: false, policy: false });
     setAcceptedPolicy(true);
     setShowPolicyInfo(false);
-    setShowPromo(false);
     setSubmitError(null); setBookingRef(null);
     setPromoCode(""); setPromoStatus("idle"); setAppliedPromoCode(null);
     setPromoKind("none"); setCheckingPromo(false); setPromoErrorMsg(null);
@@ -896,6 +957,21 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     if (fullBodySelected && !isSelected && !isAllowedWithFullBody(svc.name)) {
       return;
     }
+    // Same for earrings & chin once "Celo lice" is selected.
+    if (fullFaceSelected && !isSelected && isCoveredByFullFace(svc.name)) {
+      return;
+    }
+    // Selecting "Celo lice" drops already-selected earrings & chin.
+    if (!isSelected && isFullFace(svc.name)) {
+      setSelectedIds((prev) => [
+        ...prev.filter((pid) => {
+          const s = services.find((x) => x.id === pid);
+          return s ? !isCoveredByFullFace(s.name) : false;
+        }),
+        id,
+      ]);
+      return;
+    }
     // Selecting "Celo telo" itself drops any already-selected regions it now covers.
     if (!isSelected && isFullBody(svc.name)) {
       setSelectedIds((prev) => [
@@ -959,6 +1035,10 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     // Student code - −20%, first treatment only. The student ID itself is checked
     // at the studio; all we can verify here is that this email has never booked.
     if (isStudentPromoCode(raw)) {
+      if (linkDiscount) {
+        rejectPromo(`Već imaš popust −${LINK_DISCOUNT_PCT}%. Popusti se ne sabiraju.`);
+        return;
+      }
       const email = form.email.trim();
       if (!EMAIL_REGEX.test(email)) {
         rejectPromo("Unesi svoj email pa primeni kod.");
@@ -1065,16 +1145,19 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     let promoForRecord: string | null = null;
     let notesForRecord: string | null = null;
     if (bundleActive) {
-      promoForRecord = bundlePurchaseCode(bundleSize!, bundleResult!.finalTotal);
+      promoForRecord = bundlePurchaseCode(bundleSize!, bundleDeal!.finalTotal);
       notesForRecord =
-        `Paket ${bundleSize}× - ukupno ${formatPrice(bundleResult!.finalTotal)} RSD ` +
-        `(ušteda ${formatPrice(bundleResult!.savings)} RSD)`;
+        `Paket ${bundleSize}× - ukupno ${formatPrice(bundleDeal!.finalTotal)} RSD ` +
+        `(ušteda ${formatPrice(bundleDeal!.savings)} RSD)` +
+        (linkDiscount ? ` · uračunat popust −${LINK_DISCOUNT_PCT}% (${LINK_PROMO_CODE})` : "");
     } else if (redeemActive) {
       promoForRecord = bundleRedeemCode(appliedPromoCode!);
       notesForRecord = `Iskorišćen tretman iz paketa ${appliedPromoCode}`;
     } else if (studentActive) {
       promoForRecord = STUDENT_PROMO_CODE;
       notesForRecord = "STUDENTSKI POPUST −20% - proveri indeks pri dolasku!";
+    } else if (linkActive) {
+      promoForRecord = LINK_PROMO_CODE;
     }
     const listForSubmit  = listTotal;
     const finalForSubmit = finalPrice;
@@ -1353,6 +1436,11 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               style={{ width: `${progress * 100}%`, ...(gender ? { backgroundColor: accent.hex } : {}) }}
             />
           </div>
+          {linkDiscount && step !== "success" && step !== "preparation" && (
+            <p className="inline-flex items-center gap-1.5 mt-3 px-2.5 py-1 rounded-full bg-emerald-400/10 border border-emerald-400/25 text-[11px] sm:text-xs font-semibold font-poppins text-emerald-300">
+              Popust −{LINK_DISCOUNT_PCT}% aktiviran · važi na sve tretmane i pakete
+            </p>
+          )}
           <p className="text-lg sm:text-xl font-medium leading-snug text-foreground/90 font-poppins mt-4">{STEP_LABELS[step]}</p>
         </div>
 
@@ -1533,7 +1621,10 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                 const enterDelay = Math.min(index, 9) * 45;
                 const enterStyle = { animationDelay: `${enterDelay}ms` } as CSSProperties;
                 const isSelected = selectedIds.includes(service.id);
-                const isBlocked = fullBodySelected && !isSelected && !isAllowedWithFullBody(service.name);
+                const isBlocked = !isSelected && (
+                  (fullBodySelected && !isAllowedWithFullBody(service.name)) ||
+                  (fullFaceSelected && isCoveredByFullFace(service.name))
+                );
                 const Icon = getIcon(service.name);
                 const art = gender ? getRegionArt(service.name, gender) : null;
 
@@ -1663,18 +1754,30 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               >
                 <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
                   <p className="text-sm sm:text-base md:text-lg font-bold font-poppins">Samo 1 tretman</p>
-                  <span className="text-[11px] sm:text-[13px] font-poppins text-foreground/45 leading-snug">
-                    Bez popusta
-                  </span>
+                  {linkDiscount ? (
+                    <span className="text-[11px] sm:text-[13px] font-poppins font-semibold text-emerald-300 leading-snug">
+                      Popust −{LINK_DISCOUNT_PCT}%
+                    </span>
+                  ) : (
+                    <span className="text-[11px] sm:text-[13px] font-poppins text-foreground/45 leading-snug">
+                      Bez popusta
+                    </span>
+                  )}
                 </div>
-                <p className="text-base sm:text-xl font-bold font-poppins leading-tight shrink-0 tabular-nums">
-                  {formatPrice(totalPrice)}<span className="ml-1 text-[10px] sm:text-sm font-semibold">RSD</span>
-                </p>
+                <div className="flex flex-col items-end shrink-0">
+                  <p className="text-base sm:text-xl font-bold font-poppins leading-tight tabular-nums">
+                    {formatPrice(linkDiscount ? linkSinglePrice(totalPrice) : totalPrice)}<span className="ml-1 text-[10px] sm:text-sm font-semibold">RSD</span>
+                  </p>
+                  {linkDiscount && (
+                    <p className="text-[11px] sm:text-[13px] text-foreground/35 font-poppins line-through tabular-nums">{formatPrice(totalPrice)}</p>
+                  )}
+                </div>
               </button>
 
               {/* Bundle options */}
               {eligibleSizes.map((size, idx) => {
                 const b = computeBundle(effectiveServices, size);
+                const deal = bundleOffer(b);
                 const isSelected = bundleActive && bundleSize === size;
                 const isBest = idx === eligibleSizes.length - 1;
                 return (
@@ -1755,7 +1858,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                       <div className="flex items-baseline justify-between gap-2">
                         <p className="text-sm sm:text-base md:text-lg font-bold font-poppins truncate">Paket {size} tretmana</p>
                         <p className="text-base sm:text-xl font-bold font-poppins leading-tight shrink-0 tabular-nums" style={{ color: accent.hex }}>
-                          {formatPrice(b.finalTotal)}<span className="ml-1 text-[10px] sm:text-sm font-semibold">RSD</span>
+                          {formatPrice(deal.finalTotal)}<span className="ml-1 text-[10px] sm:text-sm font-semibold">RSD</span>
                         </p>
                       </div>
                       <div className="flex items-center justify-between gap-2">
@@ -1764,10 +1867,10 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                             className="px-1.5 sm:px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-bold font-poppins bm-metal shrink-0"
                             style={{ backgroundColor: accent.hex }}
                           >
-                            −{b.blendedPct}%
+                            −{deal.pct}%
                           </span>
                           <span className="text-[11px] sm:text-sm font-semibold font-poppins text-emerald-300 truncate">
-                            Ušteda {formatPrice(b.savings)}
+                            Ušteda {formatPrice(deal.savings)}
                           </span>
                         </div>
                         <p className="text-[11px] sm:text-[13px] text-foreground/35 font-poppins line-through shrink-0 tabular-nums">
@@ -1851,11 +1954,13 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                             {freeSlotsLabel(day.freeSlots)}
                           </p>
                         )}
+                        {staffByDate[day.date] && <StaffAvatars names={staffByDate[day.date]} />}
                       </button>
                     );
                   })}
                 </div>
               )}
+              <CallUsHint />
             </div>
           )}
 
@@ -1911,7 +2016,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                   ))}
                 </div>
               )}
-
+              <CallUsHint />
             </div>
           )}
 
@@ -2034,27 +2139,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               </div>
 
               {/* Promo / bundle code - hidden while buying a bundle (mutually exclusive) */}
-              {!bundleActive && !showPromo && !promoCode && promoKind === "none" && (
-                <div className="flex flex-wrap gap-x-4 gap-y-2 -mt-1 sm:-mt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowPromo(true)}
-                    className="text-xs sm:text-sm font-poppins text-foreground/55 hover:text-foreground/80 underline underline-offset-2 cursor-pointer transition-colors"
-                  >
-                    Imaš promo kod ili kod paketa?
-                  </button>
-                  {isReturningCustomer !== true && (
-                    <button
-                      type="button"
-                      onClick={() => { setShowPromo(true); setPromoCode(STUDENT_PROMO_CODE); setPromoStatus("idle"); setPromoErrorMsg(null); }}
-                      className="text-xs sm:text-sm font-poppins text-foreground/45 hover:text-foreground/70 underline underline-offset-2 cursor-pointer transition-colors"
-                    >
-                      Student? −20% na prvi tretman
-                    </button>
-                  )}
-                </div>
-              )}
-              {!bundleActive && (showPromo || !!promoCode || promoKind !== "none") && (
+              {!bundleActive && (
                 <div>
                   <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/40 font-poppins mb-2">PROMO ILI KOD PAKETA</p>
                   <div className="flex gap-2">
@@ -2096,6 +2181,15 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                       {checkingPromo ? "…" : "Primeni"}
                     </button>
                   </div>
+                  {!promoCode && promoKind === "none" && isReturningCustomer !== true && !linkDiscount && (
+                    <button
+                      type="button"
+                      onClick={() => { setPromoCode(STUDENT_PROMO_CODE); setPromoStatus("idle"); setPromoErrorMsg(null); }}
+                      className="mt-2 text-xs sm:text-sm font-poppins text-foreground/45 hover:text-foreground/70 underline underline-offset-2 cursor-pointer transition-colors"
+                    >
+                      Student? −20% na prvi tretman
+                    </button>
+                  )}
                   {promoStatus === "valid" && redeemActive && (
                     <p className="text-xs text-emerald-400 font-poppins mt-2">
                       Paket potvrđen - ovaj tretman je već plaćen. Cena: 0 RSD.
@@ -2122,7 +2216,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                     </p>
                   )}
                   {/* Discovery for anyone who never saw the ad. One tap fills the code. */}
-                  {promoKind === "none" && isReturningCustomer !== true && (
+                  {promoKind === "none" && isReturningCustomer !== true && !linkDiscount && (
                     <button
                       type="button"
                       onClick={() => { setPromoCode(STUDENT_PROMO_CODE); setPromoStatus("idle"); setPromoErrorMsg(null); }}
@@ -2158,7 +2252,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                       <span className="text-sm sm:text-base font-poppins text-foreground/50">
                         {bundleActive ? `Redovna cena (${bundleSize}×)` : "Redovna cena"}
                       </span>
-                      <span className={`text-sm sm:text-base font-poppins font-semibold ${bundleActive || redeemActive || studentActive ? "text-foreground/40 line-through" : "font-bold text-foreground"}`}>
+                      <span className={`text-sm sm:text-base font-poppins font-semibold ${bundleActive || redeemActive || studentActive || linkActive ? "text-foreground/40 line-through" : "font-bold text-foreground"}`}>
                         {formatPrice(listTotal)} RSD
                       </span>
                     </div>
@@ -2168,9 +2262,15 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                         <span className="text-base sm:text-lg font-poppins font-bold text-foreground">{formatPrice(finalPrice)} RSD</span>
                       </div>
                     )}
+                    {linkActive && (
+                      <div className="flex justify-between items-center mt-1.5">
+                        <span className="flex items-center gap-2 text-sm sm:text-base font-poppins text-foreground/85 font-semibold">Cena sa popustom<span className="text-[10px] sm:text-xs font-poppins font-semibold text-emerald-300 bg-emerald-400/15 rounded-full px-2 py-0.5">−{LINK_DISCOUNT_PCT}%</span></span>
+                        <span className="text-base sm:text-lg font-poppins font-bold text-foreground">{formatPrice(finalPrice)} RSD</span>
+                      </div>
+                    )}
                     {bundleActive && (
                       <div className="flex justify-between items-center mt-1.5">
-                        <span className="flex items-center gap-2 text-sm sm:text-base font-poppins text-foreground/85 font-semibold">Cena paketa<span className="text-[10px] sm:text-xs font-poppins font-semibold text-emerald-300 bg-emerald-400/15 rounded-full px-2 py-0.5">−{bundleResult!.blendedPct}%</span></span>
+                        <span className="flex items-center gap-2 text-sm sm:text-base font-poppins text-foreground/85 font-semibold">Cena paketa<span className="text-[10px] sm:text-xs font-poppins font-semibold text-emerald-300 bg-emerald-400/15 rounded-full px-2 py-0.5">−{bundleDeal!.pct}%</span></span>
                         <span className="text-base sm:text-lg font-poppins font-bold text-foreground">{formatPrice(finalPrice)} RSD</span>
                       </div>
                     )}
@@ -2281,110 +2381,28 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
           {/* ══ SUCCESS ════════════════════════════════════════════════════ */}
           {step === "success" && (
-            <div className="flex flex-col items-center text-center py-4 sm:py-6">
-              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-emerald-400/10 flex items-center justify-center mb-5 sm:mb-6">
-                <CheckCircle2 size={44} className="text-emerald-400 sm:w-13 sm:h-13" strokeWidth={1.5} />
-              </div>
-              <h3 className="text-2xl sm:text-3xl md:text-4xl font-bold font-playfair mb-2 sm:mb-3">
-                {studio.address
-                  ? `Termin zakazan! Čekamo Vas u ${studio.address} ${studio.cityLocative}`
-                  : `Termin zakazan! Čekamo Vas ${studio.cityLocative}`}
-              </h3>
-              <p className="text-sm sm:text-base text-foreground/50 font-poppins mb-6 sm:mb-8">Potvrda je poslata na {form.email}</p>
-
-              {/* ── Stats banner: duration + animated price ── */}
-              <div className="grid grid-cols-2 gap-3 sm:gap-4 w-full mb-4 sm:mb-6">
-                {/* Duration tile */}
-                <div className="flex flex-col items-center justify-center bg-foreground/5 rounded-2xl sm:rounded-3xl py-4 sm:py-7 px-3">
-                  <p className="text-[10px] sm:text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-1 sm:mb-2">TRAJANJE</p>
-                  <p className="text-3xl sm:text-5xl font-bold font-poppins leading-none">{reservationDuration}</p>
-                  <p className="text-xs sm:text-sm text-foreground/40 font-poppins mt-1 sm:mt-2">min</p>
-                </div>
-
-                {/* Price tile */}
-                <div
-                  className="flex flex-col items-center justify-center rounded-2xl sm:rounded-3xl py-4 sm:py-7 px-3 relative overflow-hidden"
-                  style={{ backgroundColor: `${accent.hex}12` }}
-                >
-                  <p className="text-[10px] sm:text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-1 sm:mb-2">CENA</p>
-
-                  {(bundleActive || redeemActive || studentActive) && (
-                    <p className="text-xs sm:text-sm text-foreground/35 font-poppins line-through leading-none mb-0.5">
-                      {formatPrice(listTotal)} RSD
-                    </p>
-                  )}
-                  <p className="text-3xl sm:text-5xl font-bold font-poppins leading-none tabular-nums" style={{ color: accent.hex }}>
-                    {formatPrice(displayedPrice)}
-                  </p>
-                  <p className="text-xs sm:text-sm font-semibold font-poppins mt-1 sm:mt-2" style={{ color: accent.hex }}>RSD</p>
-                  {bundleActive ? (
-                    <span className="mt-2 sm:mt-3 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-poppins text-white bg-green-500">
-                      PAKET {bundleSize}× · −{bundleResult!.blendedPct}%
-                    </span>
-                  ) : redeemActive ? (
-                    <span className="mt-2 sm:mt-3 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-poppins text-white bg-green-500">
-                      PLAĆENO U PAKETU
-                    </span>
-                  ) : studentActive ? (
-                    <span className="mt-2 sm:mt-3 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-poppins text-white bg-amber-500">
-                      STUDENT −20% · UZ INDEKS
-                    </span>
-                  ) : (
-                    <span className="mt-2 sm:mt-3 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-poppins text-foreground/70 bg-foreground/10">
-                      Redovna cena
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* ── Detailed summary card ── */}
-              <div className="w-full bg-foreground/4 rounded-2xl sm:rounded-3xl p-5 sm:p-7 text-left space-y-3 sm:space-y-4">
-                {[
-                  ["Datum", selectedDate ? formatDateFull(selectedDate) : ""],
-                  ["Vreme", `${selectedTime} – ${minutesToTime(timeToMinutes(selectedTime) + reservationDuration)}`],
-                ].map(([label, value]) => (
-                  <div key={label} className="flex justify-between text-sm sm:text-base font-poppins">
-                    <span className="text-foreground/50">{label}</span>
-                    <span className="font-semibold">{value}</span>
-                  </div>
-                ))}
-                {studentActive && (
-                  <div className="flex items-start gap-2.5 p-3 sm:p-3.5 rounded-xl bg-amber-400/10 border-2 border-amber-400/50">
-                    <AlertCircle size={18} className="text-amber-400 shrink-0 mt-px" />
-                    <p className="text-[11px] sm:text-xs font-poppins text-amber-200 font-semibold leading-snug">
-                      Ne zaboravi indeks! Bez njega studentski popust ne važi i naplaćuje se puna cena od {formatPrice(listTotal)} RSD.
-                    </p>
-                  </div>
-                )}
-                <div className="border-t border-foreground/10 pt-3">
-                  <p className="text-xs sm:text-sm text-foreground/40 font-poppins mb-1.5 sm:mb-2">USLUGE</p>
-                  {!isReturningCustomer && (
-                    <p className="text-sm sm:text-base font-poppins font-semibold text-foreground/50">Konsultacija (10 min)</p>
-                  )}
-                  {effectiveServices.map((s) => (
-                    <p key={s.id} className="text-sm sm:text-base font-poppins font-semibold">{s.name}</p>
-                  ))}
-                </div>
-                {bookingRef && (
-                  <div className="border-t border-foreground/10 pt-3">
-                    <p className="text-xs sm:text-sm text-foreground/40 font-poppins mb-1">REF. BROJ</p>
-                    <p className="text-sm sm:text-lg font-mono font-bold tracking-wider" style={{ color: accent.hex }}>
-                      #{bookingRef}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Bundle - remaining pre-paid sessions; the code is handed over in person at the first treatment */}
-              {bundleActive && bundleResult && (
-                <div className="w-full mt-4 sm:mt-6 rounded-2xl sm:rounded-3xl p-4 sm:p-6 text-left border-2" style={{ borderColor: `${accent.hex}33`, backgroundColor: `${accent.hex}0A` }}>
-                  <p className="text-[10px] sm:text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-1 sm:mb-2">PAKET OD {bundleSize} TRETMANA</p>
-                  <p className="text-xs sm:text-sm md:text-base font-poppins text-foreground/55 leading-snug">
-                    Na prvom tretmanu dobićete kod paketa kojim ćete zakazati preostalih {bundleSize! - 1} {bundleSize! - 1 === 1 ? "tretman" : "tretmana"} - ti termini su već plaćeni.
-                  </p>
-                </div>
-              )}
-            </div>
+            <BookingSuccess
+              headline={studio.address
+                ? `Termin zakazan! Čekamo Vas u ${studio.address} ${studio.cityLocative}`
+                : `Termin zakazan! Čekamo Vas ${studio.cityLocative}`}
+              email={form.email}
+              date={selectedDate ? formatDateFull(selectedDate) : ""}
+              timeRange={`${selectedTime} – ${minutesToTime(timeToMinutes(selectedTime) + reservationDuration)}`}
+              duration={reservationDuration}
+              withConsultation={!isReturningCustomer}
+              services={effectiveServices.map((s) => s.name)}
+              listTotal={listTotal}
+              finalPrice={finalPrice}
+              discount={
+                bundleActive ? { kind: "bundle", size: bundleSize!, pct: bundleDeal!.pct }
+                : redeemActive ? { kind: "redeem" }
+                : studentActive ? { kind: "student" }
+                : linkActive ? { kind: "link" }
+                : null
+              }
+              bookingRef={bookingRef}
+              accentHex={accent.hex}
+            />
           )}
 
           {/* ══ PREPARATION ═══════════════════════════════════════════════ */}
@@ -2414,7 +2432,10 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                     {selectedIds.length > 0 ? (
                       <>
                         <div className="flex items-center justify-center gap-2 flex-wrap">
-                          <span className="text-base sm:text-xl font-bold font-poppins leading-none" style={{ color: accent.hex }}>{formatPrice(totalPrice)} RSD</span>
+                          {linkDiscount && (
+                            <span className="text-xs sm:text-sm font-poppins text-foreground/40 line-through tabular-nums">{formatPrice(totalPrice)}</span>
+                          )}
+                          <span className="text-base sm:text-xl font-bold font-poppins leading-none" style={{ color: accent.hex }}>{formatPrice(linkDiscount ? linkSinglePrice(totalPrice) : totalPrice)} RSD</span>
                           <span className="text-[10px] sm:text-xs text-foreground/40 font-poppins">· {slotDuration} min</span>
                         </div>
                         {appliedCombos.length > 0 && (

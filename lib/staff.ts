@@ -59,3 +59,31 @@ export async function fetchStaffSchedule(location: LocationId): Promise<StaffSch
 
   return { template, overrides };
 }
+
+/** Photos in /public/team, by lowercased first name. Anyone without one gets their initial. */
+const STAFF_PHOTOS: Record<string, string> = {
+  ana: "/team/ana.webp",
+  branka: "/team/branka.webp",
+  mila: "/team/mila.webp",
+  tanja: "/team/tanja.webp",
+};
+
+export function staffPhoto(name: string): string | null {
+  return STAFF_PHOTOS[name.trim().toLowerCase()] ?? null;
+}
+
+/**
+ * Public (booking modal): "YYYY-MM-DD" → first names of who works that day.
+ * Days with nobody assigned are absent. Never throws - on failure nothing is shown.
+ */
+export async function fetchPublicStaffDays(
+  location: LocationId, from: string, to: string,
+): Promise<Record<string, string[]>> {
+  const { data, error } = await supabase.rpc("public_staff_days", {
+    p_from: from, p_to: to, p_location: location,
+  });
+  if (error || !data) return {};
+  const byDate: Record<string, string[]> = {};
+  for (const row of data) if (row.names?.length) byDate[row.date] = row.names;
+  return byDate;
+}

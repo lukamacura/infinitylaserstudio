@@ -62,9 +62,10 @@ const UNKNOWN_STATUS_STYLE = {
   label: "Nepoznat status", dot: "bg-foreground/30",
 };
 
-/** A confirmed appointment - green, as everywhere else in the panel. */
+/** A confirmed appointment - a fresher, stronger green than the muted status green, so
+ *  the cards stand out on the calendar (`admin-card-confirmed*` in globals.css). */
 const CONFIRMED_CARD_STYLE = {
-  box: "bg-green-400/15 hover:bg-green-400/25", bar: "bg-green-400", sub: "text-green-300", name: "text-foreground",
+  box: "admin-card-confirmed", bar: "admin-card-confirmed-bar", sub: "admin-card-confirmed-sub", name: "text-foreground",
 };
 
 /** How a card looks when the appointment is not a normal confirmed one. */
@@ -127,6 +128,8 @@ type ReservationFull = {
   customer_note: string | null;
   created_at: string;
   promo_code: string | null;
+  /** Price typed in by hand; null = computed from regions + promo code. */
+  price_override: number | null;
   location: LocationId;
   call_status: CallStatus;
   call_attempted_at: string | null;
@@ -540,6 +543,8 @@ export default function AdminPage() {
   const [selectedPrice, setSelectedPrice] = useState<PriceResult | null>(null);
   const [selectedIsFirst, setSelectedIsFirst] = useState(true);
   const [selectedBundle, setSelectedBundle] = useState<BundleUsage | null>(null);
+  /** Price correction: the typed amount, null while not editing. */
+  const [priceDraft, setPriceDraft]       = useState<string | null>(null);
   /** Region editor: the draft list of service ids, null while not editing. */
   const [servicesDraft, setServicesDraft] = useState<string[] | null>(null);
   const [draftGender, setDraftGender]     = useState<Gender>("zene");
@@ -1025,6 +1030,7 @@ export default function AdminPage() {
       isFirstTreatment,
       createdAt: r.created_at,
       promoCode: r.promo_code,
+      priceOverride: r.price_override,
     });
   }
 
@@ -1040,6 +1046,7 @@ export default function AdminPage() {
     setSelectedBundle(null);
     setServicesDraft(null);
     setServicesClash(false);
+    setPriceDraft(null);
     const req = ++modalReq.current;
     if (r.customer_email) {
       // One round trip for the client's whole relevant history.
@@ -1128,6 +1135,7 @@ export default function AdminPage() {
   // The price is never stored: every screen prices a reservation from its
   // regions and the studio's price list at booking time. Changing the regions
   // is therefore all it takes - the calendar, finances and stats follow.
+  // (The one exception is a hand-typed correction, price_override.)
 
   const serviceById = useMemo(() => new Map(allServices.map(s => [s.id, s])), [allServices]);
 
@@ -1248,8 +1256,9 @@ export default function AdminPage() {
         return;
       }
     }
+    // A hand-typed price was for the old regions - the new ones are priced afresh.
     const { error: timeError } = await supabase.from("reservations")
-      .update({ total_duration: duration, end_time: endTime })
+      .update({ total_duration: duration, end_time: endTime, price_override: null })
       .eq("id", selected.id);
     if (timeError) {
       console.error("Updating the duration failed:", timeError);
@@ -1259,7 +1268,7 @@ export default function AdminPage() {
     const next = withServices(selected, servicesDraft);
     const patch: Partial<ReservationFull> = timeError
       ? { reservation_services: next.reservation_services }
-      : { reservation_services: next.reservation_services, total_duration: duration, end_time: endTime };
+      : { reservation_services: next.reservation_services, total_duration: duration, end_time: endTime, price_override: null };
     patchReservation(selected.id, patch);
     setCallReservations(prev => prev.map(r => (r.id === selected.id ? { ...r, ...patch } : r)));
     setClientGroups(prev => prev.map(g => ({
@@ -1296,9 +1305,39 @@ export default function AdminPage() {
     }
     patchReservation(selected.id, { promo_code: null, notes: revokedNote });
     setNewNotes(revokedNote);
-    setSelectedPrice((prev) =>
-      prev ? { ...prev, finalPrice: prev.listPrice, studentOff: false, promoCode: null, kind: "none" } : prev
-    );
+    setSelectedPrice(priceFor({ ...selected, promo_code: null }, selectedIsFirst));
+    setSaving(false);
+  }
+
+  /**
+   * Price correction: the amount actually charged, typed in by hand. Stored on
+   * the reservation, so the calendar and finances show it too. Empty = back to
+   * the computed price.
+   */
+  async function handlePriceSave() {
+    if (!selected || priceDraft === null) return;
+    const digits = priceDraft.replace(/[^\d]/g, "");
+    const override = digits === "" ? null : Number(digits);
+    setSaving(true);
+    const { error } = await supabase
+      .from("reservations")
+      .update({ price_override: override })
+      .eq("id", selected.id);
+    if (error) {
+      console.error("Saving the price correction failed:", error);
+      setNotice("Cena nije sačuvana. Pokušaj ponovo.");
+      setSaving(false);
+      return;
+    }
+    const updated = { ...selected, price_override: override };
+    patchReservation(selected.id, { price_override: override });
+    setCallReservations(prev => prev.map(r => (r.id === selected.id ? { ...r, price_override: override } : r)));
+    setClientGroups(prev => prev.map(g => ({
+      ...g, reservations: g.reservations.map(r => (r.id === selected.id ? { ...r, price_override: override } : r)),
+    })));
+    setSelected(updated);
+    setSelectedPrice(priceFor(updated, selectedIsFirst));
+    setPriceDraft(null);
     setSaving(false);
   }
 
@@ -2392,12 +2431,20 @@ export default function AdminPage() {
                           −20% student · uz indeks
                         </span>
                       )}
-                      {selectedPrice.kind === "none" && (
+                      {selectedPrice.linkOff && (
+                        <span className="text-[10px] font-bold font-poppins uppercase tracking-widest text-green-400 bg-green-400/10 px-2.5 py-1 rounded-lg border border-green-400/20">
+                          −20% link · {selectedPrice.promoCode}
+                        </span>
+                      )}
+                      {selectedPrice.kind === "none" && !selectedPrice.overridden && (
                         <span className="text-[10px] font-bold font-poppins uppercase tracking-widest text-foreground/60 bg-foreground/5 px-2.5 py-1 rounded-lg border border-foreground/8">Bez popusta</span>
+                      )}
+                      {selectedPrice.overridden && (
+                        <span className="text-[10px] font-bold font-poppins uppercase tracking-widest text-sky-300 bg-sky-400/10 px-2.5 py-1 rounded-lg border border-sky-400/30">Korigovana cena</span>
                       )}
                     </div>
                     <div className="text-right shrink-0">
-                      {(() => {
+                      {priceDraft === null && (() => {
                         const crossed =
                           selectedPrice.bundleSessions != null
                             ? selectedPrice.listPrice * selectedPrice.bundleSessions
@@ -2406,9 +2453,62 @@ export default function AdminPage() {
                           <p className="text-[11px] font-medium font-poppins text-foreground/50 line-through leading-none">{crossed.toLocaleString("sr-RS")} RSD</p>
                         ) : null;
                       })()}
-                      <p className="text-lg font-bold font-poppins text-accent leading-tight mt-0.5">{selectedPrice.finalPrice.toLocaleString("sr-RS")} RSD</p>
+                      {priceDraft === null ? (
+                        <button
+                          onClick={() => setPriceDraft(String(selectedPrice.finalPrice))}
+                          title="Koriguj cenu"
+                          className="inline-flex items-center gap-1.5 text-lg font-bold font-poppins text-accent leading-tight mt-0.5 cursor-pointer hover:opacity-80 transition-opacity"
+                        >
+                          {selectedPrice.finalPrice.toLocaleString("sr-RS")} RSD
+                          <Pencil size={13} className="text-foreground/38" />
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            autoFocus
+                            value={priceDraft}
+                            onChange={(e) => setPriceDraft(e.target.value.replace(/[^\d]/g, ""))}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") void handlePriceSave();
+                              if (e.key === "Escape") { e.stopPropagation(); setPriceDraft(null); }
+                            }}
+                            className="w-28 px-3 py-1.5 rounded-xl bg-foreground/5 border-2 border-accent/40 text-right text-base font-bold font-poppins text-foreground tabular-nums focus:outline-none focus:border-accent"
+                            aria-label="Korigovana cena u RSD"
+                          />
+                          <span className="text-xs font-bold font-poppins text-foreground/50">RSD</span>
+                        </div>
+                      )}
                     </div>
                   </div>
+                  {priceDraft !== null && (
+                    <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+                      {selected.price_override != null && (
+                        <button
+                          onClick={() => setPriceDraft("")}
+                          disabled={saving}
+                          className="mr-auto text-[11px] font-bold font-poppins uppercase tracking-wider text-foreground/50 hover:text-foreground transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          Vrati obračunatu cenu
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setPriceDraft(null)}
+                        disabled={saving}
+                        className="h-11 px-4 rounded-xl bg-foreground/4 border border-foreground/10 text-foreground/76 text-[11px] font-bold tracking-widest font-poppins uppercase hover:bg-foreground/8 transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        Odustani
+                      </button>
+                      <button
+                        onClick={() => void handlePriceSave()}
+                        disabled={saving}
+                        className="h-11 px-5 rounded-xl bg-accent text-on-accent text-[11px] font-bold tracking-widest font-poppins uppercase disabled:opacity-40 transition-all active:scale-95 cursor-pointer"
+                      >
+                        {saving ? "Čuvam…" : priceDraft === "" ? "Vrati obračunatu" : "Sačuvaj cenu"}
+                      </button>
+                    </div>
+                  )}
                   {/* Bundle: the code to type for the next treatment + what's left of it. */}
                   {selectedBundle && (
                     <div className="mt-3 pt-3 border-t border-foreground/5 grid grid-cols-2 gap-3">
