@@ -54,7 +54,11 @@ function rangeStart(key: RangeKey): Date {
 
 type Row = { key: FunnelStage; label: string; hint: string; count: number };
 
-type SourceRow = { source: string; utm: string; opened: number; picked_studio: number; booked: number };
+/** entry/landed are empty for visits before landings were counted (sql/funnel_land.sql). */
+type SourceRow = {
+  source: string; utm: string; opened: number; picked_studio: number; booked: number;
+  entry: string; landed: number;
+};
 
 /** What opened the form, in the owner's words (see FunnelSource in lib/funnel.ts). */
 const SOURCE_LABELS: Record<string, string> = {
@@ -73,9 +77,22 @@ const SOURCE_LABELS: Record<string, string> = {
  */
 const META_UTM = /^(ig|insta|instagram|fb|facebook|meta|msg|messenger|an|th|threads)/;
 
-type Tally = { opened: number; booked: number };
-const tally = (): Tally => ({ opened: 0, booked: 0 });
-const add = (t: Tally, r: SourceRow) => { t.opened += r.opened; t.booked += r.booked; };
+/**
+ * landed counts visits that landed; landedOpened / landedBooked are those same
+ * visits only, so "booked / landed" never mixes in visits from before landings
+ * were counted.
+ */
+type Tally = { opened: number; booked: number; landed: number; landedOpened: number; landedBooked: number };
+const tally = (): Tally => ({ opened: 0, booked: 0, landed: 0, landedOpened: 0, landedBooked: 0 });
+const add = (t: Tally, r: SourceRow) => {
+  t.opened += r.opened;
+  t.booked += r.booked;
+  if (r.entry) {
+    t.landed += r.landed;
+    t.landedOpened += r.opened;
+    t.landedBooked += r.booked;
+  }
+};
 
 /** A few clear groups: the ad (split by how it opened the form), then everything without an ad. */
 function groupSources(rows: SourceRow[]) {
@@ -88,22 +105,25 @@ function groupSources(rows: SourceRow[]) {
 
   for (const r of rows) {
     const u = r.utm.toLowerCase();
+    // How the visit came in - from the landing, or (older visits) from what opened the form.
+    const viaLink = r.entry ? r.entry === "link" : r.source === "link";
     if (u && META_UTM.test(u)) {
       add(ad.all, r);
-      add(r.source === "link" ? ad.link : ad.site, r);
-      if (/^(ig|insta)/.test(u)) ad.instagram += r.opened;
-      else if (/^(fb|facebook)/.test(u)) ad.facebook += r.opened;
-      else ad.rest += r.opened;
+      add(viaLink ? ad.link : ad.site, r);
+      const n = r.entry ? r.landed : r.opened;
+      if (/^(ig|insta)/.test(u)) ad.instagram += n;
+      else if (/^(fb|facebook)/.test(u)) ad.facebook += n;
+      else ad.rest += n;
     } else if (u) {
       add(other, r);
       if (!other.names.includes(u)) other.names.push(u);
-    } else if (r.source === "link") {
+    } else if (viaLink) {
       add(link, r);
-    } else if (r.source === "nepoznato") {
+    } else if (!r.entry && r.source === "nepoznato") {
       add(before, r);
     } else {
       add(site, r);
-      buttons.set(r.source, (buttons.get(r.source) ?? 0) + r.opened);
+      if (r.source !== "nepoznato") buttons.set(r.source, (buttons.get(r.source) ?? 0) + r.opened);
     }
   }
   const topButton = [...buttons.entries()].sort((x, y) => y[1] - x[1])[0]?.[0];
@@ -151,6 +171,7 @@ export default function FunnelPage() {
     if (bySource.error) console.error("[fnl] sources failed:", bySource.error.code, bySource.error.message);
     setSources((bySource.data ?? []).map((r) => ({
       ...r, opened: Number(r.opened), picked_studio: Number(r.picked_studio), booked: Number(r.booked),
+      landed: Number(r.landed),
     })));
     setLoading(false);
     if (error) {
@@ -417,7 +438,9 @@ export default function FunnelPage() {
 
           {/* Where people opened the form from */}
           {sources.length > 0 && (() => {
-            const g = groupSources(sources);
+            // Landings carry no studio - with a studio picked, only form openings can be compared.
+            const g = groupSources(studio ? sources.map((r) => ({ ...r, entry: "", landed: 0 })) : sources);
+            const show = (t: Tally) => t.opened > 0 || t.landed > 0;
             const platforms = [
               g.ad.instagram > 0 && `Instagram ${g.ad.instagram.toLocaleString("sr-RS")}`,
               g.ad.facebook > 0 && `Facebook ${g.ad.facebook.toLocaleString("sr-RS")}`,
@@ -428,11 +451,11 @@ export default function FunnelPage() {
                 <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-3 md:mb-5 px-1 md:px-0">
                   <h2 className="text-lg md:text-2xl font-bold font-playfair">Odakle dolaze</h2>
                   <p className="text-[10px] md:text-xs font-bold font-poppins uppercase tracking-widest text-foreground/50">
-                    Otvorilo formu · zakazalo
+                    Došlo · otvorilo formu · zakazalo
                   </p>
                 </div>
                 <ul className="flex flex-col gap-1.5">
-                  {g.ad.all.opened > 0 && (
+                  {show(g.ad.all) && (
                     <li className="rounded-2xl bg-foreground/3">
                       <SourceLine
                         icon={<span className="flex -space-x-2"><InstagramLogo /><FacebookLogo /></span>}
@@ -441,36 +464,41 @@ export default function FunnelPage() {
                         t={g.ad.all}
                       />
                       <div className="flex flex-col gap-1 px-2 pb-2 md:px-3 md:pb-3">
-                        {g.ad.link.opened > 0 && (
+                        {show(g.ad.link) && (
                           <SourceLine sub icon={<IconBadge Icon={Link2} />} label="Direktan link (na BookingModal)" detail="forma se otvorila odmah" t={g.ad.link} />
                         )}
-                        {g.ad.site.opened > 0 && (
-                          <SourceLine sub icon={<IconBadge Icon={MousePointerClick} />} label="Preko sajta" detail="pogledali sajt, pa kliknuli dugme" t={g.ad.site} />
+                        {show(g.ad.site) && (
+                          <SourceLine sub icon={<IconBadge Icon={MousePointerClick} />} label="Na početnu stranu" detail="forma se otvara tek kad kliknu dugme" t={g.ad.site} />
                         )}
                       </div>
                     </li>
                   )}
-                  {g.link.opened > 0 && (
+                  {show(g.link) && (
                     <li className="rounded-2xl bg-foreground/3">
                       <SourceLine icon={<IconBadge Icon={Link2} />} label="Direktan link (bez reklame)" detail="link poslat porukom, bio, QR..." t={g.link} />
                     </li>
                   )}
-                  {g.site.opened > 0 && (
+                  {show(g.site) && (
                     <li className="rounded-2xl bg-foreground/3">
-                      <SourceLine icon={<IconBadge Icon={Globe} />} label="Sa sajta (bez reklame)" detail={g.topButton && `najčešće: ${g.topButton}`} t={g.site} />
+                      <SourceLine icon={<IconBadge Icon={Globe} />} label="Početna strana (bez reklame)" detail={g.topButton && `najčešće: ${g.topButton}`} t={g.site} />
                     </li>
                   )}
-                  {g.other.opened > 0 && (
+                  {show(g.other) && (
                     <li className="rounded-2xl bg-foreground/3">
                       <SourceLine icon={<IconBadge Icon={Search} />} label="Drugi izvor" detail={g.other.names.join(", ")} t={g.other} />
                     </li>
                   )}
-                  {g.before.opened > 0 && (
+                  {show(g.before) && (
                     <li className="rounded-2xl bg-foreground/3 opacity-70">
                       <SourceLine icon={<IconBadge Icon={History} />} label="Pre početka merenja" detail="izvor nije zapisan" t={g.before} />
                     </li>
                   )}
                 </ul>
+                <p className="mt-3 px-1 text-[11px] md:text-xs text-foreground/50 font-poppins leading-relaxed">
+                  {studio
+                    ? "Sa izabranim studiom vidi se samo ko je otvorio formu - dolasci na sajt još nemaju studio."
+                    : "Procenat = zakazali od svih koji su došli. Direktan link otvara formu sam, zato tu skoro svi „otvore formu“ - poredite procente, ne otvaranja. Dolasci se broje od 07.10.2026."}
+                </p>
               </section>
             );
           })()}
@@ -540,7 +568,11 @@ function Kpi({ icon: Icon, label, value, tint }: { icon: typeof Users; label: st
 function SourceLine({ icon, label, detail, t, sub = false }: {
   icon: React.ReactNode; label: string; detail?: string | null | false; t: Tally; sub?: boolean;
 }) {
-  const pct = t.opened > 0 ? (t.booked / t.opened) * 100 : 0;
+  // Counted from the landing when we have it, else (older visits) from opening the form.
+  const fromLanding = t.landed > 0;
+  const start = fromLanding ? t.landed : t.opened;
+  const booked = fromLanding ? t.landedBooked : t.booked;
+  const pct = start > 0 ? (booked / start) * 100 : 0;
   return (
     <div className={`flex items-center gap-3 font-poppins ${sub ? "p-2 md:px-3 rounded-xl bg-foreground/4" : "p-3 md:px-4"}`}>
       <span className="shrink-0 flex items-center justify-center min-w-9">{icon}</span>
@@ -549,10 +581,18 @@ function SourceLine({ icon, label, detail, t, sub = false }: {
         {detail && <p className="text-[11px] md:text-xs text-foreground/50 truncate">{detail}</p>}
       </div>
       <div className="text-right shrink-0">
-        <p className={`font-bold tabular-nums leading-none ${sub ? "text-base md:text-lg" : "text-lg md:text-xl"}`}>{t.opened.toLocaleString("sr-RS")}</p>
+        <p className={`font-bold tabular-nums leading-none ${sub ? "text-base md:text-lg" : "text-lg md:text-xl"}`}>
+          {start.toLocaleString("sr-RS")}
+          <span className="ml-1 text-[10px] font-medium text-foreground/45">{fromLanding ? "došlo" : "otvorilo"}</span>
+        </p>
+        {fromLanding && (
+          <p className="text-[11px] md:text-xs text-foreground/50 tabular-nums mt-1">
+            {t.landedOpened.toLocaleString("sr-RS")} otvorilo formu
+          </p>
+        )}
         <p className="text-[11px] md:text-xs text-foreground/60 tabular-nums mt-1 inline-flex items-center gap-1">
           <CalendarCheck size={12} className="text-green-400" />
-          {t.booked.toLocaleString("sr-RS")} <span className="text-foreground/40">({fmtPct(pct)})</span>
+          {booked.toLocaleString("sr-RS")} <span className="text-foreground/40">({fmtPct(pct)})</span>
         </p>
       </div>
     </div>

@@ -379,7 +379,7 @@ export type Database = {
       }
       admin_funnel_sources: {
         Args: { p_from: string; p_to: string; p_location?: string | null }
-        Returns: { source: string; utm: string; opened: number; picked_studio: number; booked: number }[]
+        Returns: { source: string; utm: string; opened: number; picked_studio: number; booked: number; entry: string; landed: number }[]
       }
       public_popular_services: { Args: Record<string, never>; Returns: { service_id: string; rank: number }[] }
       admin_booking_funnel: {

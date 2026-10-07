@@ -16,7 +16,7 @@ import Footer from "@/components/Footer";
 import WistiaVideo from "@/components/WistiaVideo";
 import ScrollReveal from "@/components/ScrollReveal";
 import type { LocationId } from "@/lib/locations";
-import type { FunnelSource } from "@/lib/funnel";
+import { trackLanding, type FunnelSource } from "@/lib/funnel";
 import { urlHasLinkPromo } from "@/lib/linkPromo";
 
 // Heavy (Supabase + framer-motion) and never visible on first paint — load it on demand.
@@ -105,7 +105,9 @@ export default function HomeClient() {
     const keywords = regija ? REGION_SLUGS[pol ?? "zene"][regija] : undefined;
     const gender: Gender | undefined = pol ?? (keywords ? "zene" : undefined);
 
-    if (!keywords && !gender && !studio && params.get("book") !== "1" && !urlHasLinkPromo()) return;
+    const opensForm = !!(keywords || gender || studio || params.get("book") === "1" || urlHasLinkPromo());
+    trackLanding(opensForm ? "link" : "root");
+    if (!opensForm) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPreselectedNames(keywords ?? []);
     setPreselectedBundle(undefined);

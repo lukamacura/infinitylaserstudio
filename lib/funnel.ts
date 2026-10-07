@@ -18,7 +18,14 @@ export const FUNNEL_STAGES = [
   { key: "booked",   label: "Zakazao termin",      hint: "Rezervacija je sačuvana" },
 ] as const;
 
-export type FunnelStage = (typeof FUNNEL_STAGES)[number]["key"];
+/**
+ * "land" is recorded on every home-page visit, before any click, so /fnl can
+ * compare entry points from the same start. Not a form step - not in FUNNEL_STAGES.
+ */
+export type FunnelStage = (typeof FUNNEL_STAGES)[number]["key"] | "land";
+
+/** How a visit entered the home page: a link that opens the form by itself, or the plain page. */
+export type FunnelEntry = "link" | "root";
 
 /** One id per browser tab, so reopening the form is still the same visitor. */
 function sessionId(): string | null {
@@ -66,11 +73,17 @@ function visitUtm(): string | null {
   }
 }
 
+/** Records the visit landing on the home page (once per tab - the database keeps the first). */
+export function trackLanding(entry: FunnelEntry) {
+  rememberVisitUtm(); // may run before the floating button's own call
+  trackFunnel("land", null, entry);
+}
+
 /** Stages already sent from this tab - going back and forth sends nothing new. */
 const sent = new Set<FunnelStage>();
 
 /** Fire-and-forget. Tracking must never be able to break the booking flow. */
-export function trackFunnel(stage: FunnelStage, location: LocationId | null = null, source?: FunnelSource) {
+export function trackFunnel(stage: FunnelStage, location: LocationId | null = null, source?: FunnelSource | FunnelEntry) {
   try {
     if (sent.has(stage)) return;
     sent.add(stage);
@@ -79,8 +92,8 @@ export function trackFunnel(stage: FunnelStage, location: LocationId | null = nu
     void supabase
       .rpc("public_track_funnel", {
         p_session: id, p_stage: stage, p_location: location,
-        // Where the visit and the click came from ride along with the first stage only.
-        ...(stage === "open" ? { p_source: source ?? null, p_utm: visitUtm() } : {}),
+        // Where the visit and the click came from ride along with the landing and the opening only.
+        ...(stage === "open" || stage === "land" ? { p_source: source ?? null, p_utm: visitUtm() } : {}),
       })
       .then(() => {}, () => {});
   } catch { /* ignore */ }
