@@ -1143,16 +1143,76 @@ export default function AdminPage() {
     return r.reservation_services.map(rs => rs.services).filter((s): s is ServiceRef => s !== null);
   }
 
+  /** Whether the booked length still includes the 10-min first-visit consultation (null = services not loaded). */
+  function withConsultation(r: ReservationFull): boolean | null {
+    const services = servicesOf(r).map(s => serviceById.get(s.id));
+    if (services.some(s => !s)) return null;
+    return services.length > 0 && r.total_duration >= calcBookingDuration(services as ServiceInfo[]);
+  }
+
+  /**
+   * "Stari klijent" drops the 10-min consultation and shortens the appointment
+   * to the bare treatment time; "Novi klijent" puts it back. The first-visit
+   * check on the site goes by e-mail only, so a shared address can get it wrong.
+   */
+  async function handleConsultationToggle(on: boolean) {
+    if (!selected || withConsultation(selected) === null || withConsultation(selected) === on) return;
+    const services = servicesOf(selected).map(s => serviceById.get(s.id)) as ServiceInfo[];
+    const duration = on ? calcBookingDuration(services) : calcTotalDuration(services);
+    const startMin = timeToMinutes(selected.start_time);
+    const endTime  = `${minutesToTime(startMin + duration)}:00`;
+
+    // A longer appointment must not run into the next one.
+    if (duration > selected.total_duration) {
+      const { data: day, error } = await supabase
+        .from("reservations")
+        .select("id, start_time, end_time, status")
+        .eq("date", selected.date)
+        .eq("location", selected.location)
+        .neq("id", selected.id);
+      if (error || !day) {
+        setNotice("Provera termina nije uspela. Proveri internet vezu.");
+        return;
+      }
+      const clash = day.some(d =>
+        isActive({ status: d.status as ReservationStatus }) &&
+        startMin < timeToMinutes(d.end_time) && startMin + duration > timeToMinutes(d.start_time));
+      if (clash) {
+        setNotice("Konsultacije ne staju - sledeći termin počinje odmah posle ovog.");
+        return;
+      }
+    }
+
+    setSaving(true);
+    const { error } = await supabase
+      .from("reservations")
+      .update({ total_duration: duration, end_time: endTime })
+      .eq("id", selected.id);
+    if (error) {
+      console.error("Changing the consultation failed:", error);
+      setNotice("Trajanje termina nije sačuvano. Pokušaj ponovo.");
+      setSaving(false);
+      return;
+    }
+    const patch = { total_duration: duration, end_time: endTime };
+    patchReservation(selected.id, patch);
+    setCallReservations(prev => prev.map(r => (r.id === selected.id ? { ...r, ...patch } : r)));
+    setClientGroups(prev => prev.map(g => ({
+      ...g, reservations: g.reservations.map(r => (r.id === selected.id ? { ...r, ...patch } : r)),
+    })));
+    setSelected({ ...selected, ...patch });
+    setSaving(false);
+  }
+
   /**
    * Length of the appointment with these regions. A first visit keeps its
    * consultation: if the current length already covered one, the new one does too.
    */
   function durationFor(r: ReservationFull, ids: string[]): number | null {
-    const before = servicesOf(r).map(s => serviceById.get(s.id));
-    const after  = ids.map(id => serviceById.get(id));
-    if (before.some(s => !s) || after.some(s => !s)) return null;
-    const hadConsultation =
-      before.length > 0 && r.total_duration >= calcBookingDuration(before as ServiceInfo[]);
+    const after = ids.map(id => serviceById.get(id));
+    if (after.some(s => !s)) return null;
+    const hadConsultation = withConsultation(r);
+    if (hadConsultation === null) return null;
     return hadConsultation
       ? calcBookingDuration(after as ServiceInfo[])
       : calcTotalDuration(after as ServiceInfo[]);
@@ -2291,6 +2351,33 @@ export default function AdminPage() {
                         {rs.services.name}
                       </span>
                     ))}
+                    {withConsultation(selected) === true && (
+                      <span className="inline-flex items-center gap-2 pl-3.5 sm:pl-5 pr-2 py-2 sm:py-2.5 bg-rose/5 border border-rose/15 rounded-xl sm:rounded-2xl text-[13px] font-bold font-poppins text-rose shadow-sm">
+                        Konsultacija (10 min)
+                        <button
+                          type="button"
+                          onClick={() => handleConsultationToggle(false)}
+                          disabled={saving}
+                          aria-label="Izbaci konsultaciju"
+                          title="Stari klijent - izbaci konsultaciju i skrati termin za 10 min"
+                          className="w-5 h-5 flex items-center justify-center rounded-md hover:bg-rose/15 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <X size={13} strokeWidth={2.5} />
+                        </button>
+                      </span>
+                    )}
+                    {withConsultation(selected) === false && (
+                      <button
+                        type="button"
+                        onClick={() => handleConsultationToggle(true)}
+                        disabled={saving}
+                        title="Novi klijent - vrati konsultaciju i produži termin za 10 min"
+                        className="inline-flex items-center gap-2 px-3.5 sm:px-5 py-2 sm:py-2.5 border border-dashed border-foreground/15 rounded-xl sm:rounded-2xl text-[13px] font-bold font-poppins text-foreground/35 hover:text-foreground/60 hover:border-foreground/30 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <span className="line-through">Konsultacija (10 min)</span>
+                        <Plus size={13} strokeWidth={2.5} />
+                      </button>
+                    )}
                   </div>
                 ) : (() => {
                   const draft      = withServices(selected, servicesDraft);
