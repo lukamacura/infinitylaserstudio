@@ -114,6 +114,13 @@ a, button, summary, [role="button"] {
   touch-action: manipulation;
 }
 
+/* Safety net: nothing may widen the page sideways - on phones a few px of
+   overflow lets the user zoom out and the whole layout shrinks. `clip` (not
+   `hidden`) keeps position: sticky working. */
+html, body {
+  overflow-x: clip;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

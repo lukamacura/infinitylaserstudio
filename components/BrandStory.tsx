@@ -35,7 +35,7 @@ function FounderFlipCard() {
             taller back face so no empty band shows below the photo. */}
         <div
           aria-hidden={flipped}
-          className="col-start-1 row-start-1 self-stretch relative aspect-[4/5] overflow-hidden rounded-3xl shadow-lg [backface-visibility:hidden]"
+          className="col-start-1 row-start-1 self-stretch w-full min-w-0 relative aspect-[4/5] overflow-hidden rounded-3xl shadow-lg [backface-visibility:hidden]"
         >
           <Image
             src="/team/ana.webp"
