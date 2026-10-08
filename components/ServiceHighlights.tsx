@@ -1,10 +1,16 @@
 import type { CSSProperties } from "react";
 import Image from "next/image";
-import { CircleCheck, Crosshair } from "lucide-react";
+import { Caveat } from "next/font/google";
 
-// Ordered shallow → deep, so the left side covers the finer hair and the
-// right side the coarser, deeper-rooted hair. Each wavelength goes by the
-// name of the laser it comes from.
+// Same handwriting as the landing page's "Računica" sheet (CostComparison).
+const caveat = Caveat({
+  subsets: ["latin", "latin-ext"],
+  display: "swap",
+  preload: false,
+});
+
+// Ordered shallow → deep, from the finer hair to the coarser, deeper-rooted
+// hair. Each wavelength goes by the name of the laser it comes from.
 const wavelengths = [
   {
     nm: "755",
@@ -32,133 +38,123 @@ const wavelengths = [
   },
 ];
 
-// Two branches split from one node beside the machine and reach out to the
-// centres of the two entries (25% and 75% of the column). Drawn for the left
-// side; the right side mirrors it.
-function Branches({ side }: { side: "left" | "right" }) {
-  return (
-    <div
-      aria-hidden
-      className={`relative hidden w-14 shrink-0 md:block lg:w-20 ${side === "right" ? "-scale-x-100" : ""}`}
-    >
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible">
-        {["M100 50 C55 50 55 25 20 25 H0", "M100 50 C55 50 55 75 20 75 H0"].map((d) => (
-          <path
-            key={d}
-            d={d}
-            pathLength={1}
-            className="tech-branch"
-            fill="none"
-            stroke="var(--accent)"
-            strokeOpacity="0.55"
-            strokeWidth="1"
-            vectorEffect="non-scaling-stroke"
-          />
-        ))}
-      </svg>
-      <span className="tech-node absolute right-0 top-1/2 h-2 w-2 -translate-y-1/2 translate-x-1/2 rounded-full bg-accent shadow-[0_0_10px_2px_var(--accent)]" />
-      {["top-1/4", "top-3/4"].map((top) => (
-        <span
-          key={top}
-          className={`tech-tip absolute left-0 ${top} h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-accent bg-background`}
-        />
-      ))}
-    </div>
-  );
-}
-
-function Wavelengths({ items, side }: { items: typeof wavelengths; side: "left" | "right" }) {
-  return (
-    // The branches stop short of the text: each side is two equal rows with
-    // the entry centred in its row, so a branch tip (at 25% / 75%) lines up
-    // with the middle of its entry across the gap.
-    <div className={`flex min-w-0 md:gap-6 lg:gap-10 ${side === "right" ? "flex-row-reverse" : ""}`}>
-      <ul
-        className="grid min-w-0 flex-1 grid-rows-2 items-center gap-8 md:gap-0"
-        // Each side slides in from its own edge, toward the machine.
-        style={{ "--tech-from": side === "left" ? "-0.875rem" : "0.875rem" } as CSSProperties}
-      >
-        {items.map((w, i) => (
-          <li
-            key={w.nm}
-            style={{ "--rv-i": i } as CSSProperties}
-            className={`tech-callout md:py-6 ${side === "left" ? "md:text-right" : ""}`}
-          >
-            <p className="font-poppins text-eyebrow uppercase tracking-[0.25em] text-accent/70 sm:text-xs">
-              {w.nm} nm
-            </p>
-            <p className="metal-text mt-1 font-playfair text-2xl leading-tight sm:text-3xl lg:text-4xl">
-              {w.name}
-            </p>
-            <span
-              className={`my-3 block h-px w-10 bg-linear-to-r from-accent/60 to-transparent sm:w-12 ${
-                side === "left" ? "md:ml-auto md:from-transparent md:to-accent/60" : ""
-              }`}
-            />
-            {/* Problem → solution: the crosshair is the laser locking onto that
-                hair, the check is the zone it clears. */}
-            <div className="space-y-1.5 font-poppins text-meta leading-snug sm:text-sm">
-              {[
-                { label: "Za", value: w.za, Icon: Crosshair, tone: "text-accent" },
-                { label: "Gde", value: w.gde, Icon: CircleCheck, tone: "text-emerald-300/80" },
-              ].map(({ label, value, Icon, tone }) => (
-                <div key={label} className={`flex items-start gap-1.5 ${side === "left" ? "md:justify-end" : ""}`}>
-                  <Icon className={`mt-px h-3.5 w-3.5 shrink-0 sm:mt-0.5 ${tone}`} strokeWidth={2} aria-hidden />
-                  <p>
-                    <span className="font-medium text-foreground/50">{label}:</span>{" "}
-                    <span className="text-foreground">{value}</span>
-                  </p>
-                </div>
-              ))}
-            </div>
-          </li>
-        ))}
-      </ul>
-      <Branches side={side} />
-    </div>
-  );
+/** Place in the writing order of a notes page (`--w` in globals.css). */
+function write(i: number): CSSProperties {
+  return { "--w": i } as CSSProperties;
 }
 
 export default function ServiceHighlights() {
   return (
     <section id="tech" className="scroll-mt-24 section-y px-6 bg-background">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-5xl mx-auto">
         {/* Heading */}
         <div data-rv className="text-center section-head">
-          <span className="inline-flex items-center gap-2 font-poppins text-sm text-foreground/60 mb-4">
+          <span className="inline-flex items-center gap-2 font-poppins text-sm text-foreground/60 mb-3">
             <span className="w-6 h-px bg-accent inline-block" />
             Tehnologija
             <span className="w-6 h-px bg-accent inline-block" />
           </span>
-          <h2 className="font-playfair text-title sm:text-[2.75rem] md:text-[3.25rem] text-foreground leading-[1.15]">
+          <h2 className="font-playfair text-[1.875rem] sm:text-4xl md:text-[2.75rem] text-foreground leading-tight text-balance">
             Tip dlake je apsolutno <b>nebitan</b>.
           </h2>
         </div>
 
-        {/* Wavelengths | image | wavelengths. On phones the machine sits on
-            top and the four wavelengths fall into a 2×2 grid below it.
-            One trigger for the whole figure (`.tech-*` in globals.css), held
-            back until a good part of the machine is on screen. */}
-        <div
-          data-rv="group"
-          data-rv-ratio="0.35"
-          className="grid grid-cols-2 items-stretch gap-x-5 gap-y-10 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:gap-x-2 md:gap-y-0"
-        >
-          <Wavelengths items={wavelengths.slice(0, 2)} side="left" />
+        {/* The machine with its name pencilled in beside it, and the four
+            wavelengths written out on a sheet next to it (below it on phones).
+            Each half has its own trigger, so on phones the sheet only starts
+            writing once it is the thing on screen. */}
+        <div className="grid items-center gap-y-12 md:grid-cols-[auto_minmax(0,1fr)] md:gap-x-12 lg:gap-x-16">
+          {/* Room on the left for the label */}
+          <div className="justify-self-center md:pl-36">
+            <div
+              data-rv="group"
+              data-rv-ratio="0.35"
+              className="notes-body relative aspect-213/474 h-64 sm:h-72 md:h-112"
+            >
+              <div className="tech-glow absolute -inset-x-8 inset-y-10 rounded-full bg-accent blur-2xl md:inset-y-16" />
+              <Image
+                src="/services/laser.webp"
+                alt="ATON Magnum laser uređaj"
+                fill
+                className="tech-machine object-contain z-10"
+                sizes="(max-width: 768px) 130px, 202px"
+              />
 
-          {/* Center image */}
-          <div className="relative col-span-2 order-first aspect-213/474 h-72 self-center justify-self-center sm:h-80 md:order-none md:col-span-1 md:h-120">
-            <div className="tech-glow absolute -inset-x-8 inset-y-10 rounded-full bg-accent blur-2xl md:inset-y-16" />
-            <Image
-              src="/services/laser.webp"
-              alt="ATON Magnum laser uređaj"
-              fill
-              className="tech-machine object-contain z-10"
-              sizes="(max-width: 768px) 144px, 216px"
-            />
+              {/* "Aton Magnum", with a hand-drawn arrow onto the lettering on
+                  the machine's side. */}
+              <div
+                aria-hidden
+                className={`${caveat.className} absolute right-full top-[22%] z-20 w-20 text-accent md:top-[32%] md:w-36`}
+              >
+                <p
+                  className="notes-write -rotate-6 text-2xl font-bold leading-[0.9] md:whitespace-nowrap md:text-[1.75rem]"
+                  style={write(2)}
+                >
+                  Aton <br className="md:hidden" />
+                  Magnum
+                </p>
+                <svg viewBox="0 0 100 80" fill="none" className="mt-1 block w-full overflow-visible">
+                  <path
+                    className="notes-draw"
+                    style={write(3)}
+                    pathLength={1}
+                    d="M30 4 C12 34 42 68 110 62"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    className="notes-draw"
+                    style={write(3.6)}
+                    pathLength={1}
+                    d="M100 53 L111 62 L99 70"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+            </div>
           </div>
 
-          <Wavelengths items={wavelengths.slice(2, 4)} side="right" />
+          {/* The four wavelengths, on a rose sheet so it reads apart from the
+              "Računica" page further down. */}
+          <div data-rv="zoom" className="w-full max-w-xl justify-self-center md:max-w-none">
+            <div className={`notes-paper notes-rose ${caveat.className} px-5 pt-8 pb-6 sm:px-9 md:pt-10 md:pb-8`}>
+              <span className="notes-tape" aria-hidden />
+
+              <div data-rv="group" data-rv-ratio="0.35" className="notes-body">
+                <p className="notes-write relative inline-block text-2xl md:text-[2rem] font-bold leading-none mb-6 md:mb-7">
+                  4 talasne dužine, 1 aparat
+                  <svg className="absolute -bottom-2 left-0 w-full h-2" viewBox="0 0 200 8" fill="none" preserveAspectRatio="none" aria-hidden>
+                    <path d="M2 5 Q40 1 90 4 T198 3" stroke="var(--pen)" strokeWidth="2.5" strokeLinecap="round" />
+                  </svg>
+                </p>
+
+                <ul className="grid gap-x-8 gap-y-5 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2 lg:gap-y-7">
+                  {wavelengths.map((w, i) => (
+                    <li key={w.nm} className="notes-write" style={write(1 + i * 2)}>
+                      <p className="flex items-baseline gap-2 leading-none">
+                        <span className="text-lg md:text-xl font-bold text-(--pen)">{w.nm} nm</span>
+                        <span className="text-2xl md:text-[1.75rem] font-bold">{w.name}</span>
+                      </p>
+                      <p className="mt-1.5 text-lg md:text-[1.3rem] leading-tight">{w.za}</p>
+                      <p className="text-lg md:text-[1.3rem] leading-tight opacity-70">↳ {w.gde}</p>
+                    </li>
+                  ))}
+                </ul>
+
+                {/* Red-pen remark */}
+                <p
+                  className="notes-write mt-5 md:mt-7 -rotate-2 origin-left text-xl md:text-[1.75rem] font-bold leading-none text-(--pen)"
+                  style={write(1 + wavelengths.length * 2)}
+                >
+                  = svaka dlaka dobije svoj laser!
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>

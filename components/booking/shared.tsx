@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { Service } from "@/lib/database.types";
+import { staffPhoto } from "@/lib/staff";
 
 export type Gender = "zene" | "muskarci";
 
@@ -392,6 +393,42 @@ export function cascade(index: number, stepMs: number, cap: number): CSSProperti
 }
 
 /** Shape-matched placeholder block (see `.bm-skeleton` in globals.css). */
+/** "1 slobodan termin", "3 slobodna termina", "12 slobodnih termina". */
+export function freeSlotsLabel(n: number): string {
+  const one = n % 10 === 1 && n % 100 !== 11;
+  const few = n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14);
+  return `${n} ${one ? "slobodan termin" : few ? "slobodna termina" : "slobodnih termina"}`;
+}
+
+/** Overlapping round photos of who works a day (initial when there is no photo). */
+export function StaffAvatars({ names }: { names: string[] }) {
+  return (
+    <div className="flex items-center gap-1.5 mt-2 min-w-0 max-w-full" aria-label={`Radi: ${names.join(", ")}`}>
+      <div className="flex -space-x-1.5 shrink-0">
+        {names.map((name) => {
+          const src = staffPhoto(name);
+          return (
+            <span
+              key={name}
+              title={name}
+              className="relative w-6 h-6 sm:w-7 sm:h-7 rounded-full overflow-hidden ring-2 ring-background bg-foreground/15 flex items-center justify-center"
+            >
+              {src ? (
+                <Image src={src} alt="" fill sizes="28px" className="object-cover object-top" />
+              ) : (
+                <span className="text-[10px] sm:text-xs font-bold font-poppins text-foreground/70">
+                  {name.charAt(0).toUpperCase()}
+                </span>
+              )}
+            </span>
+          );
+        })}
+      </div>
+      <span className="text-[10px] sm:text-xs text-foreground/50 font-poppins truncate">{names.join(", ")}</span>
+    </div>
+  );
+}
+
 export function Skeleton({ className }: { className: string }) {
   return <div className={`bm-skeleton ${className}`} aria-hidden="true" />;
 }

@@ -28,17 +28,17 @@ export default function WistiaVideo() {
   return (
     <section ref={sectionRef} className="section-y px-6 bg-background-alt">
       <Reveal className="max-w-sm mx-auto flex flex-col items-center gap-6">
-        <h2 className="font-playfair text-title sm:text-[2.75rem] md:text-[3.25rem] text-foreground text-center leading-[1.15]">
-          Zašto baš{" "}
+        <h2 className="font-playfair text-[1.5rem] sm:text-[1.75rem] text-foreground text-center leading-[1.25]">
+          Pogledaj video da vidiš kako je nastao{" "}
           <span className="relative inline-block">
-            Infinity Laser?
+            naš studio
             <svg className="absolute -bottom-1 left-0 w-full" viewBox="0 0 200 8" fill="none">
               <path d="M2 6 Q50 1 100 5 Q150 9 198 4" stroke="#DCA8A6" strokeWidth="3" strokeLinecap="round" fill="none" />
             </svg>
           </span>
         </h2>
 
-        <div className="w-full rounded-2xl overflow-hidden shadow-lg">
+        <div className="w-full max-w-[18rem] rounded-2xl overflow-hidden shadow-lg">
           <style>{`
             wistia-player[media-id='vwpjkz1l7z']:not(:defined) {
               ${near ? "background: center / contain no-repeat url('https://fast.wistia.com/embed/medias/vwpjkz1l7z/swatch');" : ""}

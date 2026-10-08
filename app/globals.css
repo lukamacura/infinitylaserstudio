@@ -549,8 +549,8 @@ body {
   transform: none;
 }
 
-/* Technology section: the machine settles in first with its glow blooming
-   behind it, then each wavelength slides in from its own side. */
+/* Technology section: the machine settles in with its glow blooming behind
+   it, while its name gets pencilled in beside it (`.notes-*` below). */
 .tech-machine {
   opacity: 0;
   transform: translateY(1.25rem) scale(0.96);
@@ -562,38 +562,12 @@ body {
   transition: opacity 1.6s ease-out 0.25s;
 }
 
-.tech-callout {
-  --tech-delay: calc(0.9s + var(--rv-i, 0) * 0.15s);
-  opacity: 0;
-  transform: translateX(var(--tech-from, 0));
-  transition: opacity 0.7s var(--rv-ease) var(--tech-delay), transform 0.9s var(--rv-ease) var(--tech-delay);
-}
-
-[data-rv-in] .tech-machine,
-[data-rv-in] .tech-callout {
+[data-rv-in] .tech-machine {
   opacity: 1;
   transform: none;
 }
 
 [data-rv-in] .tech-glow { opacity: 0.15; }
-
-/* Branches grow out of the node beside the machine, then the entries land. */
-.tech-branch {
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  transition: stroke-dashoffset 1s var(--rv-ease) 0.3s;
-}
-
-.tech-node,
-.tech-tip {
-  opacity: 0;
-  transition: opacity 0.4s ease-out 0.25s;
-}
-.tech-tip { transition-delay: 1.1s; }
-
-[data-rv-in] .tech-branch { stroke-dashoffset: 0; }
-[data-rv-in] .tech-node,
-[data-rv-in] .tech-tip { opacity: 1; }
 
 /* ── Price comparison: a page of math notes ───────────────────────────────────
    A sheet of squared paper taped to the page, with the sum written out by
@@ -604,14 +578,17 @@ body {
   --ink: #24326E;   /* ballpoint blue */
   --pen: #C8405B;   /* the red pen that marks the answer */
   --sq: 1.5rem;     /* one square of the grid */
+  --paper: #FBF9F2;
+  --grid: rgba(62, 104, 170, 0.17);
+  --tape: color-mix(in srgb, var(--accent) 62%, transparent);
   position: relative;
   color: var(--ink);
-  background-color: #FBF9F2;
+  background-color: var(--paper);
   background-image:
     radial-gradient(120% 90% at 12% 0%, rgba(255, 255, 255, 0.9), transparent 60%),
     linear-gradient(160deg, transparent 55%, rgba(80, 50, 40, 0.07)),
-    linear-gradient(rgba(62, 104, 170, 0.17) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(62, 104, 170, 0.17) 1px, transparent 1px);
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
   background-size: auto, auto, var(--sq) var(--sq), var(--sq) var(--sq);
   border-radius: 3px;
   rotate: -1deg;
@@ -630,7 +607,7 @@ body {
   height: 1.8rem;
   margin-left: -3.5rem;
   rotate: 2.5deg;
-  background: color-mix(in srgb, var(--accent) 62%, transparent);
+  background: var(--tape);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
   /* torn ends */
   clip-path: polygon(0 0, 3% 22%, 0 45%, 3% 70%, 0 100%, 100% 100%, 97% 75%, 100% 50%, 97% 25%, 100% 0);
@@ -657,6 +634,20 @@ body {
   .notes-paper { --sq: 1.75rem; rotate: -1.4deg; }
 }
 
+/* The technology sheet: blush paper in the brand rose, plum ink, and tilted
+   the other way, so it doesn't read as a second copy of the sum. */
+.notes-paper.notes-rose {
+  --ink: #4A1F2E;
+  --pen: #B23A5E;
+  --paper: #F9E9E7;
+  --grid: rgba(158, 103, 105, 0.2);
+  --tape: rgba(251, 249, 242, 0.7);
+  rotate: 1deg;
+}
+@media (min-width: 48rem) {
+  .notes-paper.notes-rose { rotate: 1.2deg; }
+}
+
 /* Booking confirmation: the "email sent" pill drops in, then the sheet is
    laid down on the modal before the writing starts. */
 @keyframes bmMailIn {
@@ -674,14 +665,12 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  [data-rv], .tech-machine, .tech-callout {
+  [data-rv], .tech-machine {
     opacity: 1;
     transform: none;
     transition: none;
   }
   .tech-glow { opacity: 0.15; transition: none; }
-  .tech-branch { stroke-dashoffset: 0; transition: none; }
-  .tech-node, .tech-tip { opacity: 1; transition: none; }
   .notes-write { clip-path: none; transition: none; }
   .notes-draw  { opacity: 1; stroke-dashoffset: 0; transition: none; }
 }

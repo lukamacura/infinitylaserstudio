@@ -1,7 +1,13 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { ArrowRight, Check } from "lucide-react";
+import { loadNextFreeDays, type FreeDay } from "@/lib/nextFreeDays";
+import { DEFAULT_LOCATION, getLocation } from "@/lib/locations";
+import {
+  SR_DAYS_FULL, SR_MONTHS_SHORT, monIdx, Skeleton, StaffAvatars, freeSlotsLabel,
+} from "@/components/booking/shared";
 
 interface Props { onOpen: () => void; }
 
@@ -11,9 +17,29 @@ const perks = [
   "Zakaži kad ti odgovara",
 ];
 
+const DAY_COUNT = 3;
+
 export default function CommunitySection({ onOpen }: Props) {
+  const sectionRef = useRef<HTMLElement>(null);
+  // null = still loading; [] = nothing to show, so the plain button stands in.
+  const [days, setDays] = useState<FreeDay[] | null>(null);
+
+  // Ask for the calendar only once the section is about to scroll into view.
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el) return;
+    let cancelled = false;
+    const io = new IntersectionObserver((entries) => {
+      if (!entries.some((e) => e.isIntersecting)) return;
+      io.disconnect();
+      void loadNextFreeDays(DEFAULT_LOCATION, DAY_COUNT).then((d) => { if (!cancelled) setDays(d); });
+    }, { rootMargin: "600px 0px" });
+    io.observe(el);
+    return () => { cancelled = true; io.disconnect(); };
+  }, []);
+
   return (
-    <section className="scroll-mt-24 section-y px-6 bg-background" id="book">
+    <section ref={sectionRef} className="scroll-mt-24 section-y px-6 bg-background" id="book">
       <div data-rv="zoom" className="relative max-w-6xl mx-auto overflow-hidden rounded-[2rem] border border-foreground/10 bg-surface">
         {/* Decorative glow */}
         <div className="absolute -bottom-24 -left-24 w-72 h-72 rounded-full bg-accent opacity-10 blur-3xl pointer-events-none" />
@@ -62,27 +88,76 @@ export default function CommunitySection({ onOpen }: Props) {
             ))}
           </ul>
 
-          {/* The halo breathes behind the button; the button itself clips the light sweep */}
-          <span className="cta-halo relative mt-8 flex sm:inline-flex">
-            <button
-              onClick={onOpen}
-              className="group metal relative overflow-hidden w-full inline-flex items-center justify-between gap-5 h-14 lg:h-16 pl-8 pr-2.5 rounded-full font-poppins text-base lg:text-[17px] font-bold tracking-[0.06em] cursor-pointer transition-transform duration-300 ease-out hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
-            >
-              <span className="cta-sweep" aria-hidden="true" />
-              <span className="relative">ZAKAŽI ODMAH</span>
-              <span className="relative flex items-center justify-center w-9 h-9 lg:w-11 lg:h-11 rounded-full bg-on-accent text-accent transition-transform duration-300 ease-out group-hover:translate-x-1">
-                <ArrowRight size={18} strokeWidth={2.2} />
-              </span>
-            </button>
-          </span>
-
-          <p className="flex items-center gap-2.5 font-poppins text-meta text-foreground/60 mt-5">
-            <span className="relative flex h-2 w-2 shrink-0">
-              <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60 motion-safe:animate-ping" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+          {days && days.length === 0 ? (
+            /* The halo breathes behind the button; the button itself clips the light sweep */
+            <span className="cta-halo relative mt-8 flex sm:inline-flex">
+              <button
+                onClick={onOpen}
+                className="group metal relative overflow-hidden w-full inline-flex items-center justify-between gap-5 h-14 lg:h-16 pl-8 pr-2.5 rounded-full font-poppins text-base lg:text-[17px] font-bold tracking-[0.06em] cursor-pointer transition-transform duration-300 ease-out hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
+              >
+                <span className="cta-sweep" aria-hidden="true" />
+                <span className="relative">ZAKAŽI ODMAH</span>
+                <span className="relative flex items-center justify-center w-9 h-9 lg:w-11 lg:h-11 rounded-full bg-on-accent text-accent transition-transform duration-300 ease-out group-hover:translate-x-1">
+                  <ArrowRight size={18} strokeWidth={2.2} />
+                </span>
+              </button>
             </span>
-            Slobodni termini dostupni ove nedelje.
-          </p>
+          ) : (
+            <div className="mt-8">
+              <p className="flex items-center gap-2.5 font-poppins text-meta text-foreground/60 mb-3">
+                <span className="relative flex h-2 w-2 shrink-0">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60 motion-safe:animate-ping" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+                </span>
+                Prvi slobodni dani · {getLocation(DEFAULT_LOCATION).name}
+              </p>
+
+              {/* Same cards as the modal's date step; any of them just opens the form. */}
+              <div className="grid grid-cols-3 gap-2 sm:gap-3" aria-busy={!days}>
+                {days
+                  ? days.map((day) => {
+                      const d = new Date(`${day.date}T00:00:00`);
+                      return (
+                        <button
+                          key={day.date}
+                          onClick={onOpen}
+                          className="relative flex flex-col items-start min-w-0 p-3 sm:p-4 rounded-2xl sm:rounded-3xl border-2 border-foreground/8 hover:border-accent/60 text-left cursor-pointer transition-colors"
+                        >
+                          {day.isToday && (
+                            <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md text-[10px] sm:text-xs font-bold font-poppins bm-metal bg-accent">
+                              DANAS
+                            </span>
+                          )}
+                          <p className="text-sm sm:text-base md:text-lg font-bold font-poppins leading-tight">
+                            {SR_DAYS_FULL[monIdx(d)]}
+                          </p>
+                          <p className="text-xs sm:text-sm text-foreground/50 font-poppins mt-0.5">
+                            {d.getDate()}. {SR_MONTHS_SHORT[d.getMonth()]}
+                          </p>
+                          <p className="text-[10px] sm:text-xs text-foreground/40 font-poppins mt-1">
+                            {freeSlotsLabel(day.freeSlots)}
+                          </p>
+                          {day.staff.length > 0 && <StaffAvatars names={day.staff} />}
+                        </button>
+                      );
+                    })
+                  : Array.from({ length: DAY_COUNT }, (_, i) => (
+                      <div key={i} className="flex flex-col items-start gap-2 p-3 sm:p-4 rounded-2xl sm:rounded-3xl border-2 border-foreground/8">
+                        <Skeleton className="h-4 sm:h-5 w-4/5 rounded" />
+                        <Skeleton className="h-3 sm:h-3.5 w-1/2 rounded" />
+                      </div>
+                    ))}
+              </div>
+
+              <button
+                onClick={onOpen}
+                className="group mt-4 inline-flex items-center gap-1.5 font-poppins text-meta font-semibold text-accent cursor-pointer"
+              >
+                Svi termini
+                <ArrowRight size={14} className="transition-transform group-hover:translate-x-0.5" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </section>

@@ -29,7 +29,7 @@ import { hasLinkPromo } from "@/lib/linkPromo";
 import { fetchPriceRows, PriceBook } from "@/lib/prices";
 import { trackFunnel, type FunnelStage, type FunnelSource } from "@/lib/funnel";
 import { JOURNEY_STEPS } from "@/lib/journey";
-import { fetchPublicStaffDays, staffPhoto } from "@/lib/staff";
+import { fetchPublicStaffDays } from "@/lib/staff";
 import {
   LOCATIONS, DEFAULT_LOCATION, getLocation, fullAddress, type LocationId,
 } from "@/lib/locations";
@@ -39,7 +39,7 @@ import {
   SR_DAYS_FULL, SR_MONTHS_SHORT, monIdx, toDateStr, formatDateFull, formatPrice, EMAIL_REGEX,
   lockBodyScroll, unlockBodyScroll,
   isComboService, isFullBody, isAllowedWithFullBody, isFullFace, isCoveredByFullFace, applyComboRules,
-  ACCENTS, GENDER_OPTIONS, COL_W, cascade, Skeleton, PREPARATION_STEPS,
+  ACCENTS, GENDER_OPTIONS, COL_W, cascade, Skeleton, PREPARATION_STEPS, StaffAvatars, freeSlotsLabel,
 } from "@/components/booking/shared";
 import BookingSuccess from "@/components/booking/BookingSuccess";
 
@@ -64,42 +64,6 @@ type BookingMode = "single" | "bundle";
 function formatDateShort(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`);
   return `${SR_DAYS_FULL[monIdx(d)]}, ${d.getDate()}. ${SR_MONTHS_SHORT[d.getMonth()]}`;
-}
-
-/** "1 slobodan termin", "3 slobodna termina", "12 slobodnih termina". */
-function freeSlotsLabel(n: number): string {
-  const one = n % 10 === 1 && n % 100 !== 11;
-  const few = n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14);
-  return `${n} ${one ? "slobodan termin" : few ? "slobodna termina" : "slobodnih termina"}`;
-}
-
-/** Overlapping round photos of who works a day (initial when there is no photo). */
-function StaffAvatars({ names }: { names: string[] }) {
-  return (
-    <div className="flex items-center gap-1.5 mt-2 min-w-0 max-w-full" aria-label={`Radi: ${names.join(", ")}`}>
-      <div className="flex -space-x-1.5 shrink-0">
-        {names.map((name) => {
-          const src = staffPhoto(name);
-          return (
-            <span
-              key={name}
-              title={name}
-              className="relative w-6 h-6 sm:w-7 sm:h-7 rounded-full overflow-hidden ring-2 ring-background bg-foreground/15 flex items-center justify-center"
-            >
-              {src ? (
-                <Image src={src} alt="" fill sizes="28px" className="object-cover object-top" />
-              ) : (
-                <span className="text-[10px] sm:text-xs font-bold font-poppins text-foreground/70">
-                  {name.charAt(0).toUpperCase()}
-                </span>
-              )}
-            </span>
-          );
-        })}
-      </div>
-      <span className="text-[10px] sm:text-xs text-foreground/50 font-poppins truncate">{names.join(", ")}</span>
-    </div>
-  );
 }
 
 /**

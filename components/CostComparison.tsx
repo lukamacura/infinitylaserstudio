@@ -29,11 +29,6 @@ function formatPrice(n: number): string {
   return n.toLocaleString("sr-RS");
 }
 
-/** Stagger step for `data-rv` (see "Scroll reveals" in globals.css). */
-function step(i: number): CSSProperties {
-  return { "--rv-i": i } as CSSProperties;
-}
-
 /** Place in the writing order of the notes page (`--w` in globals.css). */
 function write(i: number): CSSProperties {
   return { "--w": i } as CSSProperties;
@@ -55,23 +50,12 @@ export default function CostComparison() {
       <div className="max-w-3xl mx-auto">
         {/* Eyebrow */}
         <div data-rv className="text-center mb-4">
-          <span className="inline-flex items-center gap-2 font-poppins text-sm text-foreground/60">
+          <h2 className="inline-flex items-center gap-2 font-poppins font-normal text-sm text-foreground/60">
             <span className="w-6 h-px bg-accent inline-block" />
-            Jednom platiš. Zauvek slobodna.
+            Koliko te dlačice koštaju za ceo život?
             <span className="w-6 h-px bg-accent inline-block" />
-          </span>
+          </h2>
         </div>
-
-        {/* Headline */}
-        <h2 data-rv style={step(1)} className="font-playfair text-title sm:text-[2.75rem] md:text-[3.25rem] text-foreground text-center leading-[1.15] section-head">
-          Koliko te dlačice koštaju{" "}
-          <span className="relative inline-block">
-            za ceo život?
-            <svg className="absolute -bottom-1 left-0 w-full" viewBox="0 0 200 8" fill="none">
-              <path d="M2 6 Q50 1 100 5 Q150 9 198 4" stroke="#DCA8A6" strokeWidth="3" strokeLinecap="round" fill="none" />
-            </svg>
-          </span>
-        </h2>
 
         {/* The sum, worked out by hand on a sheet of squared paper.
             The outer div brings the sheet in; the inner one starts the writing

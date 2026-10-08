@@ -140,8 +140,8 @@ export default function HomeClient() {
       <Hero onOpen={() => open("hero")} />
       <StatsSection />
       <CostComparison />
-      <ServiceHighlights />
       <WistiaVideo />
+      <ServiceHighlights />
       <BrandStory />
       <SafetySection />
       <TeamSection />
