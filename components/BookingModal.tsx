@@ -2288,16 +2288,6 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                       {promoErrorMsg ?? "Nevažeći promo kod."}
                     </p>
                   )}
-                  {/* Discovery for anyone who never saw the ad. One tap fills the code. */}
-                  {promoKind === "none" && isReturningCustomer !== true && !linkDiscount && (
-                    <button
-                      type="button"
-                      onClick={() => { setPromoCode(STUDENT_PROMO_CODE); setPromoStatus("idle"); setPromoErrorMsg(null); }}
-                      className="text-[11px] sm:text-xs font-poppins text-foreground/45 hover:text-foreground/70 underline underline-offset-2 mt-2 cursor-pointer transition-colors"
-                    >
-                      Student? Iskoristi −20% na prvi tretman
-                    </button>
-                  )}
                 </div>
               )}
 
