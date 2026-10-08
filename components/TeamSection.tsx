@@ -2,6 +2,11 @@
 
 import Reveal from "@/components/Reveal";
 import Image from "next/image";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+// Phone carousel: time per person, and how long a touch holds it still.
+const INTERVAL = 3000;
+const PAUSE_AFTER_TOUCH = 9000;
 
 const members: { name: string; role?: string; quote: string; bio: string; src: string; accent: string }[] = [
   {
@@ -22,6 +27,7 @@ const members: { name: string; role?: string; quote: string; bio: string; src: s
   },
   {
     name: "Branka",
+    role: "Menadžer",
     quote: "Za mene je Infinity više od posla.",
     bio: "Branka se trudi da svakome pristupi lično - sasluša je, prilagodi tretman njenoj koži i potrebama i pobrine se da se oseća sigurno od prvog do poslednjeg tretmana.",
     src: "/team/branka.webp",
@@ -30,6 +36,76 @@ const members: { name: string; role?: string; quote: string; bio: string; src: s
 ];
 
 export default function TeamSection() {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const pausedUntil = useRef(0);
+  const [active, setActive] = useState(0);
+  const activeRef = useRef(0);
+  // Bumped on every auto turn so the dot's fill animation restarts.
+  const [cycle, setCycle] = useState(0);
+  const [autoplay, setAutoplay] = useState(true);
+
+  const goTo = useCallback((i: number) => {
+    const track = trackRef.current;
+    const card = cardRefs.current[i];
+    if (!track || !card) return;
+    track.scrollTo({
+      left: card.offsetLeft - (track.clientWidth - card.clientWidth) / 2,
+      behavior: "smooth",
+    });
+  }, []);
+
+  const pause = useCallback(() => {
+    pausedUntil.current = Date.now() + PAUSE_AFTER_TOUCH;
+    setAutoplay(false);
+  }, []);
+
+  // Whichever card sits closest to the track's centre is the active one.
+  const onScroll = useCallback(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const centre = track.scrollLeft + track.clientWidth / 2;
+    let best = 0;
+    let bestDist = Infinity;
+    cardRefs.current.forEach((card, i) => {
+      if (!card) return;
+      const d = Math.abs(card.offsetLeft + card.clientWidth / 2 - centre);
+      if (d < bestDist) {
+        bestDist = d;
+        best = i;
+      }
+    });
+    activeRef.current = best;
+    setActive(best);
+  }, []);
+
+  // Auto-rotate only on phones, only while the section is on screen,
+  // and never for users who asked for reduced motion.
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const mobile = window.matchMedia("(max-width: 639px)");
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+    if (reduced.matches) return;
+
+    let visible = false;
+    const io = new IntersectionObserver(([e]) => (visible = e.isIntersecting), { threshold: 0.4 });
+    io.observe(track);
+
+    const id = window.setInterval(() => {
+      if (!mobile.matches || !visible) return;
+      if (Date.now() < pausedUntil.current) return;
+      setAutoplay(true);
+      goTo((activeRef.current + 1) % members.length);
+      setCycle((c) => c + 1);
+    }, INTERVAL);
+
+    return () => {
+      io.disconnect();
+      window.clearInterval(id);
+    };
+  }, [goTo]);
+
   return (
     <section className="section-y px-6 bg-background">
       <div className="max-w-3xl mx-auto">
@@ -70,10 +146,28 @@ export default function TeamSection() {
           Sertifikovane terapeutkinje sa stotinama zadovoljnih klijentkinja.
         </Reveal>
 
-        {/* Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-          {members.map((m, i) => (
-            <Reveal key={m.name} y={40} delay={0.15 + i * 0.18} margin="-60px" className="flex">
+        {/* Cards — grid on desktop; on phones a snap carousel that rotates itself */}
+        <Reveal y={40} delay={0.15} margin="-60px">
+          <div
+            ref={trackRef}
+            onScroll={onScroll}
+            onTouchStart={pause}
+            onPointerDown={pause}
+            onWheel={pause}
+            className="relative flex sm:grid sm:grid-cols-2 gap-4 sm:gap-6 overflow-x-auto sm:overflow-visible snap-x snap-mandatory -mx-6 px-[11%] sm:mx-0 sm:px-0 py-2 sm:py-0 perspective-[1200px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            {members.map((m, i) => (
+              <div
+                key={m.name}
+                ref={(el) => {
+                  cardRefs.current[i] = el;
+                }}
+                className={`flex shrink-0 w-[78%] sm:w-auto snap-center transition-all duration-500 ease-out ${
+                  i === active
+                    ? ""
+                    : `max-sm:scale-[0.88] max-sm:opacity-55 max-sm:saturate-50 ${i < active ? "max-sm:rotate-y-[14deg]" : "max-sm:-rotate-y-[14deg]"}`
+                }`}
+              >
             <div className="group relative flex-1 bg-surface rounded-3xl overflow-hidden shadow-sm border border-foreground/8 flex flex-col transition-transform duration-300 ease-out hover:-translate-y-1.5">
               {/* Photo */}
               <div className="relative w-full aspect-4/5 overflow-hidden">
@@ -81,7 +175,7 @@ export default function TeamSection() {
                   src={m.src}
                   alt={m.name}
                   fill
-                  sizes="(max-width: 640px) 100vw, 372px"
+                  sizes="(max-width: 640px) 78vw, 372px"
                   className="object-cover object-top transition-transform duration-700 ease-out group-hover:scale-105"
                 />
                 {/* Gradient overlay */}
@@ -111,9 +205,36 @@ export default function TeamSection() {
                 <p className="font-poppins text-sm text-foreground/60 leading-relaxed">{m.bio}</p>
               </div>
             </div>
-            </Reveal>
-          ))}
-        </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Dots (phones only) — the active one fills up until the next turn */}
+          <div className="sm:hidden flex justify-center gap-2 mt-5">
+            {members.map((m, i) => (
+              <button
+                key={m.name}
+                type="button"
+                aria-label={`Prikaži ${m.name}`}
+                onClick={() => {
+                  pause();
+                  goTo(i);
+                }}
+                className={`relative h-2 rounded-full overflow-hidden transition-all duration-300 ${
+                  i === active ? "w-7 bg-accent/30" : "w-2 bg-foreground/15"
+                }`}
+              >
+                {i === active && (
+                  <span
+                    key={cycle}
+                    className="absolute inset-y-0 left-0 bg-accent rounded-full motion-reduce:animate-none! motion-reduce:w-full!"
+                    style={autoplay ? { animation: `teamDotFill ${INTERVAL}ms linear forwards` } : { width: "100%" }}
+                  />
+                )}
+              </button>
+            ))}
+          </div>
+        </Reveal>
       </div>
     </section>
   );

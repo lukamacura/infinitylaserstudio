@@ -56,6 +56,13 @@
   padding-block: var(--section-y);
 }
 
+/* Two neighbours on the same background have no tone change to mark a break,
+   so the full gap just reads as an empty band. Pull the second one closer. */
+.section-y.bg-background + .section-y.bg-background,
+.section-y.bg-background-alt + .section-y.bg-background-alt {
+  padding-top: calc(var(--section-y) * 0.4);
+}
+
 @utility section-head {
   margin-bottom: var(--section-head);
 }
@@ -78,7 +85,17 @@
 }
 
 html {
-  scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
+
+/* No 300ms tap delay / double-tap zoom on controls. */
+a, button, summary, [role="button"] {
+  touch-action: manipulation;
 }
 
 body {
@@ -267,7 +284,7 @@ body {
   position: absolute;
   left: 5px;
   top: 6px;
-  bottom: calc(100% - 9rem - 6px);   /* two 4.5rem steps down: the last dot */
+  bottom: calc(100% - 2 * var(--journey-step, 4.5rem) - 6px);   /* two steps down: the last dot */
   width: 1px;
   background: color-mix(in srgb, var(--accent) 22%, transparent);
   list-style: none;
@@ -447,6 +464,11 @@ body {
    The treatment-zone posters drift past in one endless row. The track holds
    the list twice, so sliding it by half its width lands on an identical frame.
    Transform only - it stays on the compositor. */
+@keyframes teamDotFill {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+
 @keyframes regionMarquee {
   to { transform: translateX(-50%); }
 }

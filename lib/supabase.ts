@@ -28,22 +28,38 @@ export const MULTI_REGION_PAUSE_MINUTES = 5;  // single flat pause added when 2+
 // The schedule that produces these windows lives in the DB — see lib/availability.ts.
 export type BusinessWindow = { start: number; end: number };
 
+type DurationService = { service_duration: number; name?: string };
+
+/**
+ * Earrings + chin are treated in one go, so together they take as long as one
+ * of them alone: the shorter one is dropped. Mirrored in public_create_booking.
+ */
+function mergeEarringsAndChin<T extends DurationService>(services: T[]): T[] {
+  const n = (s: T) => (s.name ?? "").toLowerCase();
+  const earrings = services.find((s) => n(s).includes("nausnice") && !n(s).includes("brada"));
+  const chin     = services.find((s) => n(s).includes("brada") && !n(s).includes("nausnice"));
+  if (!earrings || !chin) return services;
+  const drop = earrings.service_duration >= chin.service_duration ? chin : earrings;
+  return services.filter((s) => s !== drop);
+}
+
 /**
  * Sum of treatment time for the selected regions, plus one flat 5-min pause
  * when 2+ regions are selected. Per-region `pause_duration` is ignored by design.
  */
-function sumServiceDurations(services: { service_duration: number }[]): number {
-  const sum = services.reduce((acc, s) => acc + s.service_duration, 0);
-  return services.length >= 2 ? sum + MULTI_REGION_PAUSE_MINUTES : sum;
+function sumServiceDurations(services: DurationService[]): number {
+  const merged = mergeEarringsAndChin(services);
+  const sum = merged.reduce((acc, s) => acc + s.service_duration, 0);
+  return merged.length >= 2 ? sum + MULTI_REGION_PAUSE_MINUTES : sum;
 }
 
 /** Treatment duration for returning customers (no consultation), rounded up to slot boundary. */
-export function calcTotalDuration(services: { service_duration: number }[]): number {
+export function calcTotalDuration(services: DurationService[]): number {
   return Math.ceil(sumServiceDurations(services) / SLOT_SIZE) * SLOT_SIZE;
 }
 
 /** Treatment duration for first-time customers — adds a 10-min consultation, rounded up to slot boundary. */
-export function calcBookingDuration(services: { service_duration: number }[]): number {
+export function calcBookingDuration(services: DurationService[]): number {
   return Math.ceil((sumServiceDurations(services) + CONSULTATION_MINUTES) / SLOT_SIZE) * SLOT_SIZE;
 }
 

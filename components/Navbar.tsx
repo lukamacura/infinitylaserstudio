@@ -47,7 +47,7 @@ export default function Navbar() {
     <>
     <nav className="fixed top-0 left-0 right-0 z-50">
       <div
-        className="relative z-10 border-b border-accent/10 backdrop-blur-xl bg-background/85"
+        className="relative z-10 border-b border-accent/10 md:backdrop-blur-xl bg-background/95 md:bg-background/85"
       >
         <div className="max-w-7xl mx-auto flex items-center justify-between px-6 lg:px-12 py-3">
           <Link href="/" aria-label="Infinity Laser Studio" className="flex items-center gap-3">

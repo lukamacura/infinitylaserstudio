@@ -27,7 +27,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
     // On desktop the whole hero fits one screen, so the journey timeline is
     // visible without scrolling: the stage takes the free height, the timeline
     // sits at the bottom.
-    <section className="relative overflow-hidden bg-background font-poppins lg:min-h-svh lg:flex lg:flex-col">
+    <section className="relative overflow-hidden bg-background font-poppins min-h-svh flex flex-col">
       {/* Static H1 for SEO crawlers — visually hidden, always present in HTML */}
       <h1 className="sr-only">
         Laserska epilacija Novi Sad i Sombor — Infinity Laser Studio
@@ -40,8 +40,8 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
       </div>
 
       {/* ── Stage: the offer ───────────────────────────────────────────────── */}
-      <div className="relative min-h-svh lg:min-h-0 flex flex-col justify-end lg:justify-center lg:flex-1">
-        <div className="lg:grid lg:grid-cols-12 lg:items-center lg:gap-10 max-w-7xl mx-auto w-full px-6 lg:px-12 pt-24 pb-8 lg:pt-24 lg:pb-8">
+      <div className="relative flex-1 flex flex-col justify-end lg:justify-center">
+        <div className="lg:grid lg:grid-cols-12 lg:items-center lg:gap-10 max-w-7xl mx-auto w-full px-6 lg:px-12 pt-20 pb-5 lg:pt-24 lg:pb-8">
 
           {/* Photo — behind the text on phones, an arch on desktop */}
           <div className="absolute inset-0 lg:relative lg:inset-auto lg:order-2 lg:col-span-5 lg:justify-self-end lg:w-full lg:max-w-[440px]">
@@ -84,11 +84,11 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
               </span>
             </p>
 
-            <p className="mt-5 lg:mt-7 text-base lg:text-lg text-foreground/80 max-w-md leading-relaxed">
+            <p className="mt-3 lg:mt-7 text-base lg:text-lg text-foreground/80 max-w-md leading-relaxed">
               Zauvek se opraštaš od brijača, iritacija i uraslih dlaka.
             </p>
 
-            <div className="mt-7 lg:mt-9 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
+            <div className="mt-5 lg:mt-9 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
               {/* The halo breathes behind the button; the button itself clips the light sweep */}
               <span className="cta-halo relative inline-flex">
                 <button
@@ -119,7 +119,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
             </div>
 
             {/* Proof */}
-            <dl className="mt-9 lg:mt-10 pt-6 lg:pt-7 border-t border-foreground/10 grid grid-cols-3 max-w-lg">
+            <dl className="mt-5 lg:mt-10 pt-4 lg:pt-7 border-t border-foreground/10 grid grid-cols-3 max-w-lg">
               {stats.map((s, i) => (
                 <div key={s.value} className={`flex flex-col-reverse ${i > 0 ? "pl-5 lg:pl-8 border-l border-foreground/10" : ""}`}>
                   <dt className="mt-1 text-[10px] lg:text-[11px] font-semibold text-foreground/55 tracking-[0.2em] uppercase">{s.label}</dt>
@@ -133,9 +133,9 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
 
       {/* ── Journey: a light travels Danas → 6-8 tretmana → Zauvek, on a loop.
              Everything here is CSS (see `.journey` in globals.css). ─────────── */}
-      <div className="relative max-w-7xl mx-auto px-6 lg:px-12 pb-12 lg:pb-8 w-full">
-        <div className="rounded-3xl border border-accent/20 bg-surface/70 backdrop-blur-md px-6 py-7 lg:px-12 lg:py-6">
-          <ol className="journey relative grid lg:grid-cols-3">
+      <div className="relative max-w-7xl mx-auto px-6 lg:px-12 pb-4 lg:pb-8 w-full">
+        <div className="rounded-3xl border border-accent/20 bg-surface/70 backdrop-blur-md px-6 py-4 lg:px-12 lg:py-6">
+          <ol className="journey relative grid lg:grid-cols-3 [--journey-step:3.25rem] lg:[--journey-step:4.5rem]">
             {/* Track + travelling light: vertical on phones, horizontal on desktop */}
             <li className="journey-track" aria-hidden="true">
               <span className="journey-fill" />
@@ -145,7 +145,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
             {steps.map((step, i) => (
               <li
                 key={step.phase}
-                className="journey-step relative flex lg:flex-col gap-4 lg:gap-3.5 h-[4.5rem] last:h-auto lg:h-auto lg:pr-8"
+                className="journey-step relative flex lg:flex-col gap-4 lg:gap-3.5 h-(--journey-step) last:h-auto lg:h-auto lg:pr-8"
               >
                 <span className="journey-dot">
                   <span className="journey-dot-on" />

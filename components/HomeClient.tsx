@@ -10,6 +10,7 @@ import CostComparison from "@/components/CostComparison";
 // import MenSection from "@/components/MenSection";
 import FAQSection from "@/components/FAQSection";
 import TeamSection from "@/components/TeamSection";
+import SafetySection from "@/components/SafetySection";
 import CommunitySection from "@/components/CommunitySection";
 import LocationsSection from "@/components/LocationsSection";
 import Footer from "@/components/Footer";
@@ -142,6 +143,7 @@ export default function HomeClient() {
       <ServiceHighlights />
       <WistiaVideo />
       <BrandStory />
+      <SafetySection />
       <TeamSection />
       {/* <MenSection onOpen={open} /> */}
 <CommunitySection onOpen={() => open("zajednica")} />

@@ -354,9 +354,12 @@ const PAYMENT_TERMS =
  * iOS-style banners "from Ana", each tied to the step it argues for.
  * One per step, shown once per modal session.
  */
-type NoticeKey = "guarantee" | "plan" | "reassure" | "student";
-/** `step: null` = never auto-fires on a step; raised by hand from the flow. */
-const NOTICES: Record<NoticeKey, { step: Step | null; message: string }> = {
+type NoticeKey = "guarantee" | "plan" | "safety" | "reassure" | "student";
+/**
+ * `step: null` = never auto-fires on a step; raised by hand from the flow.
+ * `more` = tapping the banner opens Ana's longer answer (SafetyInfo).
+ */
+const NOTICES: Record<NoticeKey, { step: Step | null; message: string; more?: boolean }> = {
   guarantee: {
     step: 2,
     message: "Ako se ne rešiš 70 do 90% dlačica, vraćamo ti novac.",
@@ -365,6 +368,12 @@ const NOTICES: Record<NoticeKey, { step: Step | null; message: string }> = {
     step: "plan",
     message:
       "Za potpune rezultate telu treba 6 do 8, a licu 10 tretmana. Uzmi paket i uštedi. Plaćaš jednom, a dolaziš koliko ti treba.",
+  },
+  safety: {
+    step: 3,
+    message:
+      "Laser deluje samo na folikul dlake, par milimetara u koži. Ne dopire do organa i ne utiče na plodnost.",
+    more: true,
   },
   reassure: {
     step: 4,
@@ -385,6 +394,84 @@ const BUNDLE_IMAGES: Record<number, string> = {
   8: "/paketi/8.webp",
   10: "/paketi/10.webp",
 };
+
+/** Ana's full answer to "is it safe?" - the long form of NOTICES.safety. */
+function SafetyInfo({ onClose, accentHex }: { onClose: () => void; accentHex: string }) {
+  return (
+    <motion.div
+      className="absolute inset-0 z-[75] flex items-end sm:items-center justify-center sm:p-6"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <motion.div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bm-safety-title"
+        className="relative w-full sm:max-w-lg max-h-[88dvh] overflow-y-auto rounded-t-3xl sm:rounded-3xl border border-foreground/10 bg-[var(--bm-surface)] shadow-2xl p-5 sm:p-7"
+        initial={{ y: 40, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 40, opacity: 0 }}
+        transition={{ type: "spring", stiffness: 380, damping: 34 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-3 mb-4">
+          <div className="relative w-11 h-11 rounded-[14px] overflow-hidden shrink-0 ring-1 ring-white/10">
+            <Image src="/team/ana.webp" alt="Ana" fill sizes="44px" className="object-cover" />
+          </div>
+          <p className="flex-1 text-sm font-bold font-poppins text-foreground">
+            Ana <span className="font-medium text-foreground/50">(Vlasnik, doktor medicine)</span>
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-8 h-8 shrink-0 flex items-center justify-center rounded-full hover:bg-foreground/5 transition-colors cursor-pointer"
+            aria-label="Zatvori"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <h3 id="bm-safety-title" className="text-xl sm:text-2xl font-bold font-playfair mb-3">
+          Da li je laserska epilacija bezbedna?
+        </h3>
+        <p className="text-sm sm:text-base font-poppins text-foreground/75 leading-relaxed">
+          <span className="font-semibold text-foreground">Da.</span> Kada se radi pravilno - odgovarajućim
+          laserom i parametrima prilagođenim tvojoj koži i dlaci - ima veoma dobar bezbednosni profil.
+        </p>
+
+        <ul className="flex flex-col gap-3 mt-4">
+          {[
+            "Najčešće reakcije su crvenilo i blagi otok oko folikula - blage su i brzo prođu.",
+            "Laser deluje samo na folikul, par milimetara u koži. Nema dokaza da oštećuje nerve, limfni sistem, organe, jajnike ili matericu, niti da utiče na plodnost.",
+            "Pregled 104 naučne publikacije (2023) zaključuje da se većina komplikacija može sprečiti pravilnom procenom kože, parametrima i obukom.",
+          ].map((t) => (
+            <li key={t} className="flex gap-2.5 text-sm sm:text-base font-poppins text-foreground/75 leading-snug">
+              <span className="mt-[7px] w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: accentHex }} />
+              {t}
+            </li>
+          ))}
+        </ul>
+
+        <p className="mt-5 pl-3 border-l-[3px] font-playfair italic text-base sm:text-lg text-foreground/85 leading-snug" style={{ borderColor: accentHex }}>
+          Bezbednost ne zavisi samo od lasera - već od toga ko ga koristi i kako. Tvoja koža zaslužuje
+          medicinski pristup, a ne samo aparat. 🤍
+        </p>
+        <p className="mt-4 text-[11px] font-poppins text-foreground/40">Izvori: Mallat et al., 2023; Lim &amp; Lanigan, 2006.</p>
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-5 w-full py-3 rounded-2xl font-semibold font-poppins text-sm sm:text-base bg-foreground/10 hover:bg-foreground/15 transition-colors cursor-pointer"
+        >
+          Razumem
+        </button>
+      </motion.div>
+    </motion.div>
+  );
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 export default function BookingModal({ isOpen, onClose, preselectedNames, preselectedBundle, preselectedGender, preselectedStudio, source }: BookingModalProps) {
@@ -464,6 +551,10 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   // immediately dismiss it again.
   const shownNoticesRef = useRef<NoticeKey[]>([]);
   const [activeNotice, setActiveNotice] = useState<NoticeKey | null>(null);
+  /** Ana's longer safety answer, opened by tapping the "safety" banner. */
+  const [showSafetyInfo, setShowSafetyInfo] = useState(false);
+  /** A swipe-to-dismiss must not also count as a tap on the banner. */
+  const noticeDraggedRef = useRef(false);
   const emailCheckSeqRef = useRef(0);
 
   /** null = not checked yet for current email; true = exists in reservations */
@@ -844,6 +935,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     if (!isOpen) {
       shownNoticesRef.current = [];
       setActiveNotice(null);
+      setShowSafetyInfo(false);
       return;
     }
     // A notice belongs to its step - leaving the step takes it with you.
@@ -1333,6 +1425,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       onKeyDown={(e) => {
         if (e.key !== "Escape") return;
         e.stopPropagation();
+        if (showSafetyInfo) { setShowSafetyInfo(false); return; }
         if (showPolicyInfo) { setShowPolicyInfo(false); return; }
         if (!submitting) handleClose();
       }}
@@ -1361,14 +1454,21 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               drag="y"
               dragConstraints={{ top: 0, bottom: 0 }}
               dragElastic={{ top: 0.5, bottom: 0 }}
+              onPointerDown={() => { noticeDraggedRef.current = false; }}
+              onDragStart={() => { noticeDraggedRef.current = true; }}
               onDragEnd={(_, info) => {
                 if (info.offset.y < -32 || info.velocity.y < -450) setActiveNotice(null);
+              }}
+              onClick={() => {
+                if (!NOTICES[activeNotice].more || noticeDraggedRef.current) return;
+                setActiveNotice(null);
+                setShowSafetyInfo(true);
               }}
               className="pointer-events-auto relative w-full max-w-[430px] sm:max-w-[520px] rounded-[24px] sm:rounded-[28px] border border-foreground/10 bg-[var(--bm-surface)] p-3.5 sm:p-5 pr-9 sm:pr-11 shadow-[0_16px_44px_-10px_rgba(0,0,0,0.7)] cursor-grab active:cursor-grabbing"
             >
               <button
                 type="button"
-                onClick={() => setActiveNotice(null)}
+                onClick={(e) => { e.stopPropagation(); setActiveNotice(null); }}
                 className="absolute top-2.5 right-2.5 w-6 h-6 flex items-center justify-center rounded-full bg-foreground/10 hover:bg-foreground/20 active:scale-90 transition-all cursor-pointer"
                 aria-label="Zatvori obaveštenje"
               >
@@ -1389,11 +1489,21 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                   <p className="mt-0.5 sm:mt-1 text-[13px] sm:text-[15px] leading-snug font-poppins text-foreground/80">
                     {NOTICES[activeNotice].message}
                   </p>
+                  {NOTICES[activeNotice].more && (
+                    <p className="mt-1.5 text-[12px] sm:text-[13px] font-semibold font-poppins" style={{ color: accent.hex }}>
+                      Dodirni za više →
+                    </p>
+                  )}
                 </div>
               </div>
             </motion.div>
           </motion.div>
         )}
+      </AnimatePresence>
+
+      {/* Ana's longer safety answer - opened from the "safety" banner */}
+      <AnimatePresence>
+        {showSafetyInfo && <SafetyInfo onClose={() => setShowSafetyInfo(false)} accentHex={accent.hex} />}
       </AnimatePresence>
 
       {/* Modal shell */}

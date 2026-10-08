@@ -27,7 +27,7 @@ export default function WistiaVideo() {
 
   return (
     <section ref={sectionRef} className="section-y px-6 bg-background-alt">
-      <Reveal className="max-w-lg mx-auto flex flex-col items-center gap-6">
+      <Reveal className="max-w-sm mx-auto flex flex-col items-center gap-6">
         <span className="inline-flex items-center gap-2 font-poppins text-sm text-foreground/60">
           <span className="w-6 h-px bg-accent inline-block" />
           Pogledajte video
