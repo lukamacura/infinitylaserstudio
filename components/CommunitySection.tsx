@@ -113,7 +113,7 @@ export default function CommunitySection({ onOpen }: Props) {
               </p>
 
               {/* Same cards as the modal's date step; any of them just opens the form. */}
-              <div className="grid grid-cols-3 gap-2 sm:gap-3" aria-busy={!days}>
+              <div className="flex flex-col gap-2 sm:gap-3" aria-busy={!days}>
                 {days
                   ? days.map((day) => {
                       const d = new Date(`${day.date}T00:00:00`);
@@ -121,30 +121,33 @@ export default function CommunitySection({ onOpen }: Props) {
                         <button
                           key={day.date}
                           onClick={onOpen}
-                          className="relative flex flex-col items-start min-w-0 p-3 sm:p-4 rounded-2xl sm:rounded-3xl border-2 border-foreground/8 hover:border-accent/60 text-left cursor-pointer transition-colors"
+                          className="flex items-center justify-between gap-3 min-w-0 px-4 py-3 sm:px-5 sm:py-4 rounded-2xl sm:rounded-3xl border-2 border-foreground/8 hover:border-accent/60 text-left cursor-pointer transition-colors"
                         >
-                          {day.isToday && (
-                            <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md text-[10px] sm:text-xs font-bold font-poppins bm-metal bg-accent">
-                              DANAS
-                            </span>
+                          <div className="min-w-0">
+                            <p className="flex items-center gap-2 text-base md:text-lg font-bold font-poppins leading-tight">
+                              {SR_DAYS_FULL[monIdx(d)]}
+                              {day.isToday && (
+                                <span className="px-1.5 py-0.5 rounded-md text-[10px] sm:text-xs font-bold bm-metal bg-accent">
+                                  DANAS
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-xs sm:text-sm text-foreground/50 font-poppins mt-0.5">
+                              {d.getDate()}. {SR_MONTHS_SHORT[d.getMonth()]} · {freeSlotsLabel(day.freeSlots)}
+                            </p>
+                          </div>
+                          {day.staff.length > 0 && (
+                            <div className="shrink-0 [&>div]:mt-0">
+                              <StaffAvatars names={day.staff} />
+                            </div>
                           )}
-                          <p className="text-sm sm:text-base md:text-lg font-bold font-poppins leading-tight">
-                            {SR_DAYS_FULL[monIdx(d)]}
-                          </p>
-                          <p className="text-xs sm:text-sm text-foreground/50 font-poppins mt-0.5">
-                            {d.getDate()}. {SR_MONTHS_SHORT[d.getMonth()]}
-                          </p>
-                          <p className="text-[10px] sm:text-xs text-foreground/40 font-poppins mt-1">
-                            {freeSlotsLabel(day.freeSlots)}
-                          </p>
-                          {day.staff.length > 0 && <StaffAvatars names={day.staff} />}
                         </button>
                       );
                     })
                   : Array.from({ length: DAY_COUNT }, (_, i) => (
-                      <div key={i} className="flex flex-col items-start gap-2 p-3 sm:p-4 rounded-2xl sm:rounded-3xl border-2 border-foreground/8">
-                        <Skeleton className="h-4 sm:h-5 w-4/5 rounded" />
-                        <Skeleton className="h-3 sm:h-3.5 w-1/2 rounded" />
+                      <div key={i} className="flex flex-col items-start gap-2 px-4 py-3 sm:px-5 sm:py-4 rounded-2xl sm:rounded-3xl border-2 border-foreground/8">
+                        <Skeleton className="h-4 sm:h-5 w-2/5 rounded" />
+                        <Skeleton className="h-3 sm:h-3.5 w-1/3 rounded" />
                       </div>
                     ))}
               </div>
