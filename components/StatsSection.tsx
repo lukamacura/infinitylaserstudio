@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import Image from "next/image";
 import { ArrowUpRight, Sparkles, Star } from "lucide-react";
+import ReviewsCarousel from "./ReviewsCarousel";
 
 // Ažurirati povremeno prema stvarnom stanju na Google profilu.
 // Poslednja provera: 20.07.2026.
@@ -89,12 +90,7 @@ export default function StatsSection() {
     <section className="section-y px-6 bg-background-alt">
       {/* Heading */}
       <div data-rv className="max-w-6xl mx-auto text-center section-head">
-        <span className="inline-flex items-center gap-2 font-poppins text-sm text-foreground/60 mb-4">
-          <span className="w-6 h-px bg-accent inline-block" />
-          Brojke koje govore
-          <span className="w-6 h-px bg-accent inline-block" />
-        </span>
-        <h2 className="font-playfair text-4xl md:text-5xl text-foreground leading-tight">
+        <h2 className="font-playfair text-title sm:text-[2.75rem] md:text-[3.25rem] text-foreground leading-[1.15]">
           Rezultati koji{" "}
           <span className="text-rose">ostaju na koži</span>
         </h2>
@@ -118,8 +114,8 @@ export default function StatsSection() {
           </span>
 
           <div className="relative">
-            <p className="font-playfair text-3xl text-foreground">5 godina postojanja</p>
-            <p className="font-poppins text-sm text-foreground/65 leading-relaxed mt-1.5 max-w-sm">
+            <p className="font-playfair text-[1.75rem] sm:text-3xl text-foreground">5 godina postojanja</p>
+            <p className="font-poppins text-copy text-foreground/70 mt-1.5 max-w-sm">
               Infinity Laser Studio je od 2021. prvi izbor za lasersku epilaciju u regionu.
             </p>
             <div className="flex items-center gap-2 mt-4">
@@ -180,7 +176,7 @@ export default function StatsSection() {
             <span className="metal absolute inset-y-0 left-0 w-[70%] rounded-full" />
           </div>
           <p className="relative font-poppins text-sm font-semibold text-foreground/85 mt-4">Dlačica</p>
-          <p className="relative font-poppins text-xs text-foreground/50 mt-0.5">uklonjeno zauvek</p>
+          <p className="relative font-poppins text-meta text-foreground/60 mt-0.5">uklonjeno zauvek</p>
         </div>
 
         {/* 20+ zona - the region posters drift past */}
@@ -189,7 +185,7 @@ export default function StatsSection() {
             <p className="metal-text font-playfair text-5xl sm:text-6xl leading-none">20+</p>
             <div className="border-l-2 border-rose pl-5">
               <p className="font-poppins text-sm font-semibold text-foreground/85">Zona tretmana</p>
-              <p className="font-poppins text-xs text-foreground/50 mt-0.5">za svaki deo tela, za žene i muškarce</p>
+              <p className="font-poppins text-meta text-foreground/60 mt-0.5">za svaki deo tela, za žene i muškarce</p>
             </div>
           </div>
 
@@ -237,7 +233,7 @@ export default function StatsSection() {
             </span>
             <span className="min-w-0">
               <span className="block truncate font-poppins text-sm font-semibold text-white">@infinitylaserstudio</span>
-              <span className="block font-poppins text-[11px] text-white/70">Video · Instagram</span>
+              <span className="block font-poppins text-eyebrow text-white/75">Video · Instagram</span>
             </span>
           </div>
 
@@ -257,7 +253,7 @@ export default function StatsSection() {
       <div className="max-w-6xl mx-auto mt-14 md:mt-20">
         <div data-rv className="flex flex-col items-center text-center mb-8">
           <GoogleG className="w-7 h-7 mb-3" />
-          <h3 className="font-playfair text-3xl text-foreground">
+          <h3 className="font-playfair text-[1.75rem] sm:text-3xl text-foreground">
             Šta kažu <span className="text-rose">naše klijentkinje</span>
           </h3>
           <div className="flex items-center gap-2 mt-3">
@@ -267,23 +263,20 @@ export default function StatsSection() {
           </div>
         </div>
 
-        <div data-rv className="columns-1 md:columns-2 gap-4 [column-fill:_balance]">
-          {testimonials.map((t) => (
-            <div
-              key={t.name}
-              className="break-inside-avoid mb-4 bg-surface rounded-2xl shadow-sm border border-foreground/8 px-5 py-5 flex flex-col gap-3"
-            >
+        <div data-rv>
+          <ReviewsCarousel
+            reviews={testimonials}
+            header={
               <div className="flex items-center justify-between">
                 <Stars size="w-3.5 h-3.5" />
                 <GoogleG className="w-4 h-4 shrink-0 opacity-70" />
               </div>
-              <p className="font-poppins text-sm text-foreground/85 leading-relaxed">{t.quote}</p>
-              <p className="font-poppins text-xs font-semibold text-foreground/60">{t.name}</p>
-            </div>
-          ))}
+            }
+          />
         </div>
 
-        <div data-rv className="flex justify-center mt-8">
+        {/* No reveal here - the link to all reviews is always on screen */}
+        <div className="flex justify-center mt-6">
           <a
             href={GOOGLE_REVIEWS_URL}
             target="_blank"

@@ -9,19 +9,10 @@ export default function LocationsSection() {
   return (
     <section id="lokacije" className="scroll-mt-24 section-y px-6 bg-background">
       <div className="max-w-3xl mx-auto">
-        {/* Eyebrow */}
-        <Reveal className="text-center mb-4" y={16} duration={0.6} margin="-60px">
-          <span className="inline-flex items-center gap-2 font-poppins text-sm text-foreground/60">
-            <span className="w-6 h-px bg-accent inline-block" />
-            Gde se nalazimo
-            <span className="w-6 h-px bg-accent inline-block" />
-          </span>
-        </Reveal>
-
         {/* Headline */}
         <Reveal
           as="h2"
-          className="font-playfair text-4xl md:text-5xl text-foreground text-center leading-tight mb-4"
+          className="font-playfair text-title sm:text-[2.75rem] md:text-[3.25rem] text-foreground text-center leading-[1.15] mb-4"
           y={20}
           delay={0.08}
           margin="-60px"

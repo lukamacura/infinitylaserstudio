@@ -34,7 +34,7 @@ export default function CommunitySection({ onOpen }: Props) {
 
           <div className="hidden sm:block absolute top-6 right-6 rounded-2xl border border-foreground/15 bg-background/60 px-4 py-2.5 text-right backdrop-blur-md">
             <p className="metal-text font-playfair text-2xl leading-none">10 min</p>
-            <p className="font-poppins text-[11px] text-foreground/65 mt-1">besplatna procena</p>
+            <p className="font-poppins text-eyebrow text-foreground/65 mt-1">besplatna procena</p>
           </div>
         </div>
 
@@ -44,7 +44,7 @@ export default function CommunitySection({ onOpen }: Props) {
             Besplatna konsultacija
           </span>
 
-          <h2 className="font-playfair text-4xl md:text-5xl text-foreground leading-tight mt-5">
+          <h2 className="font-playfair text-title sm:text-[2.75rem] md:text-[3.25rem] text-foreground leading-[1.15] mt-5">
             Gotova si s <span className="metal-text">brijanjem?</span>
           </h2>
           <p className="font-poppins text-foreground/70 text-base leading-relaxed mt-4 max-w-md">
@@ -53,7 +53,7 @@ export default function CommunitySection({ onOpen }: Props) {
 
           <ul className="mt-6 flex flex-col gap-2.5">
             {perks.map((p) => (
-              <li key={p} className="flex items-center gap-3 font-poppins text-sm text-foreground/85">
+              <li key={p} className="flex items-center gap-3 font-poppins text-copy text-foreground/85">
                 <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent">
                   <Check size={12} strokeWidth={3} aria-hidden="true" />
                 </span>
@@ -76,7 +76,7 @@ export default function CommunitySection({ onOpen }: Props) {
             </button>
           </span>
 
-          <p className="flex items-center gap-2.5 font-poppins text-xs text-foreground/60 mt-5">
+          <p className="flex items-center gap-2.5 font-poppins text-meta text-foreground/60 mt-5">
             <span className="relative flex h-2 w-2 shrink-0">
               <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60 motion-safe:animate-ping" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />

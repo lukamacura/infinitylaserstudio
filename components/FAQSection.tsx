@@ -63,12 +63,7 @@ export default function FAQSection() {
       <Reveal className="max-w-3xl mx-auto">
         {/* Heading */}
         <div className="text-center section-head">
-          <span className="inline-flex items-center gap-2 font-poppins text-sm text-foreground/60 mb-4">
-            <span className="w-6 h-px bg-accent inline-block" />
-            Česta pitanja
-            <span className="w-6 h-px bg-accent inline-block" />
-          </span>
-          <h2 className="font-playfair text-4xl md:text-5xl text-foreground">
+          <h2 className="font-playfair text-title sm:text-[2.75rem] md:text-[3.25rem] text-foreground leading-[1.15]">
             Tvoja pitanja,{" "}
             <span className="relative inline-block">
               naši odgovori
@@ -108,7 +103,7 @@ export default function FAQSection() {
               {/* Always in the page, so Google reads every answer - closed ones are only hidden. */}
               <p
                 hidden={open !== i}
-                className="mt-3 font-poppins text-sm text-foreground/60 leading-relaxed pr-12"
+                className="mt-3 font-poppins text-copy text-foreground/70 pr-6 sm:pr-12"
               >
                 {faq.a}
               </p>

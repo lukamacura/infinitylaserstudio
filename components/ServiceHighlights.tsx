@@ -84,7 +84,7 @@ function Wavelengths({ items, side }: { items: typeof wavelengths; side: "left" 
             style={{ "--rv-i": i } as CSSProperties}
             className={`tech-callout md:py-6 ${side === "left" ? "md:text-right" : ""}`}
           >
-            <p className="font-poppins text-[0.625rem] uppercase tracking-[0.25em] text-accent/70 sm:text-xs">
+            <p className="font-poppins text-eyebrow uppercase tracking-[0.25em] text-accent/70 sm:text-xs">
               {w.nm} nm
             </p>
             <p className="metal-text mt-1 font-playfair text-2xl leading-tight sm:text-3xl lg:text-4xl">
@@ -97,7 +97,7 @@ function Wavelengths({ items, side }: { items: typeof wavelengths; side: "left" 
             />
             {/* Problem → solution: the crosshair is the laser locking onto that
                 hair, the check is the zone it clears. */}
-            <div className="space-y-1.5 font-poppins text-xs leading-snug sm:text-sm">
+            <div className="space-y-1.5 font-poppins text-meta leading-snug sm:text-sm">
               {[
                 { label: "Za", value: w.za, Icon: Crosshair, tone: "text-accent" },
                 { label: "Gde", value: w.gde, Icon: CircleCheck, tone: "text-emerald-300/80" },
@@ -130,7 +130,7 @@ export default function ServiceHighlights() {
             Tehnologija
             <span className="w-6 h-px bg-accent inline-block" />
           </span>
-          <h2 className="font-playfair text-4xl md:text-5xl text-foreground">
+          <h2 className="font-playfair text-title sm:text-[2.75rem] md:text-[3.25rem] text-foreground leading-[1.15]">
             Tip dlake je apsolutno <b>nebitan</b>.
           </h2>
         </div>

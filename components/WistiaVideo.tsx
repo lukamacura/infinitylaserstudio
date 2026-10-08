@@ -28,13 +28,7 @@ export default function WistiaVideo() {
   return (
     <section ref={sectionRef} className="section-y px-6 bg-background-alt">
       <Reveal className="max-w-sm mx-auto flex flex-col items-center gap-6">
-        <span className="inline-flex items-center gap-2 font-poppins text-sm text-foreground/60">
-          <span className="w-6 h-px bg-accent inline-block" />
-          Pogledajte video
-          <span className="w-6 h-px bg-accent inline-block" />
-        </span>
-
-        <h2 className="font-playfair text-4xl md:text-5xl text-foreground text-center leading-tight">
+        <h2 className="font-playfair text-title sm:text-[2.75rem] md:text-[3.25rem] text-foreground text-center leading-[1.15]">
           Zašto baš{" "}
           <span className="relative inline-block">
             Infinity Laser?

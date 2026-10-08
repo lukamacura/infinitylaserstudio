@@ -31,10 +31,11 @@ function FounderFlipCard() {
         }}
         className={`relative grid cursor-pointer select-none transition-transform duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] [transform-style:preserve-3d] ${flipped ? "[transform:rotateY(180deg)]" : ""}`}
       >
-        {/* Front: photo + dark gradient with the headline */}
+        {/* Front: photo + dark gradient with the headline. Stretches to the
+            taller back face so no empty band shows below the photo. */}
         <div
           aria-hidden={flipped}
-          className="col-start-1 row-start-1 relative aspect-[4/5] overflow-hidden rounded-3xl shadow-lg [backface-visibility:hidden]"
+          className="col-start-1 row-start-1 self-stretch relative aspect-[4/5] overflow-hidden rounded-3xl shadow-lg [backface-visibility:hidden]"
         >
           <Image
             src="/team/ana.webp"
@@ -46,11 +47,11 @@ function FounderFlipCard() {
           <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 via-35% to-transparent to-65%" />
           <div className="absolute top-4 left-4 flex items-center gap-2 rounded-full bg-black/45 backdrop-blur-sm px-3 py-1.5">
             <Check className="w-3.5 h-3.5 text-accent" strokeWidth={2.5} />
-            <span className="font-poppins text-xs font-medium text-white/90">Dr Ana Kasap · Osnivač &amp; Lekar</span>
+            <span className="font-poppins text-meta font-medium text-white/90">Dr Ana Kasap · Osnivač &amp; Lekar</span>
           </div>
           <div className="absolute inset-x-0 bottom-0 px-5 pb-5">
-            <p className="font-poppins text-xs uppercase tracking-[0.18em] text-accent mb-2">Reč osnivača</p>
-            <h2 className="font-playfair text-3xl text-white leading-tight">
+            <p className="font-poppins text-eyebrow uppercase tracking-[0.18em] text-accent mb-2">Reč osnivača</p>
+            <h2 className="font-playfair text-title text-white leading-[1.15]">
               Medicina mi je dala znanje. <span className="text-accent">Vi ste mi dali razlog.</span>
             </h2>
             <p className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-5 py-2.5 font-poppins text-sm font-medium text-white/80 tracking-wide backdrop-blur-sm">
@@ -63,20 +64,20 @@ function FounderFlipCard() {
         {/* Back: the details */}
         <div
           aria-hidden={!flipped}
-          className="col-start-1 row-start-1 flex flex-col justify-center rounded-3xl border border-foreground/10 bg-surface-raised p-6 shadow-lg [backface-visibility:hidden] [transform:rotateY(180deg)]"
+          className="col-start-1 row-start-1 flex flex-col justify-center rounded-3xl border border-foreground/10 bg-surface-raised p-5 shadow-lg [backface-visibility:hidden] [transform:rotateY(180deg)]"
         >
-          <p className="font-poppins text-xs uppercase tracking-[0.18em] text-accent mb-3">Dr Ana Kasap</p>
-          <p className="font-poppins text-foreground/75 text-sm leading-relaxed mb-3">
-            Specijalistkinja urgentne medicine i dugogodišnji lekar hitne pomoći. Majka, supruga - žena koja zna šta znači istinski brinuti o sebi i drugima.
+          <p className="font-poppins text-eyebrow uppercase tracking-[0.18em] text-accent mb-2">Dr Ana Kasap</p>
+          <p className="font-poppins text-foreground/75 text-copy mb-2.5">
+            Specijalistkinja urgentne medicine i dugogodišnji lekar hitne pomoći. Majka, supruga - žena koja zna šta znači brinuti o sebi i drugima.
           </p>
-          <p className="font-poppins text-foreground/75 text-sm leading-relaxed mb-3">
-            Strogo individualni pristup svakom klijentu i lični saveti pre i posle procedure - oni direktno utiču na kvalitet i trajnost rezultata.
+          <p className="font-poppins text-foreground/75 text-copy mb-2.5">
+            Individualni pristup i lični saveti pre i posle tretmana - za kvalitetne i trajne rezultate.
           </p>
-          <p className="font-poppins text-foreground/75 text-sm leading-relaxed">
-            Njena misija: da budete najlepša verzija sebe - diskretno i prirodno. Niko neće znati šta ste tačno ulepšali. Samo će videti razliku.
+          <p className="font-poppins text-foreground/75 text-copy">
+            Njena misija: da budete najlepša verzija sebe - diskretno i prirodno. Niko neće znati šta ste ulepšali. Samo će videti razliku.
           </p>
 
-          <blockquote className="border-l-4 border-accent pl-3 my-4">
+          <blockquote className="border-l-4 border-accent pl-3 my-3.5">
             <p className="font-playfair italic text-foreground/85 text-base leading-relaxed">
               &ldquo;Moja svrha je da pomažem drugima.&rdquo;
             </p>
@@ -86,7 +87,7 @@ function FounderFlipCard() {
             {stats.map((stat) => (
               <div key={stat.label}>
                 <p className="font-playfair text-xl text-foreground">{stat.value}</p>
-                <p className="font-poppins text-[11px] leading-tight text-foreground/60 mt-0.5">{stat.label}</p>
+                <p className="font-poppins text-eyebrow leading-tight text-foreground/65 mt-0.5">{stat.label}</p>
               </div>
             ))}
           </div>
@@ -109,7 +110,7 @@ export default function BrandStory() {
             Reč osnivača
           </span>
 
-          <h2 className="font-playfair text-4xl md:text-5xl text-foreground leading-tight mb-6">
+          <h2 className="font-playfair text-title sm:text-[2.75rem] md:text-[3.25rem] text-foreground leading-[1.15] mb-6">
             Medicina mi je dala znanje.{" "}
             <span className="relative inline-block">
               Vi ste mi dali razlog.

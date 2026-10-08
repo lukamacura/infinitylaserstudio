@@ -121,7 +121,7 @@ export default function TeamSection() {
         {/* Headline */}
         <Reveal
           as="h2"
-          className="font-playfair text-4xl md:text-5xl text-foreground text-center leading-tight mb-4"
+          className="font-playfair text-title sm:text-[2.75rem] md:text-[3.25rem] text-foreground text-center leading-[1.15] mb-4"
           y={20}
           delay={0.08}
           margin="-60px"
@@ -184,7 +184,7 @@ export default function TeamSection() {
                 {/* Name on photo */}
                 <div className="absolute bottom-0 left-0 right-0 p-5">
                   <p className="font-playfair text-2xl text-white leading-none">{m.name}</p>
-                  {m.role && <p className="font-poppins text-xs text-white/80 mt-0.5 tracking-wide">{m.role}</p>}
+                  {m.role && <p className="font-poppins text-meta text-white/80 mt-0.5 tracking-wide">{m.role}</p>}
                 </div>
 
                 {/* Accent dot */}
@@ -202,7 +202,7 @@ export default function TeamSection() {
                 >
                   &ldquo;{m.quote}&rdquo;
                 </blockquote>
-                <p className="font-poppins text-sm text-foreground/60 leading-relaxed">{m.bio}</p>
+                <p className="font-poppins text-copy text-foreground/70">{m.bio}</p>
               </div>
             </div>
               </div>

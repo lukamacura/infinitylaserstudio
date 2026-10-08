@@ -122,7 +122,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
             <dl className="mt-5 lg:mt-10 pt-4 lg:pt-7 border-t border-foreground/10 grid grid-cols-3 max-w-lg">
               {stats.map((s, i) => (
                 <div key={s.value} className={`flex flex-col-reverse ${i > 0 ? "pl-5 lg:pl-8 border-l border-foreground/10" : ""}`}>
-                  <dt className="mt-1 text-[10px] lg:text-[11px] font-semibold text-foreground/55 tracking-[0.2em] uppercase">{s.label}</dt>
+                  <dt className="mt-1 text-eyebrow lg:text-[11px] font-semibold text-foreground/55 tracking-[0.12em] lg:tracking-[0.2em] uppercase">{s.label}</dt>
                   <dd className="font-[family-name:var(--font-instrument)] font-normal text-[2rem] lg:text-[2.75rem] leading-none text-foreground">{s.value}</dd>
                 </div>
               ))}

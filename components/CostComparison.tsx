@@ -63,7 +63,7 @@ export default function CostComparison() {
         </div>
 
         {/* Headline */}
-        <h2 data-rv style={step(1)} className="font-playfair text-3xl sm:text-4xl md:text-5xl text-foreground text-center leading-tight section-head">
+        <h2 data-rv style={step(1)} className="font-playfair text-title sm:text-[2.75rem] md:text-[3.25rem] text-foreground text-center leading-[1.15] section-head">
           Koliko te dlačice koštaju{" "}
           <span className="relative inline-block">
             za ceo život?
@@ -98,7 +98,7 @@ export default function CostComparison() {
                 >
                   {/* Phone: the label gets the full width, the working and the amount share the line under it */}
                   <p className="col-span-2 md:col-span-1 text-xl md:text-[1.75rem] font-semibold leading-tight">{c.label}</p>
-                  <p className="col-start-1 text-xs md:text-[1.35rem] leading-tight opacity-70">
+                  <p className="col-start-1 text-meta md:text-[1.35rem] leading-tight opacity-70">
                     {formatPrice(c.perYear)} RSD × {YEARS} god.
                   </p>
                   <Amount

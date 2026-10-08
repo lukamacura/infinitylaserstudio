@@ -410,16 +410,16 @@ function SafetyInfo({ onClose, accentHex }: { onClose: () => void; accentHex: st
         role="dialog"
         aria-modal="true"
         aria-labelledby="bm-safety-title"
-        className="relative w-full sm:max-w-lg max-h-[88dvh] overflow-y-auto rounded-t-3xl sm:rounded-3xl border border-foreground/10 bg-[var(--bm-surface)] shadow-2xl p-5 sm:p-7"
+        className="relative w-full sm:max-w-md max-h-[88dvh] overflow-y-auto rounded-t-3xl sm:rounded-3xl border border-foreground/10 bg-[var(--bm-surface)] shadow-2xl p-5 sm:p-6"
         initial={{ y: 40, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: 40, opacity: 0 }}
         transition={{ type: "spring", stiffness: 380, damping: 34 }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-3 mb-4">
-          <div className="relative w-11 h-11 rounded-[14px] overflow-hidden shrink-0 ring-1 ring-white/10">
-            <Image src="/team/ana.webp" alt="Ana" fill sizes="44px" className="object-cover" />
+        <div className="flex items-center gap-3 mb-3">
+          <div className="relative w-10 h-10 rounded-[13px] overflow-hidden shrink-0 ring-1 ring-white/10">
+            <Image src="/team/ana.webp" alt="Ana" fill sizes="40px" className="object-cover" />
           </div>
           <p className="flex-1 text-sm font-bold font-poppins text-foreground">
             Ana <span className="font-medium text-foreground/50">(Vlasnik, doktor medicine)</span>
@@ -434,37 +434,36 @@ function SafetyInfo({ onClose, accentHex }: { onClose: () => void; accentHex: st
           </button>
         </div>
 
-        <h3 id="bm-safety-title" className="text-xl sm:text-2xl font-bold font-playfair mb-3">
+        <h3 id="bm-safety-title" className="text-xl font-bold font-playfair mb-2">
           Da li je laserska epilacija bezbedna?
         </h3>
-        <p className="text-sm sm:text-base font-poppins text-foreground/75 leading-relaxed">
-          <span className="font-semibold text-foreground">Da.</span> Kada se radi pravilno - odgovarajućim
-          laserom i parametrima prilagođenim tvojoj koži i dlaci - ima veoma dobar bezbednosni profil.
+        <p className="text-sm font-poppins text-foreground/75 leading-snug">
+          <span className="font-semibold text-foreground">Da.</span> Uz pravilan laser i parametre prilagođene
+          tvojoj koži - veoma bezbedna.
         </p>
 
-        <ul className="flex flex-col gap-3 mt-4">
+        <ul className="flex flex-col gap-2 mt-3">
           {[
-            "Najčešće reakcije su crvenilo i blagi otok oko folikula - blage su i brzo prođu.",
-            "Laser deluje samo na folikul, par milimetara u koži. Nema dokaza da oštećuje nerve, limfni sistem, organe, jajnike ili matericu, niti da utiče na plodnost.",
-            "Pregled 104 naučne publikacije (2023) zaključuje da se većina komplikacija može sprečiti pravilnom procenom kože, parametrima i obukom.",
+            "Najčešće samo crvenilo i blagi otok, koji brzo prođu.",
+            "Deluje samo na folikul, par milimetara u koži. Ne dopire do organa i ne utiče na plodnost.",
+            "Većina komplikacija se sprečava pravilnom procenom kože i obukom (pregled 104 studije, 2023).",
           ].map((t) => (
-            <li key={t} className="flex gap-2.5 text-sm sm:text-base font-poppins text-foreground/75 leading-snug">
+            <li key={t} className="flex gap-2.5 text-sm font-poppins text-foreground/75 leading-snug">
               <span className="mt-[7px] w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: accentHex }} />
               {t}
             </li>
           ))}
         </ul>
 
-        <p className="mt-5 pl-3 border-l-[3px] font-playfair italic text-base sm:text-lg text-foreground/85 leading-snug" style={{ borderColor: accentHex }}>
-          Bezbednost ne zavisi samo od lasera - već od toga ko ga koristi i kako. Tvoja koža zaslužuje
-          medicinski pristup, a ne samo aparat. 🤍
+        <p className="mt-4 pl-3 border-l-[3px] font-playfair italic text-base text-foreground/85 leading-snug" style={{ borderColor: accentHex }}>
+          Bezbednost zavisi od toga ko radi tretman. Tvoja koža zaslužuje medicinski pristup. 🤍
         </p>
-        <p className="mt-4 text-[11px] font-poppins text-foreground/40">Izvori: Mallat et al., 2023; Lim &amp; Lanigan, 2006.</p>
+        <p className="mt-3 text-[11px] font-poppins text-foreground/40">Izvori: Mallat et al., 2023; Lim &amp; Lanigan, 2006.</p>
 
         <button
           type="button"
           onClick={onClose}
-          className="mt-5 w-full py-3 rounded-2xl font-semibold font-poppins text-sm sm:text-base bg-foreground/10 hover:bg-foreground/15 transition-colors cursor-pointer"
+          className="mt-4 w-full py-3 rounded-2xl font-semibold font-poppins text-sm bg-foreground/10 hover:bg-foreground/15 transition-colors cursor-pointer"
         >
           Razumem
         </button>

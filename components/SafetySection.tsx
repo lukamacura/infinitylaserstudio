@@ -81,17 +81,9 @@ export default function SafetySection() {
 
               <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-[#140A10] to-transparent md:hidden" />
 
-              {/* Callout at the follicle bulb */}
-              <div className="absolute left-[8%] top-[52%] flex items-center gap-2">
-                <span className="rounded-full bg-background/70 backdrop-blur-sm border border-accent/40 px-3 py-1 font-poppins text-[11px] sm:text-xs text-foreground/90">
-                  Folikul dlake - jedina meta
-                </span>
-                <span className="hidden sm:block w-[clamp(1.5rem,7vw,5rem)] h-px bg-accent/70" />
-              </div>
-
               {/* Bottom band: what stays untouched */}
               <figcaption className="max-md:hidden absolute inset-x-0 bottom-0 bg-gradient-to-t from-background via-background/85 to-transparent px-5 sm:px-6 pt-12 pb-5">
-                <p className="font-poppins text-xs uppercase tracking-[0.18em] text-accent">Par milimetara ispod kože</p>
+                <p className="font-poppins text-eyebrow uppercase tracking-[0.18em] text-accent">Par milimetara ispod kože</p>
                 <p className="font-poppins text-sm sm:text-base text-foreground/85 mt-1">
                   Nervi, limfni sistem i organi ostaju netaknuti.
                 </p>
@@ -109,7 +101,7 @@ export default function SafetySection() {
             Bezbednost
           </span>
 
-          <h2 data-rv className="font-playfair text-4xl md:text-5xl text-foreground leading-tight mb-4">
+          <h2 data-rv className="font-playfair text-title sm:text-[2.75rem] md:text-[3.25rem] text-foreground leading-[1.15] mb-4">
             Da li je laserska epilacija{" "}
             <span className="relative inline-block">
               bezbedna?
@@ -138,7 +130,7 @@ export default function SafetySection() {
                 </div>
                 <div>
                   <p className="font-poppins text-base font-semibold text-foreground">{f.title}</p>
-                  <p className="font-poppins text-sm text-foreground/60 leading-relaxed mt-1">{f.text}</p>
+                  <p className="font-poppins text-copy text-foreground/70 mt-1">{f.text}</p>
                 </div>
               </li>
             ))}
@@ -146,16 +138,16 @@ export default function SafetySection() {
 
           {/* The point: it is the hands, not the machine */}
           <blockquote data-rv className="border-l-4 border-accent pl-4">
-            <p className="font-playfair italic text-foreground/85 text-lg leading-relaxed">
+            <p className="font-playfair italic text-foreground/85 text-[1.0625rem] sm:text-lg leading-relaxed">
               &ldquo;Bezbednost ne zavisi samo od lasera - već od toga ko ga koristi i kako. Vaša koža
               zaslužuje medicinski pristup, a ne samo aparat.&rdquo;
             </p>
-            <p className="font-poppins text-xs text-foreground/60 mt-2">
+            <p className="font-poppins text-meta text-foreground/60 mt-2">
               - Dr Ana Kasap, osnivač &amp; doktor medicine
             </p>
           </blockquote>
 
-          <p data-rv className="font-poppins text-[11px] text-foreground/40 mt-6">
+          <p data-rv className="font-poppins text-eyebrow text-foreground/50 mt-6">
             Izvori: Mallat et al., 2023; Lim &amp; Lanigan, 2006.
           </p>
         </div>
