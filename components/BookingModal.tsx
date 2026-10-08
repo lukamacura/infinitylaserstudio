@@ -2363,7 +2363,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                 </div>
               )}
 
-              {/* Cancellation policy - explicit consent, required before booking */}
+              {/* Terms + privacy policy - explicit consent, required before booking */}
               <div>
                 <label
                   className={`flex gap-3 sm:gap-4 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border-2 cursor-pointer transition-colors ${
@@ -2382,24 +2382,24 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                     style={{ accentColor: accent.hex }}
                   />
                   <span className="flex-1 text-xs sm:text-sm md:text-base font-semibold text-foreground/80 font-poppins leading-relaxed">
-                    Prihvatam uslove otkazivanja.
+                    Prihvatam uslove korišćenja i politiku privatnosti.
                     <span className="block text-[11px] sm:text-xs font-normal text-foreground/50 mt-0.5">Besplatno otkazivanje ili pomeranje do 24h pre termina.</span>
                   </span>
                   <button
                     type="button"
                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowPolicyInfo(true); }}
                     className="shrink-0 mt-0.5 text-foreground/35 hover:text-foreground/60 transition-colors cursor-pointer"
-                    aria-label="Prikaži uslove otkazivanja"
+                    aria-label="Prikaži uslove korišćenja i politiku privatnosti"
                   >
                     <Info size={16} className="sm:w-5 sm:h-5" />
                   </button>
                 </label>
                 {fieldErrors.policy && (
-                  <p className="text-xs text-red-400 font-poppins mt-1">Potrebno je prihvatiti uslove otkazivanja.</p>
+                  <p className="text-xs text-red-400 font-poppins mt-1">Potrebno je prihvatiti uslove korišćenja i politiku privatnosti.</p>
                 )}
               </div>
 
-              {/* Cancellation policy - large-text modal, opened via the info icon above */}
+              {/* Terms + privacy summary - large-text modal, opened via the info icon above */}
               {showPolicyInfo && (
                 <div
                   className="fixed inset-0 z-[60] flex items-center justify-center p-6"
@@ -2411,7 +2411,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                     onClick={(e) => e.stopPropagation()}
                   >
                     <div className="flex items-start justify-between gap-4 mb-4">
-                      <h3 className="text-xl font-bold font-playfair">Uslovi otkazivanja</h3>
+                      <h3 className="text-xl font-bold font-playfair">Uslovi i privatnost</h3>
                       <button
                         type="button"
                         onClick={() => setShowPolicyInfo(false)}
@@ -2429,6 +2429,30 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                     <p className="text-sm font-poppins text-foreground/50 leading-snug mt-4">
                       Bolest, povreda ili hitan slučaj se ne naplaćuju - samo nas obavestite i naći ćemo novi termin.
                     </p>
+                    <p className="text-base font-poppins text-foreground/75 leading-relaxed mt-4">
+                      Vaše ime, telefon i email koristimo za zakazivanje i komunikaciju u vezi sa
+                      terminom. Vaše podatke ne prodajemo.
+                    </p>
+                    <div className="flex flex-wrap gap-x-5 gap-y-2 mt-5 text-sm font-poppins font-semibold">
+                      <a
+                        href="/uslovi-koriscenja#uslovi"
+                        target="_blank"
+                        rel="noopener"
+                        className="underline underline-offset-4 decoration-foreground/25 hover:decoration-foreground/60 transition-colors"
+                        style={{ color: accent.hex }}
+                      >
+                        Uslovi korišćenja
+                      </a>
+                      <a
+                        href="/uslovi-koriscenja#privatnost"
+                        target="_blank"
+                        rel="noopener"
+                        className="underline underline-offset-4 decoration-foreground/25 hover:decoration-foreground/60 transition-colors"
+                        style={{ color: accent.hex }}
+                      >
+                        Politika privatnosti
+                      </a>
+                    </div>
                   </div>
                 </div>
               )}
