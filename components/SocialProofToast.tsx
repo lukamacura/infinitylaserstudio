@@ -28,7 +28,7 @@ export default function SocialProofToast() {
     const show = setTimeout(() => {
       sessionStorage.setItem(SESSION_KEY, "1");
       setVisible(true);
-    }, 3000);
+    }, 10000);
 
     return () => clearTimeout(show);
   }, []);
