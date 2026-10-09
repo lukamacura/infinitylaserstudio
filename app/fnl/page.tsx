@@ -78,24 +78,26 @@ const SOURCE_LABELS: Record<string, string> = {
 const META_UTM = /^(ig|insta|instagram|fb|facebook|meta|msg|messenger|an|th|threads)/;
 
 /**
- * landed counts visits that landed; landedOpened / landedBooked are those same
- * visits only, so "booked / landed" never mixes in visits from before landings
- * were counted.
+ * First full day with every home-page visit counted (sql/funnel_land.sql went
+ * live the evening before). Only a period starting here can judge sources by
+ * visits - an earlier one would compare bookings against half the visits.
  */
-type Tally = { opened: number; booked: number; landed: number; landedOpened: number; landedBooked: number };
-const tally = (): Tally => ({ opened: 0, booked: 0, landed: 0, landedOpened: 0, landedBooked: 0 });
+const LANDINGS_FROM = new Date(2026, 9, 8);
+
+/** Every booking counts in its group, so the groups always add up to the funnel's "booked". */
+type Tally = { opened: number; booked: number; landed: number };
+const tally = (): Tally => ({ opened: 0, booked: 0, landed: 0 });
 const add = (t: Tally, r: SourceRow) => {
   t.opened += r.opened;
   t.booked += r.booked;
-  if (r.entry) {
-    t.landed += r.landed;
-    t.landedOpened += r.opened;
-    t.landedBooked += r.booked;
-  }
+  t.landed += r.landed;
 };
 
-/** A few clear groups: the ad (split by how it opened the form), then everything without an ad. */
-function groupSources(rows: SourceRow[]) {
+/**
+ * A few clear groups: the ad (split by how it opened the form), then everything
+ * without an ad. byLanding: the platform split counts visits, else form openings.
+ */
+function groupSources(rows: SourceRow[], byLanding: boolean) {
   const ad = { all: tally(), link: tally(), site: tally(), instagram: 0, facebook: 0, rest: 0 };
   const link = tally();
   const site = tally();
@@ -110,7 +112,7 @@ function groupSources(rows: SourceRow[]) {
     if (u && META_UTM.test(u)) {
       add(ad.all, r);
       add(viaLink ? ad.link : ad.site, r);
-      const n = r.entry ? r.landed : r.opened;
+      const n = byLanding ? r.landed : r.opened;
       if (/^(ig|insta)/.test(u)) ad.instagram += n;
       else if (/^(fb|facebook)/.test(u)) ad.facebook += n;
       else ad.rest += n;
@@ -439,7 +441,9 @@ export default function FunnelPage() {
           {/* Where people opened the form from */}
           {sources.length > 0 && (() => {
             // Landings carry no studio - with a studio picked, only form openings can be compared.
-            const g = groupSources(studio ? sources.map((r) => ({ ...r, entry: "", landed: 0 })) : sources);
+            const byLanding = !studio && rangeStart(range) >= LANDINGS_FROM;
+            const g = groupSources(studio ? sources.map((r) => ({ ...r, entry: "", landed: 0 })) : sources, byLanding);
+            const totalBooked = sources.reduce((n, r) => n + r.booked, 0);
             const show = (t: Tally) => t.opened > 0 || t.landed > 0;
             const platforms = [
               g.ad.instagram > 0 && `Instagram ${g.ad.instagram.toLocaleString("sr-RS")}`,
@@ -451,7 +455,7 @@ export default function FunnelPage() {
                 <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-3 md:mb-5 px-1 md:px-0">
                   <h2 className="text-lg md:text-2xl font-bold font-playfair">Odakle dolaze</h2>
                   <p className="text-[10px] md:text-xs font-bold font-poppins uppercase tracking-widest text-foreground/50">
-                    Došlo · otvorilo formu · zakazalo
+                    Zakazalo · % od {byLanding ? "došlih" : "otvorenih formi"}
                   </p>
                 </div>
                 <ul className="flex flex-col gap-1.5">
@@ -462,42 +466,55 @@ export default function FunnelPage() {
                         label="Reklama (Instagram / Facebook)"
                         detail={platforms}
                         t={g.ad.all}
+                        byLanding={byLanding}
                       />
                       <div className="flex flex-col gap-1 px-2 pb-2 md:px-3 md:pb-3">
                         {show(g.ad.link) && (
-                          <SourceLine sub icon={<IconBadge Icon={Link2} />} label="Direktan link (na BookingModal)" detail="forma se otvorila odmah" t={g.ad.link} />
+                          <SourceLine sub icon={<IconBadge Icon={Link2} />} label="Direktan link (na BookingModal)" detail="forma se otvorila odmah" t={g.ad.link} byLanding={byLanding} />
                         )}
                         {show(g.ad.site) && (
-                          <SourceLine sub icon={<IconBadge Icon={MousePointerClick} />} label="Na početnu stranu" detail="forma se otvara tek kad kliknu dugme" t={g.ad.site} />
+                          <SourceLine sub icon={<IconBadge Icon={MousePointerClick} />} label="Na početnu stranu" detail="forma se otvara tek kad kliknu dugme" t={g.ad.site} byLanding={byLanding} />
                         )}
                       </div>
                     </li>
                   )}
                   {show(g.link) && (
                     <li className="rounded-2xl bg-foreground/3">
-                      <SourceLine icon={<IconBadge Icon={Link2} />} label="Direktan link (bez reklame)" detail="link poslat porukom, bio, QR..." t={g.link} />
+                      <SourceLine icon={<IconBadge Icon={Link2} />} label="Direktan link (bez reklame)" detail="link poslat porukom, bio, QR..." t={g.link} byLanding={byLanding} />
                     </li>
                   )}
                   {show(g.site) && (
                     <li className="rounded-2xl bg-foreground/3">
-                      <SourceLine icon={<IconBadge Icon={Globe} />} label="Početna strana (bez reklame)" detail={g.topButton && `najčešće: ${g.topButton}`} t={g.site} />
+                      <SourceLine icon={<IconBadge Icon={Globe} />} label="Početna strana (bez reklame)" detail={g.topButton && `najčešće: ${g.topButton}`} t={g.site} byLanding={byLanding} />
                     </li>
                   )}
                   {show(g.other) && (
                     <li className="rounded-2xl bg-foreground/3">
-                      <SourceLine icon={<IconBadge Icon={Search} />} label="Drugi izvor" detail={g.other.names.join(", ")} t={g.other} />
+                      <SourceLine icon={<IconBadge Icon={Search} />} label="Drugi izvor" detail={g.other.names.join(", ")} t={g.other} byLanding={byLanding} />
                     </li>
                   )}
                   {show(g.before) && (
                     <li className="rounded-2xl bg-foreground/3 opacity-70">
-                      <SourceLine icon={<IconBadge Icon={History} />} label="Pre početka merenja" detail="izvor nije zapisan" t={g.before} />
+                      <SourceLine icon={<IconBadge Icon={History} />} label="Pre početka merenja" detail="izvor nije zapisan" t={g.before} byLanding={byLanding} />
                     </li>
                   )}
                 </ul>
+                <div className="mt-2 flex items-center justify-between gap-3 px-3 md:px-4 py-2.5 rounded-2xl border border-foreground/8 font-poppins">
+                  <p className="text-[12px] md:text-sm font-bold">
+                    Ukupno zakazalo
+                    <span className="ml-1.5 font-medium text-foreground/50">- isto kao „Zakazalo termin“ gore</span>
+                  </p>
+                  <p className="inline-flex items-center gap-1 text-base md:text-lg font-bold tabular-nums">
+                    <CalendarCheck size={15} className="text-green-400" />
+                    {totalBooked.toLocaleString("sr-RS")}
+                  </p>
+                </div>
                 <p className="mt-3 px-1 text-[11px] md:text-xs text-foreground/50 font-poppins leading-relaxed">
                   {studio
-                    ? "Sa izabranim studiom vidi se samo ko je otvorio formu - dolasci na sajt još nemaju studio."
-                    : "Procenat = zakazali od svih koji su došli. Direktan link otvara formu sam, zato tu skoro svi „otvore formu“ - poredite procente, ne otvaranja. Dolasci se broje od 07.10.2026."}
+                    ? "Sa izabranim studiom procenat se računa od otvorenih formi - dolasci na sajt nemaju studio."
+                    : byLanding
+                      ? "Procenat = zakazali od svih koji su došli na sajt. Direktan link otvara formu sam, a sa početne strane je mnogi ni ne otvore - zato se porede dolasci, ne otvaranja."
+                      : "Dolasci na sajt se broje tek od 08.10.2026, a ovaj period počinje ranije - zato je procenat od otvorenih formi. Za poređenje po dolascima izaberite „Danas“ ili period koji počinje od 08.10."}
                 </p>
               </section>
             );
@@ -565,14 +582,13 @@ function Kpi({ icon: Icon, label, value, tint }: { icon: typeof Users; label: st
   );
 }
 
-function SourceLine({ icon, label, detail, t, sub = false }: {
-  icon: React.ReactNode; label: string; detail?: string | null | false; t: Tally; sub?: boolean;
+function SourceLine({ icon, label, detail, t, byLanding, sub = false }: {
+  icon: React.ReactNode; label: string; detail?: string | null | false; t: Tally; byLanding: boolean; sub?: boolean;
 }) {
-  // Counted from the landing when we have it, else (older visits) from opening the form.
-  const fromLanding = t.landed > 0;
+  // Whole period has landings counted: judge by visits; else by form openings.
+  const fromLanding = byLanding && t.landed > 0;
   const start = fromLanding ? t.landed : t.opened;
-  const booked = fromLanding ? t.landedBooked : t.booked;
-  const pct = start > 0 ? (booked / start) * 100 : 0;
+  const pct = start > 0 ? (t.booked / start) * 100 : 0;
   return (
     <div className={`flex items-center gap-3 font-poppins ${sub ? "p-2 md:px-3 rounded-xl bg-foreground/4" : "p-3 md:px-4"}`}>
       <span className="shrink-0 flex items-center justify-center min-w-9">{icon}</span>
@@ -581,18 +597,17 @@ function SourceLine({ icon, label, detail, t, sub = false }: {
         {detail && <p className="text-[11px] md:text-xs text-foreground/50 truncate">{detail}</p>}
       </div>
       <div className="text-right shrink-0">
-        <p className={`font-bold tabular-nums leading-none ${sub ? "text-base md:text-lg" : "text-lg md:text-xl"}`}>
-          {start.toLocaleString("sr-RS")}
-          <span className="ml-1 text-[10px] font-medium text-foreground/45">{fromLanding ? "došlo" : "otvorilo"}</span>
+        <p className={`font-bold tabular-nums leading-none inline-flex items-center gap-1 ${sub ? "text-base md:text-lg" : "text-lg md:text-xl"}`}>
+          <CalendarCheck size={sub ? 13 : 15} className="text-green-400" />
+          {t.booked.toLocaleString("sr-RS")}
+          <span className="text-[10px] font-medium text-foreground/45">zakazalo</span>
         </p>
-        {fromLanding && (
-          <p className="text-[11px] md:text-xs text-foreground/50 tabular-nums mt-1">
-            {t.landedOpened.toLocaleString("sr-RS")} otvorilo formu
-          </p>
-        )}
-        <p className="text-[11px] md:text-xs text-foreground/60 tabular-nums mt-1 inline-flex items-center gap-1">
-          <CalendarCheck size={12} className="text-green-400" />
-          {booked.toLocaleString("sr-RS")} <span className="text-foreground/40">({fmtPct(pct)})</span>
+        <p className="text-[11px] md:text-xs font-bold text-foreground/70 tabular-nums mt-1">
+          {fmtPct(pct)} <span className="font-medium text-foreground/50">od {fromLanding ? "došlih" : "otvorenih"}</span>
+        </p>
+        <p className="text-[11px] md:text-xs text-foreground/45 tabular-nums mt-0.5">
+          {fromLanding && `${t.landed.toLocaleString("sr-RS")} došlo · `}
+          {t.opened.toLocaleString("sr-RS")} otvorilo formu
         </p>
       </div>
     </div>
