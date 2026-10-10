@@ -227,8 +227,8 @@ export default function TeamSection() {
                 {i === active && (
                   <span
                     key={cycle}
-                    className="absolute inset-y-0 left-0 bg-accent rounded-full motion-reduce:animate-none! motion-reduce:w-full!"
-                    style={autoplay ? { animation: `teamDotFill ${INTERVAL}ms linear forwards` } : { width: "100%" }}
+                    className="absolute inset-y-0 left-0 w-full bg-accent rounded-full motion-reduce:animate-none!"
+                    style={autoplay ? { animation: `teamDotFill ${INTERVAL}ms linear forwards` } : undefined}
                   />
                 )}
               </button>

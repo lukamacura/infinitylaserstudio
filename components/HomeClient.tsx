@@ -1,21 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect, type ReactNode } from "react";
 import dynamic from "next/dynamic";
-import Hero from "@/components/Hero";
-import BrandStory from "@/components/BrandStory";
-import ServiceHighlights from "@/components/ServiceHighlights";
-import StatsSection from "@/components/StatsSection";
-import CostComparison from "@/components/CostComparison";
-// import MenSection from "@/components/MenSection";
-import FAQSection from "@/components/FAQSection";
-import TeamSection from "@/components/TeamSection";
-import SafetySection from "@/components/SafetySection";
-import CommunitySection from "@/components/CommunitySection";
-import LocationsSection from "@/components/LocationsSection";
-import Footer from "@/components/Footer";
-import WistiaVideo from "@/components/WistiaVideo";
 import ScrollReveal from "@/components/ScrollReveal";
+import { OpenBookingContext } from "@/components/OpenBooking";
 import type { LocationId } from "@/lib/locations";
 import { trackLanding, type FunnelSource } from "@/lib/funnel";
 import { urlHasLinkPromo } from "@/lib/linkPromo";
@@ -68,7 +56,8 @@ const LOCATION_SLUGS: Record<string, LocationId> = {
   "sombor": "sombor",
 };
 
-export default function HomeClient() {
+/** Wraps the home page: booking form state, link params, page-wide effects. */
+export default function HomeClient({ children }: { children: ReactNode }) {
   const [bookingOpen, setBookingOpen] = useState(false);
   // Mount the modal only after the first open, then keep it mounted for exit animations.
   const [bookingMounted, setBookingMounted] = useState(false);
@@ -79,14 +68,14 @@ export default function HomeClient() {
   const [preselectedStudio, setPreselectedStudio] = useState<LocationId | undefined>(undefined);
   /** Which button (or link) opened the modal - for /fnl. */
   const [bookingSource, setBookingSource] = useState<FunnelSource>("hero");
-  function open(source: FunnelSource) {
+  const open = useCallback((source: FunnelSource) => {
     setBookingSource(source);
     setPreselectedNames([]);
     setPreselectedBundle(undefined);
     setPreselectedGender(undefined);
     setPreselectedStudio(undefined);
     setBookingOpen(true);
-  }
+  }, []);
 
   // Open the modal from a link. Every param is optional and they combine:
   //   ?lokacija=novi-sad|sombor  skips the studio step
@@ -118,6 +107,26 @@ export default function HomeClient() {
     setBookingOpen(true);
   }, []);
 
+  // Switch on the handwriting font (see `.hand` in globals.css) on the first
+  // scroll, or 3 s after the page has loaded - whichever comes first.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const on = () => {
+      document.documentElement.classList.add("hand-ready");
+      cleanup();
+    };
+    const later = () => { timer = setTimeout(on, 3000); };
+    function cleanup() {
+      clearTimeout(timer);
+      window.removeEventListener("scroll", on);
+      window.removeEventListener("load", later);
+    }
+    window.addEventListener("scroll", on, { once: true, passive: true });
+    if (document.readyState === "complete") later();
+    else window.addEventListener("load", later, { once: true });
+    return cleanup;
+  }, []);
+
   useEffect(() => {
     let depth50Fired = false;
     const onScroll = () => {
@@ -136,20 +145,9 @@ export default function HomeClient() {
   }, []);
 
   return (
+    <OpenBookingContext.Provider value={open}>
     <main>
-      <Hero onOpen={() => open("hero")} />
-      <StatsSection />
-      <CostComparison />
-      <WistiaVideo />
-      <ServiceHighlights />
-      <BrandStory />
-      <SafetySection />
-      <TeamSection />
-      {/* <MenSection onOpen={open} /> */}
-<CommunitySection onOpen={() => open("zajednica")} />
-      <FAQSection />
-      <LocationsSection />
-      <Footer onOpen={() => open("footer")} />
+      {children}
       <ScrollReveal />
       {bookingMounted && <BookingModal
         isOpen={bookingOpen}
@@ -162,5 +160,6 @@ export default function HomeClient() {
       />}
 
     </main>
+    </OpenBookingContext.Provider>
   );
 }

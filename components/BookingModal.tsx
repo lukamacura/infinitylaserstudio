@@ -6,7 +6,7 @@ import Image from "next/image";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   X, ArrowLeft, Loader2, AlertCircle, Info, MapPin, ChevronRight, CalendarCheck,
-  Clock, Wallet, RotateCcw, Phone,
+  Clock, Wallet, RotateCcw, Phone, FlaskConical,
 } from "lucide-react";
 import {
   supabase, calcBookingDuration, calcTotalDuration, getAvailableSlots,
@@ -29,14 +29,14 @@ import { hasLinkPromo } from "@/lib/linkPromo";
 import { fetchPriceRows, PriceBook } from "@/lib/prices";
 import { trackFunnel, type FunnelStage, type FunnelSource } from "@/lib/funnel";
 import { JOURNEY_STEPS } from "@/lib/journey";
-import { fetchPublicStaffDays } from "@/lib/staff";
+import { fetchPublicStaffDays, staffPhoto } from "@/lib/staff";
 import {
   LOCATIONS, DEFAULT_LOCATION, getLocation, fullAddress, type LocationId,
 } from "@/lib/locations";
 import {
   type Gender, type DayOption,
   getIcon, getRegionArt, preloadRegionArt, RegionThumb, CARD_IN_MS, THUMB_SIZES, HERO_THUMB_SIZES,
-  SR_DAYS_FULL, SR_MONTHS_SHORT, monIdx, toDateStr, formatDateFull, formatPrice, EMAIL_REGEX,
+  SR_DAYS_FULL, SR_MONTHS, SR_MONTHS_SHORT, monIdx, toDateStr, formatDateFull, formatPrice, EMAIL_REGEX,
   lockBodyScroll, unlockBodyScroll,
   isComboService, isFullBody, isAllowedWithFullBody, isFullFace, isCoveredByFullFace, applyComboRules,
   ACCENTS, GENDER_OPTIONS, COL_W, cascade, Skeleton, PREPARATION_STEPS, StaffAvatars, freeSlotsLabel,
@@ -293,6 +293,41 @@ function CallUsHint() {
         065 373 8991
       </a>
     </p>
+  );
+}
+
+function LaserFunFact({ accentHex }: { accentHex: string }) {
+  return (
+    <div className="relative isolate overflow-hidden rounded-2xl sm:rounded-3xl border border-foreground/8 font-poppins">
+      {/* Barely-visible backdrop, darkened so the copy stays readable on top. */}
+      <Image
+        src="/zaniljivost/zanimljivost.webp"
+        alt=""
+        aria-hidden="true"
+        fill
+        sizes="(max-width: 640px) 100vw, 640px"
+        className="-z-20 object-cover object-[center_30%] opacity-70 saturate-75 pointer-events-none select-none"
+      />
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 -z-10"
+        style={{ background: "linear-gradient(to bottom, rgba(18,10,14,0.85) 0%, rgba(18,10,14,0.55) 55%, rgba(18,10,14,0.15) 100%)" }}
+      />
+      <div className="flex flex-col gap-1.5 p-4 sm:p-5 pb-10 sm:pb-14">
+        <p
+          className="flex items-center gap-1.5 text-[10px] sm:text-[11px] font-semibold font-poppins uppercase tracking-[0.18em]"
+          style={{ color: accentHex }}
+        >
+          <FlaskConical size={13} aria-hidden="true" />
+          Da li ste znali?
+        </p>
+        <p className="font-playfair italic text-[13px] sm:text-[15px] leading-relaxed text-foreground/75">
+          Laserska epilacija nastala je sasvim slučajno, kada je naučnik na Harvardu greškom prešao laserom preko
+          svoje ruke i primetio da mu dlake na tom mestu više nikada nisu porasle. Zahvaljujući toj nezgodi rođena je
+          ideja koja je promenila modernu kozmetologiju.
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -1514,7 +1549,35 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               Popust −{LINK_DISCOUNT_PCT}% aktiviran · važi na sve tretmane i pakete
             </p>
           )}
-          <p className="text-lg sm:text-xl font-medium leading-snug text-foreground/90 font-poppins mt-4">{STEP_LABELS[step]}</p>
+          {step === 4 && selectedDate ? (
+            <div className="mt-4">
+              <p className="text-lg sm:text-xl font-medium leading-snug text-foreground/90 font-poppins">
+                Odaberi vreme za {(() => { const d = new Date(`${selectedDate}T00:00:00`); return `${d.getDate()}. ${SR_MONTHS[d.getMonth()]}`; })()}
+              </p>
+              {(staffByDate[selectedDate]?.length ?? 0) > 0 && (
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5 text-sm sm:text-base text-foreground/60 font-poppins">
+                  <span>tretman će raditi</span>
+                  {staffByDate[selectedDate].map((name) => {
+                    const src = staffPhoto(name);
+                    return (
+                      <span key={name} className="inline-flex items-center gap-1.5">
+                        <span className="relative w-7 h-7 sm:w-8 sm:h-8 rounded-full overflow-hidden ring-2 ring-background bg-foreground/15 flex items-center justify-center shrink-0">
+                          {src ? (
+                            <Image src={src} alt="" fill sizes="32px" className="object-cover object-top" />
+                          ) : (
+                            <span className="text-xs font-bold text-foreground/70">{name.charAt(0).toUpperCase()}</span>
+                          )}
+                        </span>
+                        <span className="font-semibold text-foreground">{name}</span>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-lg sm:text-xl font-medium leading-snug text-foreground/90 font-poppins mt-4">{STEP_LABELS[step]}</p>
+          )}
         </div>
 
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
@@ -1638,6 +1701,46 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                   <ChevronRight size={20} className="sm:hidden shrink-0" style={{ color: `${opt.hex}80` }} aria-hidden="true" />
                 </button>
               ))}
+              {/* Men's testimonial - answers the "laser is for women" doubt. */}
+              <figure
+                style={{ ...cascade(GENDER_OPTIONS.length, 60, 4), borderColor: `${ACCENTS.muskarci.hex}33` }}
+                className="bm-card-in sm:col-span-2 flex items-start gap-3 sm:gap-4 px-4 py-4 sm:px-5 rounded-2xl border bg-foreground/[0.03]"
+              >
+                <div
+                  className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden border shrink-0"
+                  style={{ borderColor: `${ACCENTS.muskarci.hex}55` }}
+                >
+                  <Image src="/ugc/filip.webp" alt="Filip" fill sizes="56px" className="object-cover" />
+                </div>
+                <div className="min-w-0">
+                  <blockquote className="text-sm sm:text-base font-poppins text-foreground/80 leading-snug italic">
+                    „Muškarci, verujte mi, <span className="font-bold text-foreground">ISPLATI SE</span>. Ja sam bio jako skeptičan u vezi epilacije. Svi su mi govorili <span className=" font-bold text-foreground">"to nije za muškarce"</span>, ali već nakon 1. tretmana sam shvatio da sam samo gubio vreme.“
+                  </blockquote>
+                  <figcaption className="mt-1.5 text-xs sm:text-sm font-semibold font-poppins" style={{ color: ACCENTS.muskarci.hex }}>
+                    Filip, klijent
+                  </figcaption>
+                </div>
+              </figure>
+              {/* Women's testimonial - answers the "it hurts" fear. */}
+              <figure
+                style={{ ...cascade(GENDER_OPTIONS.length + 1, 60, 4), borderColor: `${ACCENTS.zene.hex}33` }}
+                className="bm-card-in sm:col-span-2 flex items-start gap-3 sm:gap-4 px-4 py-4 sm:px-5 rounded-2xl border bg-foreground/[0.03]"
+              >
+                <div
+                  className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden border shrink-0"
+                  style={{ borderColor: `${ACCENTS.zene.hex}55` }}
+                >
+                  <Image src="/ugc/sara.webp" alt="Sara" fill sizes="56px" className="object-cover" />
+                </div>
+                <div className="min-w-0">
+                  <blockquote className="text-sm sm:text-base font-poppins text-foreground/80 leading-snug italic">
+                    „Ja sam čula priče kako epilacija strašno boli, ali me je drugarica ubedila da to <span className="font-bold text-foreground">ništa ne boli</span> i uradila mi epilaciju. <span className="font-bold text-foreground">Bila je u pravu.</span> Imaju neki sistem hlađenja koji to omogućava.“
+                  </blockquote>
+                  <figcaption className="mt-1.5 text-xs sm:text-sm font-semibold font-poppins" style={{ color: ACCENTS.zene.hex }}>
+                    Sara, klijentkinja
+                  </figcaption>
+                </div>
+              </figure>
             </div>
           )}
 
@@ -2033,6 +2136,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                   })}
                 </div>
               )}
+              <LaserFunFact accentHex={accent.hex} />
               <CallUsHint />
             </div>
           )}

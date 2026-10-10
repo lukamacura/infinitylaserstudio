@@ -3,13 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { ArrowRight, Check } from "lucide-react";
-import { loadNextFreeDays, type FreeDay } from "@/lib/nextFreeDays";
+import type { FreeDay } from "@/lib/nextFreeDays";
 import { DEFAULT_LOCATION, getLocation } from "@/lib/locations";
+import { useOpenBooking } from "@/components/OpenBooking";
 import {
   SR_DAYS_FULL, SR_MONTHS_SHORT, monIdx, Skeleton, StaffAvatars, freeSlotsLabel,
 } from "@/components/booking/shared";
 
-interface Props { onOpen: () => void; }
 
 const perks = [
   "Konsultacija je besplatna",
@@ -19,7 +19,9 @@ const perks = [
 
 const DAY_COUNT = 3;
 
-export default function CommunitySection({ onOpen }: Props) {
+export default function CommunitySection() {
+  const openBooking = useOpenBooking();
+  const onOpen = () => openBooking("zajednica");
   const sectionRef = useRef<HTMLElement>(null);
   // null = still loading; [] = nothing to show, so the plain button stands in.
   const [days, setDays] = useState<FreeDay[] | null>(null);
@@ -32,7 +34,11 @@ export default function CommunitySection({ onOpen }: Props) {
     const io = new IntersectionObserver((entries) => {
       if (!entries.some((e) => e.isIntersecting)) return;
       io.disconnect();
-      void loadNextFreeDays(DEFAULT_LOCATION, DAY_COUNT).then((d) => { if (!cancelled) setDays(d); });
+      // Imported here, not at the top: it brings the Supabase client, which the
+      // page should not download before the visitor gets near this section.
+      void import("@/lib/nextFreeDays")
+        .then(({ loadNextFreeDays }) => loadNextFreeDays(DEFAULT_LOCATION, DAY_COUNT))
+        .then((d) => { if (!cancelled) setDays(d); }, () => { if (!cancelled) setDays([]); });
     }, { rootMargin: "600px 0px" });
     io.observe(el);
     return () => { cancelled = true; io.disconnect(); };

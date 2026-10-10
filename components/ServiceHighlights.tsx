@@ -7,6 +7,7 @@ const caveat = Caveat({
   subsets: ["latin", "latin-ext"],
   display: "swap",
   preload: false,
+  variable: "--font-caveat",
 });
 
 // Ordered shallow → deep, from the finer hair to the coarser, deeper-rooted
@@ -84,7 +85,7 @@ export default function ServiceHighlights() {
                   the machine's side. */}
               <div
                 aria-hidden
-                className={`${caveat.className} absolute right-full top-[22%] z-20 w-20 text-accent md:top-[32%] md:w-36`}
+                className={`${caveat.variable} hand absolute right-full top-[22%] z-20 w-20 text-accent md:top-[32%] md:w-36`}
               >
                 <p
                   className="notes-write -rotate-6 text-2xl font-bold leading-[0.9] md:whitespace-nowrap md:text-[1.75rem]"
@@ -121,7 +122,7 @@ export default function ServiceHighlights() {
           {/* The four wavelengths, on a rose sheet so it reads apart from the
               "Računica" page further down. */}
           <div data-rv="zoom" className="w-full max-w-xl justify-self-center md:max-w-none">
-            <div className={`notes-paper notes-rose ${caveat.className} px-5 pt-8 pb-6 sm:px-9 md:pt-10 md:pb-8`}>
+            <div className={`notes-paper notes-rose ${caveat.variable} hand px-5 pt-8 pb-6 sm:px-9 md:pt-10 md:pb-8`}>
               <span className="notes-tape" aria-hidden />
 
               <div data-rv="group" data-rv-ratio="0.35" className="notes-body">

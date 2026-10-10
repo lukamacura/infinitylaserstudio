@@ -1,8 +1,7 @@
-"use client";
-
 import Image, { getImageProps } from "next/image";
 import { ArrowRight } from "lucide-react";
 import { JOURNEY_STEPS as steps } from "@/lib/journey";
+import { OpenBookingButton } from "@/components/OpenBooking";
 
 // One photo serves both layouts: full-bleed behind the text on phones, inside
 // the arch on desktop. `sizes` tells the browser how wide it is in each.
@@ -22,7 +21,7 @@ const stats = [
   { value: "97%",    label: "Zadovoljnih" },
 ] as const;
 
-export default function Hero({ onOpen }: { onOpen: () => void }) {
+export default function Hero() {
   return (
     // On desktop the whole hero fits one screen, so the journey timeline is
     // visible without scrolling: the stage takes the free height, the timeline
@@ -91,8 +90,8 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
             <div className="mt-5 lg:mt-9 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
               {/* The halo breathes behind the button; the button itself clips the light sweep */}
               <span className="cta-halo relative inline-flex">
-                <button
-                  onClick={onOpen}
+                <OpenBookingButton
+                  source="hero"
                   className="group metal relative overflow-hidden w-full inline-flex items-center justify-between gap-5 h-14 lg:h-16 pl-8 pr-2.5 rounded-full text-base lg:text-[17px] font-bold tracking-[0.06em] cursor-pointer transition-transform duration-300 ease-out hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
                 >
                   <span className="cta-sweep" aria-hidden="true" />
@@ -100,7 +99,7 @@ export default function Hero({ onOpen }: { onOpen: () => void }) {
                   <span className="relative flex items-center justify-center w-9 h-9 lg:w-11 lg:h-11 rounded-full bg-on-accent text-accent transition-transform duration-300 ease-out group-hover:translate-x-1">
                     <ArrowRight size={18} strokeWidth={2.2} />
                   </span>
-                </button>
+                </OpenBookingButton>
               </span>
               {/* The reassurance, said by Ana */}
               <div className="flex items-center gap-3.5 sm:max-w-[20rem]">

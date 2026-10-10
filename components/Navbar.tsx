@@ -50,7 +50,8 @@ export default function Navbar() {
         className="relative z-10 border-b border-accent/10 md:backdrop-blur-xl bg-background/95 md:bg-background/85"
       >
         <div className="max-w-7xl mx-auto flex items-center justify-between px-6 lg:px-12 py-3">
-          <Link href="/" aria-label="Infinity Laser Studio" className="flex items-center gap-3">
+          {/* No prefetch of the page you are already on (it would re-download the home page). */}
+          <Link href="/" prefetch={pathname === "/" ? false : undefined} aria-label="Infinity Laser Studio" className="flex items-center gap-3">
             <Image
               src="/brand/logo.webp"
               alt="Infinity Laser Studio"

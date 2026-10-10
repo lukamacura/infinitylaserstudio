@@ -1,4 +1,3 @@
-import { supabase } from "./supabase";
 import type { LocationId } from "./locations";
 
 /**
@@ -7,7 +6,7 @@ import type { LocationId } from "./locations";
  * Keep in step with the stage list in sql/booking_funnel.sql.
  */
 export const FUNNEL_STAGES = [
-  { key: "open",     label: "Otvorio formu",       hint: "Kliknuo na dugme za zakazivanje" },
+  { key: "open",     label: "Otvorio formu",       hint: "Bilo kakav dolazak u BookingModal" },
   { key: "studio",   label: "Izabrao studio",      hint: "Novi Sad ili Sombor" },
   { key: "gender",   label: "Izabrao pol",         hint: "Žene / muškarci (preskače se kad link već kaže pol)" },
   { key: "services", label: "Izabrao tretmane",    hint: "Označio regije i kliknuo dalje" },
@@ -89,12 +88,20 @@ export function trackFunnel(stage: FunnelStage, location: LocationId | null = nu
     sent.add(stage);
     const id = sessionId();
     if (!id) return;
-    void supabase
-      .rpc("public_track_funnel", {
+    // A plain request to the RPC, not the Supabase client: the home page records
+    // "land" on every visit, and the client would add ~50 KB to its first load.
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !key) return;
+    void fetch(`${url}/rest/v1/rpc/public_track_funnel`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: key, Authorization: `Bearer ${key}` },
+      body: JSON.stringify({
         p_session: id, p_stage: stage, p_location: location,
         // Where the visit and the click came from ride along with the landing and the opening only.
         ...(stage === "open" || stage === "land" ? { p_source: source ?? null, p_utm: visitUtm() } : {}),
-      })
-      .then(() => {}, () => {});
+      }),
+      keepalive: true,
+    }).catch(() => {});
   } catch { /* ignore */ }
 }

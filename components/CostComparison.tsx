@@ -1,12 +1,13 @@
 import type { CSSProperties } from "react";
 import { Caveat } from "next/font/google";
 
-// Handwriting for the notes page. Used only here, so it is not preloaded -
-// the hero fonts keep the early bandwidth.
+// Handwriting for the notes page. Not preloaded, and applied only once the
+// page has loaded (`.hand`, see globals.css) - the hero keeps the early bandwidth.
 const caveat = Caveat({
   subsets: ["latin", "latin-ext"],
   display: "swap",
   preload: false,
+  variable: "--font-caveat",
 });
 
 /** Years of removing hair the usual way, roughly from 16 to 56. */
@@ -61,7 +62,7 @@ export default function CostComparison() {
             The outer div brings the sheet in; the inner one starts the writing
             once a good part of the page is on screen. */}
         <div data-rv="zoom" className="max-w-xl mx-auto mt-2">
-          <div className={`notes-paper ${caveat.className} px-4 pt-8 pb-6 sm:px-9 md:px-11 md:pt-12 md:pb-10`}>
+          <div className={`notes-paper ${caveat.variable} hand px-4 pt-8 pb-6 sm:px-9 md:px-11 md:pt-12 md:pb-10`}>
             <span className="notes-tape" aria-hidden />
 
             <div data-rv="group" data-rv-ratio="0.35" className="notes-body">

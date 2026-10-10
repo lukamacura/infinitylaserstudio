@@ -11,6 +11,7 @@ const caveat = Caveat({
   subsets: ["latin", "latin-ext"],
   display: "swap",
   preload: false,
+  variable: "--font-caveat",
 });
 
 export type SuccessDiscount =

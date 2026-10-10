@@ -321,7 +321,17 @@ body {
   animation: journeyFillY var(--journey-time) linear infinite;
 }
 
+/* The light is drawn at the far end of a box the size of the track; sliding
+   the box (translate, % of the track) moves it on the GPU - no layout per frame. */
 .journey-head {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  animation: journeyHeadY var(--journey-time) linear infinite;
+}
+.journey-head::before {
+  content: "";
   position: absolute;
   left: 50%;
   top: 100%;
@@ -331,8 +341,6 @@ body {
   border-radius: 9999px;
   background: #fff;
   box-shadow: 0 0 10px 3px var(--accent), 0 0 24px 8px color-mix(in srgb, var(--accent) 55%, transparent);
-  opacity: 0;
-  animation: journeyHeadY var(--journey-time) linear infinite;
 }
 
 .journey-dot {
@@ -402,11 +410,11 @@ body {
   100%     { scale: 1 1; opacity: 0; }
 }
 @keyframes journeyHeadY {
-  0%       { top: 0; opacity: 0; }
-  5%       { top: 0; opacity: 1; animation-timing-function: var(--journey-ease); }
-  35%, 42% { top: 50%; opacity: 1; animation-timing-function: var(--journey-ease); }
-  72%      { top: 100%; opacity: 1; }
-  78%, 100% { top: 100%; opacity: 0; }
+  0%       { translate: 0 -100%; opacity: 0; }
+  5%       { translate: 0 -100%; opacity: 1; animation-timing-function: var(--journey-ease); }
+  35%, 42% { translate: 0 -50%; opacity: 1; animation-timing-function: var(--journey-ease); }
+  72%      { translate: 0 0; opacity: 1; }
+  78%, 100% { translate: 0 0; opacity: 0; }
 }
 
 @media (min-width: 1024px) {
@@ -421,11 +429,8 @@ body {
     background: linear-gradient(to right, var(--accent-deep), var(--accent));
     animation-name: journeyFillX;
   }
-  .journey-head {
-    top: 50%;
-    left: 100%;
-    animation-name: journeyHeadX;
-  }
+  .journey-head { animation-name: journeyHeadX; }
+  .journey-head::before { top: 50%; left: 100%; }
 }
 
 /* The booking form's first step: always the horizontal (desktop) layout. */
@@ -440,11 +445,8 @@ body {
   background: linear-gradient(to right, var(--accent-deep), var(--accent));
   animation-name: journeyFillX;
 }
-.journey-row .journey-head {
-  top: 50%;
-  left: 100%;
-  animation-name: journeyHeadX;
-}
+.journey-row .journey-head { animation-name: journeyHeadX; }
+.journey-row .journey-head::before { top: 50%; left: 100%; }
 
 @keyframes journeyFillX {
   0%, 5%   { scale: 0 1; opacity: 1; animation-timing-function: var(--journey-ease); }
@@ -453,11 +455,11 @@ body {
   100%     { scale: 1 1; opacity: 0; }
 }
 @keyframes journeyHeadX {
-  0%       { left: 0; opacity: 0; }
-  5%       { left: 0; opacity: 1; animation-timing-function: var(--journey-ease); }
-  35%, 42% { left: 50%; opacity: 1; animation-timing-function: var(--journey-ease); }
-  72%      { left: 100%; opacity: 1; }
-  78%, 100% { left: 100%; opacity: 0; }
+  0%       { translate: -100% 0; opacity: 0; }
+  5%       { translate: -100% 0; opacity: 1; animation-timing-function: var(--journey-ease); }
+  35%, 42% { translate: -50% 0; opacity: 1; animation-timing-function: var(--journey-ease); }
+  72%      { translate: 0 0; opacity: 1; }
+  78%, 100% { translate: 0 0; opacity: 0; }
 }
 
 /* ── Package phone demo ───────────────────────────────────────────────────────
@@ -487,9 +489,10 @@ body {
    The treatment-zone posters drift past in one endless row. The track holds
    the list twice, so sliding it by half its width lands on an identical frame.
    Transform only - it stays on the compositor. */
+/* A full-width bar sliding in (the dot clips it) - GPU-only, unlike width. */
 @keyframes teamDotFill {
-  from { width: 0%; }
-  to { width: 100%; }
+  from { translate: -100% 0; }
+  to { translate: 0 0; }
 }
 
 @keyframes regionMarquee {
@@ -574,6 +577,11 @@ body {
    hand. Once it is on screen the lines get "written" one after another:
    `.notes-write` wipes text in left to right, `.notes-draw` draws a pen stroke
    (its path has pathLength 1). `--w` is the line's place in the order. */
+/* Handwriting (Caveat, ~100 KB) is switched on after the first scroll or a
+   few seconds after load (HomeClient sets `hand-ready`), so it never competes
+   with the hero. Until then - well below the fold - it is in the body font. */
+.hand-ready .hand { font-family: var(--font-caveat); }
+
 .notes-paper {
   --ink: #24326E;   /* ballpoint blue */
   --pen: #C8405B;   /* the red pen that marks the answer */

@@ -59,7 +59,9 @@ export default function SafetySection() {
   return (
     <section id="bezbednost" className="scroll-mt-24 section-y px-6 bg-background">
       <div
-        className={`max-w-6xl mx-auto ${state === "open" ? "" : "overflow-hidden"} transition-[max-height] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]`}
+        // Animated only while opening: the first measurement (and resizes)
+        // snap instead of re-laying out the page for 700 ms during load.
+        className={`max-w-6xl mx-auto ${state === "open" ? "" : "overflow-hidden"} ${state === "opening" ? "transition-[max-height] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]" : ""}`}
         style={{ maxHeight, maskImage: closed ? fade : undefined, WebkitMaskImage: closed ? fade : undefined }}
         onTransitionEnd={(e) => {
           if (e.target === e.currentTarget && state === "opening") setState("open");

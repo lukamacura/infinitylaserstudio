@@ -105,6 +105,8 @@ export default function StatsSection() {
             alt="Enterijer Infinity Laser Studija"
             fill
             sizes="(min-width: 1024px) 450px, 92vw"
+            // Same quality as the hero, so phones reuse the hero's download.
+            quality={70}
             className="object-cover object-[50%_55%]"
           />
           <div className="absolute inset-0 bg-linear-to-t from-surface from-20% via-surface/75 via-42% to-transparent to-65%" />

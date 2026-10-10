@@ -2,6 +2,7 @@
 
 import Reveal from "@/components/Reveal";
 import { LOCATIONS, fullAddress } from "@/lib/locations";
+import { useOpenBooking } from "@/components/OpenBooking";
 
 const navLinks = [
   { label: "Naša priča", href: "/#o-nama" },
@@ -9,9 +10,11 @@ const navLinks = [
   { label: "Tehnologija", href: "/#tech" },
 ];
 
-interface Props { onOpen: () => void; }
+/** Without `onOpen` (the home page) it opens HomeClient's booking form. */
+interface Props { onOpen?: () => void; }
 
 export default function Footer({ onOpen }: Props) {
+  const openBooking = useOpenBooking();
   return (
     <footer id="kontakt" className="bg-background border-t border-foreground/8 pt-10 md:pt-14 pb-24 px-6">
       <Reveal className="max-w-6xl mx-auto flex flex-col items-center gap-8">
@@ -40,7 +43,7 @@ export default function Footer({ onOpen }: Props) {
             </a>
           ))}
           <button
-            onClick={onOpen}
+            onClick={() => (onOpen ? onOpen() : openBooking("footer"))}
             className="font-poppins text-sm text-foreground/60 hover:text-foreground transition-colors"
           >
             Zakaži

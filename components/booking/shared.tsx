@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { Service } from "@/lib/database.types";
-import { staffPhoto } from "@/lib/staff";
+import { staffPhoto } from "@/lib/staffPhoto";
 
 export type Gender = "zene" | "muskarci";
 
