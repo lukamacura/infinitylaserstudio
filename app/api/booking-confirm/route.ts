@@ -30,7 +30,9 @@ import {
  */
 const REPLY_TO_DEFAULT = "ana.infinitystudio@gmail.com";
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const N8N_ATTEMPTS = 3;
+
+const DATE_RE =/^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^\d{2}:\d{2}$/;
 
 type ReservationRow = Pick<
@@ -56,39 +58,51 @@ const DISCOUNT_LABEL: Record<BookingDiscount, string | null> = {
 async function notifyAdmins(row: ReservationRow, d: BookingEmailData): Promise<void> {
   const webhookUrl = process.env.N8N_WEBHOOK_URL;
   if (!webhookUrl) return;
-  try {
-    const res = await fetch(webhookUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Booking-Secret": process.env.N8N_WEBHOOK_SECRET ?? "",
-      },
-      body: JSON.stringify({
-        booking_ref:    d.bookingRef,
-        location:       d.studio.id,
-        location_name:  d.studio.name,
-        customer_name:  row.customer_name,
-        customer_phone: row.customer_phone ?? "",
-        customer_email: row.customer_email,
-        customer_note:  row.customer_note ?? "",
-        date:           row.date,
-        date_label:     formatEmailDate(row.date),
-        start_time:     d.startTime,
-        end_time:       d.endTime,
-        duration:       d.durationMinutes,
-        services:       d.services,
-        list_price:     d.listPrice,
-        final_price:    d.finalPrice,
-        discount:       d.discount,
-        discount_label: DISCOUNT_LABEL[d.discount] ?? "",
-        promo_code:     row.promo_code ?? "",
-      }),
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!res.ok) console.error("[booking-confirm] n8n responded with status", res.status);
-  } catch (err) {
-    console.error("[booking-confirm] failed to notify n8n:", err);
+  const body = JSON.stringify({
+    booking_ref:    d.bookingRef,
+    location:       d.studio.id,
+    location_name:  d.studio.name,
+    customer_name:  row.customer_name,
+    customer_phone: row.customer_phone ?? "",
+    customer_email: row.customer_email,
+    customer_note:  row.customer_note ?? "",
+    date:           row.date,
+    date_label:     formatEmailDate(row.date),
+    start_time:     d.startTime,
+    end_time:       d.endTime,
+    duration:       d.durationMinutes,
+    services:       d.services,
+    list_price:     d.listPrice,
+    final_price:    d.finalPrice,
+    discount:       d.discount,
+    discount_label: DISCOUNT_LABEL[d.discount] ?? "",
+    promo_code:     row.promo_code ?? "",
+  });
+
+  // A blip at n8n (restart, 502, dropped connection) must not lose a booking,
+  // so those are retried. A timeout is not: n8n may already have posted it,
+  // and a second try would post the booking twice.
+  for (let attempt = 1; attempt <= N8N_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Booking-Secret": process.env.N8N_WEBHOOK_SECRET ?? "",
+        },
+        body,
+        signal: AbortSignal.timeout(5000),
+      });
+      if (res.ok) return;
+      console.error(`[booking-confirm] n8n responded with status ${res.status} (attempt ${attempt}/${N8N_ATTEMPTS})`);
+      if (res.status < 500 && res.status !== 429) return; // our request is wrong - retrying won't help
+    } catch (err) {
+      console.error(`[booking-confirm] failed to notify n8n (attempt ${attempt}/${N8N_ATTEMPTS}):`, err);
+      if (err instanceof Error && err.name === "TimeoutError") return;
+    }
+    if (attempt < N8N_ATTEMPTS) await new Promise((r) => setTimeout(r, 1000 * attempt));
   }
+  console.error(`[booking-confirm] n8n NOT notified for booking ${d.bookingRef}`);
 }
 
 function isPrice(v: unknown): v is number {
