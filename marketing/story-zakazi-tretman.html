@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="sr">
+<head>
+<meta charset="utf-8">
+<title>Stori – Zakaži tretman</title>
+<!-- Instagram story, 1080×1920. The panel at the bottom is left empty on purpose:
+     the dates are typed over it in Instagram. Render:
+     chrome --headless --screenshot --window-size=1080,1920 this file. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Instrument+Serif&family=Poppins:wght@400;500;600;700&display=block&subset=latin-ext" rel="stylesheet">
+<style>
+  :root {
+    --background: #120A0E;
+    --surface: #1E1017;
+    --foreground: #F5E6E6;
+    --accent: #DCA8A6;
+    --accent-soft: #EBC6C3;
+    --accent-deep: #9E6769;
+    --on-accent: #1E1017;
+    --free: #6ECF97;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #000; }
+  body { display: flex; justify-content: center; }
+
+  .story {
+    position: relative;
+    width: 1080px;
+    height: 1920px;
+    overflow: hidden;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: "Poppins", sans-serif;
+  }
+
+  /* Studio photo, pulled up so the glowing wall logo sits in the top third */
+  .photo {
+    position: absolute;
+    left: -40px;
+    top: -420px;
+    width: 1160px;
+    height: 2064px;
+    object-fit: cover;
+  }
+  .scrim {
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(to bottom,
+        rgba(18,10,14,0.70) 0%,
+        rgba(18,10,14,0.05) 13%,
+        rgba(18,10,14,0.05) 26%,
+        rgba(18,10,14,0.82) 37%,
+        #120A0E 47%);
+  }
+  .glow {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(140px);
+    pointer-events: none;
+  }
+  .glow.a { width: 760px; height: 760px; left: -260px; top: 960px; background: rgba(158,103,105,0.35); }
+  .glow.b { width: 620px; height: 620px; right: -240px; top: 1380px; background: rgba(220,168,166,0.18); }
+
+  /* ── Brand row ─────────────────────────────────────────── */
+  .brand {
+    position: absolute;
+    top: 150px; left: 72px; right: 72px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .brand-name { display: flex; align-items: center; gap: 22px; }
+  .brand-name img { width: 88px; height: 88px; border-radius: 50%; }
+  .brand-name p { font-size: 25px; font-weight: 600; letter-spacing: 0.24em; line-height: 1.35; }
+  .brand-name span { display: block; font-size: 19px; font-weight: 500; letter-spacing: 0.32em; color: var(--accent); }
+  .city {
+    padding: 16px 28px;
+    border-radius: 999px;
+    border: 1.5px solid rgba(220,168,166,0.45);
+    background: rgba(18,10,14,0.45);
+    backdrop-filter: blur(14px);
+    font-size: 22px; font-weight: 500; letter-spacing: 0.08em;
+  }
+
+  /* ── Ana on the photo ──────────────────────────────────── */
+  .ana {
+    position: absolute;
+    top: 420px; right: 72px;
+    width: 520px;
+    display: flex; align-items: center; gap: 24px;
+    padding: 24px 30px 24px 24px;
+    border-radius: 36px;
+    border: 1.5px solid rgba(220,168,166,0.30);
+    background: rgba(30,16,23,0.62);
+    backdrop-filter: blur(18px);
+    box-shadow: 0 30px 60px rgba(0,0,0,0.45);
+  }
+  .ana-photo {
+    width: 112px; height: 112px; flex-shrink: 0;
+    border-radius: 50%; overflow: hidden;
+    box-shadow: 0 0 0 3px var(--accent);
+  }
+  .ana-photo img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 8%; transform: scale(1.35); transform-origin: 50% 12%; }
+  .ana b { display: block; font-size: 24px; font-weight: 700; }
+  .ana b em { font-style: normal; font-weight: 500; color: rgba(245,230,230,0.5); }
+  .ana p { margin-top: 6px; font-size: 23px; line-height: 1.38; color: rgba(245,230,230,0.85); }
+
+  /* ── Offer ─────────────────────────────────────────────── */
+  .offer { position: absolute; left: 72px; right: 72px; top: 660px; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 14px;
+    font-size: 21px; font-weight: 600; letter-spacing: 0.26em; text-transform: uppercase;
+    color: var(--accent);
+  }
+  .eyebrow::before { content: ""; width: 48px; height: 2px; background: var(--accent); }
+  h1 {
+    margin-top: 24px;
+    font-family: "DM Serif Display", serif;
+    font-weight: 400;
+    font-size: 116px;
+    line-height: 1.02;
+    letter-spacing: -0.01em;
+  }
+  h1 .accent { color: var(--accent); }
+  .marker { position: relative; display: inline-block; white-space: nowrap; color: var(--on-accent); padding: 0 0.08em; }
+  .marker::before {
+    content: ""; position: absolute; z-index: -1;
+    inset: 0.2em 0 0.06em;
+    border-radius: 0.28em 0.12em 0.32em 0.16em / 0.2em 0.4em 0.16em 0.36em;
+    background: linear-gradient(100deg, var(--accent) 0%, var(--accent-soft) 35%, var(--accent) 70%, var(--accent-soft) 100%);
+    rotate: -1.4deg;
+  }
+  h1 .line { position: relative; z-index: 0; display: block; }
+  .sub { margin-top: 26px; font-size: 34px; line-height: 1.45; color: rgba(245,230,230,0.8); }
+
+  /* ── Proof (as in the hero) ────────────────────────────── */
+  .stats {
+    position: absolute; left: 72px; right: 72px; top: 1186px;
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    padding-top: 26px;
+    border-top: 1.5px solid rgba(245,230,230,0.12);
+  }
+  .stats div { display: flex; flex-direction: column; }
+  .stats div + div { padding-left: 40px; border-left: 1.5px solid rgba(245,230,230,0.12); }
+  .stats dd { font-family: "Instrument Serif", serif; font-size: 72px; line-height: 1; }
+  .stats dt { margin-top: 8px; font-size: 19px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(245,230,230,0.55); }
+
+  /* ── Empty panel: dates are typed over it in Instagram ── */
+  .slots {
+    position: absolute; left: 72px; right: 72px; top: 1376px; height: 380px;
+    border-radius: 44px;
+    border: 1.5px solid rgba(220,168,166,0.22);
+    background: rgba(30,16,23,0.55);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+    padding: 34px 40px;
+  }
+  .slots-label {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 21px; font-weight: 600; letter-spacing: 0.24em; text-transform: uppercase;
+    color: var(--accent);
+  }
+  .free {
+    display: inline-flex; align-items: center; gap: 12px;
+    padding: 10px 20px;
+    border-radius: 999px;
+    border: 1.5px solid rgba(110,207,151,0.45);
+    background: rgba(110,207,151,0.12);
+    color: #9BE3B8;
+    font-size: 19px; letter-spacing: 0.14em;
+  }
+  .free::before {
+    content: ""; width: 14px; height: 14px; border-radius: 50%;
+    background: var(--free);
+    box-shadow: 0 0 0 5px rgba(110,207,151,0.2), 0 0 18px rgba(110,207,151,0.8);
+  }
+
+  .url {
+    position: absolute; left: 0; right: 0; top: 1800px;
+    text-align: center;
+    font-size: 24px; font-weight: 500; letter-spacing: 0.14em;
+    color: rgba(245,230,230,0.6);
+  }
+</style>
+</head>
+<body>
+  <div class="story">
+    <img class="photo" src="../public/hero/phone.webp" alt="">
+    <div class="scrim"></div>
+    <div class="glow a"></div>
+    <div class="glow b"></div>
+
+    <div class="brand">
+      <div class="brand-name">
+        <img src="../public/brand/logo.webp" alt="">
+        <p>INFINITY<span>LASER STUDIO</span></p>
+      </div>
+      <div class="city">Novi Sad · Sombor</div>
+    </div>
+
+    <div class="ana">
+      <div class="ana-photo"><img src="../public/team/ana.webp" alt=""></div>
+      <div>
+        <b>Ana <em>(Vlasnik)</em></b>
+        <p>Ništa se ne brini. Na prvom tretmanu sve dogovaramo.</p>
+      </div>
+    </div>
+
+    <div class="offer">
+      <p class="eyebrow">Laserska epilacija</p>
+      <h1>
+        <span class="line">Reši se <span class="marker">70–90%</span></span>
+        <span class="line">dlačica ili</span>
+        <span class="line accent">vraćamo novac</span>
+      </h1>
+      <p class="sub">Zauvek bez brijača, iritacija i uraslih dlaka.</p>
+    </div>
+
+    <dl class="stats">
+      <div><dd>2000+</dd><dt>Klijenata</dt></div>
+      <div><dd>5 god.</dd><dt>Iskustva</dt></div>
+      <div><dd>97%</dd><dt>Zadovoljnih</dt></div>
+    </dl>
+
+    <div class="slots">
+      <div class="slots-label">
+        <span>Najbliži termini</span>
+        <span class="free">SLOBODNO</span>
+      </div>
+    </div>
+
+    <p class="url">infinitylaserstudio.com</p>
+  </div>
+</body>
+</html>

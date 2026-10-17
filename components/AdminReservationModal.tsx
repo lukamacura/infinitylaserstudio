@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 import Image from "next/image";
+import { motion, useReducedMotion } from "framer-motion";
 import {
   X, ArrowLeft, Loader2, CheckCircle2, AlertCircle, FileText, ChevronRight,
 } from "lucide-react";
@@ -15,7 +16,10 @@ import {
   ADMIN_HORIZON_DAYS, EMPTY_AVAILABILITY, type AvailabilityData,
 } from "@/lib/availability";
 import type { Service } from "@/lib/database.types";
-import { parseBundlePromo, bundleRedeemCode } from "@/lib/bundles";
+import {
+  eligibleBundleSizes, computeBundle, parseBundlePromo,
+  bundlePurchaseCode, bundleRedeemCode, type BundleResult,
+} from "@/lib/bundles";
 import { STUDENT_PROMO_CODE, isStudentPromoCode } from "@/lib/pricing";
 import { fetchPriceRows, PriceBook } from "@/lib/prices";
 import { getLocation, fullAddress, type LocationId } from "@/lib/locations";
@@ -32,9 +36,9 @@ import {
 /*
  * Admin flavour of the booking flow. Same look as the public BookingModal
  * (both build on components/booking/shared.tsx and the `.bm-*` theme in
- * globals.css) but with the staff rules: no plan/bundle step, a much longer
- * booking horizon, no 2-hour notice, `ils-` promo codes, an internal note and
- * no cancellation-policy consent.
+ * globals.css), the same single-vs-bundle plan step, but with the staff rules:
+ * a much longer booking horizon, any time of day, no 2-hour notice, `ils-`
+ * promo codes, an internal note and no cancellation-policy consent.
  */
 
 interface AdminReservationModalProps {
@@ -45,7 +49,19 @@ interface AdminReservationModalProps {
   onSuccess?: () => void;
 }
 
-type Step = 1 | 2 | 3 | 4 | 5 | "success" | "preparation";
+type Step = 1 | 2 | "plan" | 3 | 4 | 5 | "success" | "preparation";
+type BookingMode = "single" | "bundle";
+
+/** Bundle-size illustrations - the same art as the public plan step. */
+const BUNDLE_IMAGES: Record<number, string> = {
+  3: "/paketi/3.webp",
+  6: "/paketi/6.webp",
+  8: "/paketi/8.webp",
+  10: "/paketi/10.webp",
+};
+
+const PAYMENT_TERMS =
+  "Ceo paket se plaća na prvom tretmanu - svi preostali termini su zagarantovani.";
 
 /**
  * Admin may book outside working hours, on any day (Sundays and closed days
@@ -103,6 +119,7 @@ function isIlsPromoCode(raw: string): boolean {
 const STEP_LABELS: Record<Step, string> = {
   1: "Za koga zakazuješ?",
   2: "Odaberi regije za tretman",
+  plan: "Jedan tretman ili paket?",
   3: "Izaberi datum",
   4: "Izaberi vreme",
   5: "Podaci o klijentu",
@@ -111,7 +128,7 @@ const STEP_LABELS: Record<Step, string> = {
 };
 
 /** The flow in order - the progress line fills one share per screen. */
-const STEP_ORDER: Step[] = [1, 2, 3, 4, 5];
+const STEP_ORDER: Step[] = [1, 2, "plan", 3, 4, 5];
 
 // ═════════════════════════════════════════════════════════════════════════════
 export default function AdminReservationModal({
@@ -130,6 +147,9 @@ export default function AdminReservationModal({
   const [servicesError, setServicesError] = useState(false);
   const [servicesReloadKey, setServicesReloadKey] = useState(0);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bookingMode, setBookingMode] = useState<BookingMode>("single");
+  const [bundleSize, setBundleSize]   = useState<number | null>(null);
+  const reduceMotion = useReducedMotion();
 
   // Step 3 state
   const [selectedDate, setSelectedDate]   = useState("");
@@ -197,25 +217,45 @@ export default function AdminReservationModal({
   const slotsKey         = selectedDate ? `${selectedDate}:${slotsReloadKey}` : null;
   const loadingSlots     = slotsKey !== null && slotsFor !== slotsKey;
 
-  // Discounts are mutually exclusive: bundle redemption > ils promo > student.
+  // ── Bundle ("Napravi svoj paket") - same tiers and prices as the public form.
+  const eligibleSizes = eligibleBundleSizes(effectiveServices);
+  const bundleResult: BundleResult | null =
+    bundleSize != null && eligibleSizes.includes(bundleSize) && effectiveServices.length > 0
+      ? computeBundle(effectiveServices, bundleSize)
+      : null;
+  const bundleActive = bookingMode === "bundle" && bundleResult != null;
+  /** A bundle's price card: final total, savings and the tier percentage. */
+  function bundleOffer(b: BundleResult) {
+    return {
+      finalTotal: b.finalTotal,
+      savings: b.originalTotal - b.finalTotal,
+      pct: Math.round((1 - b.finalTotal / b.originalTotal) * 100),
+    };
+  }
+  const bundleDeal = bundleResult ? bundleOffer(bundleResult) : null;
+
+  // Discounts are mutually exclusive: bundle purchase > bundle redemption > ils promo > student.
   const redeemActive =
-    promoKind === "bundle_redeem" && promoStatus === "valid" && appliedPromoCode != null;
+    !bundleActive && promoKind === "bundle_redeem" && promoStatus === "valid" && appliedPromoCode != null;
   const ilsPromoActive =
-    promoKind === "ils" && promoStatus === "valid" &&
+    !bundleActive && promoKind === "ils" && promoStatus === "valid" &&
     appliedPromoCode != null && isIlsPromoCode(appliedPromoCode);
   const studentActive =
-    !redeemActive && !ilsPromoActive && promoKind === "student" && promoStatus === "valid";
-  const anyDiscount = redeemActive || ilsPromoActive || studentActive;
-  const finalPrice = redeemActive
-    ? 0
-    : ilsPromoActive
-      ? Math.round(totalPrice * 0.9)
-      : studentActive
-        ? Math.round(totalPrice * 0.8)
-        : totalPrice;
-  const savingsVsList = totalPrice - finalPrice;
+    !bundleActive && !redeemActive && !ilsPromoActive && promoKind === "student" && promoStatus === "valid";
+  const anyDiscount = bundleActive || redeemActive || ilsPromoActive || studentActive;
+  const listTotal = bundleActive ? bundleResult!.originalTotal : totalPrice;
+  const finalPrice = bundleActive
+    ? bundleDeal!.finalTotal
+    : redeemActive
+      ? 0
+      : ilsPromoActive
+        ? Math.round(totalPrice * 0.9)
+        : studentActive
+          ? Math.round(totalPrice * 0.8)
+          : totalPrice;
+  const savingsVsList = listTotal - finalPrice;
   /** Success tile: counts down from list to final price; no discount = nothing to animate. */
-  const priceShown = totalPrice === finalPrice ? finalPrice : (displayedPrice ?? totalPrice);
+  const priceShown = listTotal === finalPrice ? finalPrice : (displayedPrice ?? listTotal);
 
   // Day options rebuild whenever slot duration (incl. consultation) or schedule changes
   // and hides days that are fully booked (once the reservations are loaded).
@@ -300,7 +340,7 @@ export default function AdminReservationModal({
   useEffect(() => {
     if (step !== "success") return;
     const target = finalPrice;
-    const from   = totalPrice;
+    const from   = listTotal;
     if (from === target) return; // nothing to count down - `priceShown` uses the final price
 
     const DURATION = 900;
@@ -316,7 +356,7 @@ export default function AdminReservationModal({
 
     animFrameRef.current = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(animFrameRef.current);
-  }, [step, finalPrice, totalPrice]);
+  }, [step, finalPrice, listTotal]);
 
   // Reservations for the chosen day - refetched every time the time step opens,
   // so coming back to a day never shows slots that were booked in the meantime.
@@ -392,6 +432,7 @@ export default function AdminReservationModal({
   function resetAll() {
     setIsAnimating(false);
     setStep(1); setGender(null); setSelectedIds([]);
+    setBookingMode("single"); setBundleSize(null);
     setSelectedDate(""); setSelectedTime(""); setDaySlots([]); setSlotsFor(null);
     setSlotsError(false); setServicesError(false); setServicesFor(null);
     setForm({ name: "", email: "", phone: "", notes: "" });
@@ -412,7 +453,8 @@ export default function AdminReservationModal({
   function handleBack() {
     if (step === 1) { handleClose(); }
     else if (step === 2) { setStep(1); setGender(null); setServicesError(false); setSelectedIds([]); }
-    else if (step === 3) { setStep(2); setSelectedDate(""); setSelectedTime(""); }
+    else if (step === "plan") { setStep(2); }
+    else if (step === 3) { setStep("plan"); setSelectedDate(""); setSelectedTime(""); }
     else if (step === 4) { setStep(3); setSelectedTime(""); }
     else if (step === 5) { setStep(4); }
     else if (step === "preparation") { setStep("success"); }
@@ -422,8 +464,23 @@ export default function AdminReservationModal({
     setGender(g);
     setServicesError(false);
     setSelectedIds([]);
+    setBookingMode("single"); setBundleSize(null);
     setSelectedDate(""); setSelectedTime("");
     setStep(2);
+  }
+
+  function handleSelectSingle() {
+    setBookingMode("single");
+    setBundleSize(null);
+    setStep(3);
+  }
+
+  function handleSelectBundle(size: number) {
+    setBookingMode("bundle");
+    setBundleSize(size);
+    // A bundle is paid in full upfront - drop any single-session promo.
+    setPromoCode(""); setPromoStatus("idle"); setAppliedPromoCode(null); setPromoKind("none");
+    setStep(3);
   }
 
   function toggleService(id: string) {
@@ -587,18 +644,24 @@ export default function AdminReservationModal({
     const returningSubmit = !!existingReservation;
 
     // Resolve the recorded promo code + final price for this booking. Mutually
-    // exclusive: bundle redemption (pre-paid follow-up, price 0) > ils −10% > student −20%.
+    // exclusive: bundle purchase > bundle redemption (pre-paid follow-up, price 0)
+    // > ils −10% > student −20%.
     const redeemSubmit =
-      promoKind === "bundle_redeem" && promoStatus === "valid" && appliedPromoCode != null;
+      !bundleActive && promoKind === "bundle_redeem" && promoStatus === "valid" && appliedPromoCode != null;
     const ilsAppliedSubmit =
       !redeemSubmit && promoKind === "ils" && promoStatus === "valid" &&
       appliedPromoCode != null && isIlsPromoCode(appliedPromoCode);
     const studentAppliedSubmit =
-      !redeemSubmit && !ilsAppliedSubmit && promoKind === "student" && promoStatus === "valid";
+      !bundleActive && !redeemSubmit && !ilsAppliedSubmit && promoKind === "student" && promoStatus === "valid";
 
     let promoForRecord: string | null = null;
     let notesFromPromo: string | null = null;
-    if (redeemSubmit) {
+    if (bundleActive) {
+      promoForRecord = bundlePurchaseCode(bundleSize!, bundleDeal!.finalTotal);
+      notesFromPromo =
+        `Paket ${bundleSize}× - ukupno ${formatPrice(bundleDeal!.finalTotal)} RSD ` +
+        `(ušteda ${formatPrice(bundleDeal!.savings)} RSD)`;
+    } else if (redeemSubmit) {
       promoForRecord = bundleRedeemCode(appliedPromoCode!);
       notesFromPromo = `Iskorišćen tretman iz paketa ${appliedPromoCode}`;
     } else if (ilsAppliedSubmit) {
@@ -607,13 +670,15 @@ export default function AdminReservationModal({
       promoForRecord = STUDENT_PROMO_CODE;
       notesFromPromo = "STUDENTSKI POPUST −20% - proveri indeks pri dolasku!";
     }
-    const finalForSubmit = redeemSubmit
-      ? 0
-      : ilsAppliedSubmit
-        ? Math.round(totalPrice * 0.9)
-        : studentAppliedSubmit
-          ? Math.round(totalPrice * 0.8)
-          : totalPrice;
+    const finalForSubmit = bundleActive
+      ? bundleDeal!.finalTotal
+      : redeemSubmit
+        ? 0
+        : ilsAppliedSubmit
+          ? Math.round(totalPrice * 0.9)
+          : studentAppliedSubmit
+            ? Math.round(totalPrice * 0.8)
+            : totalPrice;
 
     // Append the bundle redemption note to any admin note already entered.
     const adminNote = form.notes.trim();
@@ -699,9 +764,11 @@ export default function AdminReservationModal({
         end_time:         endTime,
         services:         effectiveServices.map((s) => ({ name: s.name, price: s.price })),
         total_duration:   durationForReservation,
-        total_price:      totalPrice,
+        total_price:      listTotal,
         discounted_price: finalForSubmit,
         promo_code:       promoForRecord ?? "redovna cena",
+        bundle_sessions:  bundleActive ? bundleSize : null,
+        bundle_code:      bundleActive ? promoForRecord : null,
         booking_ref:      bookingRefValue,
         location,
         location_name:    studio.name,
@@ -748,7 +815,7 @@ export default function AdminReservationModal({
         {/* Header - from sm up, content lives in the centered COL_W column */}
         <div className={`flex items-center justify-between px-4 sm:px-6 pt-4 sm:pt-6 pb-2 sm:pb-4 shrink-0 ${COL_W}`}>
           <div className="flex items-center gap-3">
-            {(step === 1 || step === 2 || step === 3 || step === 4 || step === 5 || step === "preparation") && (
+            {(step === 1 || step === 2 || step === "plan" || step === 3 || step === 4 || step === 5 || step === "preparation") && (
               <button onClick={handleBack} className="w-9 h-9 sm:w-11 sm:h-11 flex items-center justify-center rounded-full hover:bg-foreground/5 transition-colors cursor-pointer" aria-label="Nazad">
                 <ArrowLeft size={18} className="sm:w-[22px] sm:h-[22px]" />
               </button>
@@ -968,6 +1035,137 @@ export default function AdminReservationModal({
             </div>
           )}
 
+          {/* ══ STEP "plan": Single vs Bundle ═══════════════════════════════ */}
+          {step === "plan" && (
+            <div className="flex flex-col gap-3 sm:gap-4 py-1 sm:py-2">
+              {/* Single session - first option, kept visually light so bundles still win */}
+              <button
+                type="button"
+                onClick={handleSelectSingle}
+                className="flex items-center justify-between gap-3 sm:gap-4 w-full px-3.5 py-3 sm:p-5 rounded-2xl sm:rounded-3xl border-2 border-foreground/8 hover:border-foreground/20 text-left cursor-pointer transition-all"
+              >
+                <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
+                  <p className="text-sm sm:text-base md:text-lg font-bold font-poppins">Samo 1 tretman</p>
+                  <span className="text-[11px] sm:text-[13px] font-poppins text-foreground/45 leading-snug">
+                    Bez popusta
+                  </span>
+                </div>
+                <p className="text-base sm:text-xl font-bold font-poppins leading-tight tabular-nums shrink-0">
+                  {formatPrice(totalPrice)}<span className="ml-1 text-[10px] sm:text-sm font-semibold">RSD</span>
+                </p>
+              </button>
+
+              {/* Bundle options */}
+              {eligibleSizes.map((size, idx) => {
+                const b = computeBundle(effectiveServices, size);
+                const deal = bundleOffer(b);
+                const isSelected = bundleActive && bundleSize === size;
+                const isBest = idx === eligibleSizes.length - 1;
+                return (
+                  <motion.button
+                    key={size}
+                    type="button"
+                    onClick={() => handleSelectBundle(size)}
+                    whileTap="tap"
+                    variants={{ tap: { scale: reduceMotion ? 1 : 0.985 } }}
+                    /* transition-colors, not transition-all: a CSS transform
+                       transition would fight framer's inline transforms. */
+                    className={`relative flex items-center gap-2.5 sm:gap-4 w-full p-3 sm:p-4 rounded-2xl sm:rounded-3xl border-2 text-left cursor-pointer transition-colors ${
+                      isSelected
+                        ? `${accent.border} ${accent.bgLight}`
+                        : "border-foreground/8 hover:border-foreground/20"
+                    }`}
+                  >
+                    {isBest && (
+                      <span
+                        className="absolute -top-2.5 sm:-top-3 left-4 sm:left-5 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] sm:text-[11px] font-bold font-poppins tracking-widest bm-metal"
+                        style={{ backgroundColor: accent.hex }}
+                      >
+                        NAJVEĆA UŠTEDA
+                      </span>
+                    )}
+                    {BUNDLE_IMAGES[size] && (
+                      <motion.div
+                        className="relative shrink-0 w-14 h-14 sm:w-[104px] sm:h-[104px]"
+                        style={{ transformPerspective: 600 }}
+                        initial={reduceMotion ? { opacity: 0 } : { opacity: 0, rotateY: -28, rotateX: 10, scale: 0.85 }}
+                        animate={{ opacity: 1, rotateY: 0, rotateX: 0, scale: 1 }}
+                        transition={
+                          reduceMotion
+                            ? { duration: 0.25 }
+                            : {
+                                type: "spring",
+                                stiffness: isBest ? 240 : 300,
+                                damping: isBest ? 13 : 22,
+                                delay: 0.1 + idx * 0.08,
+                                opacity: { duration: 0.2, delay: 0.1 + idx * 0.08 },
+                              }
+                        }
+                      >
+                        <motion.div
+                          className="relative w-full h-full"
+                          variants={{ tap: { scale: reduceMotion ? 1 : 1.1 } }}
+                          transition={{ type: "spring", stiffness: 500, damping: 15 }}
+                        >
+                          {/* scale-110 trims the whitespace baked into the source art */}
+                          <div className="relative w-full h-full scale-110">
+                            <Image
+                              src={BUNDLE_IMAGES[size]}
+                              alt={`Paket ${size} tretmana`}
+                              fill
+                              sizes="(max-width: 640px) 56px, 104px"
+                              className="rounded-xl object-contain"
+                            />
+                            {isBest && (
+                              <span
+                                className="bm-shine"
+                                aria-hidden="true"
+                                style={{
+                                  "--shine-mask": `url(${BUNDLE_IMAGES[size]})`,
+                                  "--shine-delay": `${0.5 + idx * 0.08}s`,
+                                } as CSSProperties}
+                              />
+                            )}
+                          </div>
+                        </motion.div>
+                      </motion.div>
+                    )}
+                    <div className="flex flex-col gap-1 sm:gap-2 flex-1 min-w-0">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <p className="text-sm sm:text-base md:text-lg font-bold font-poppins truncate">Paket {size} tretmana</p>
+                        <p className="text-base sm:text-xl font-bold font-poppins leading-tight shrink-0 tabular-nums" style={{ color: accent.hex }}>
+                          {formatPrice(deal.finalTotal)}<span className="ml-1 text-[10px] sm:text-sm font-semibold">RSD</span>
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                          <span
+                            className="px-1.5 sm:px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-bold font-poppins bm-metal shrink-0"
+                            style={{ backgroundColor: accent.hex }}
+                          >
+                            −{deal.pct}%
+                          </span>
+                          <span className="text-[11px] sm:text-sm font-semibold font-poppins text-emerald-300 truncate">
+                            Ušteda {formatPrice(deal.savings)}
+                          </span>
+                        </div>
+                        <p className="text-[11px] sm:text-[13px] text-foreground/35 font-poppins line-through shrink-0 tabular-nums">
+                          {formatPrice(b.originalTotal)}
+                        </p>
+                      </div>
+                    </div>
+                  </motion.button>
+                );
+              })}
+
+              {bundleActive && (
+                <p className="text-xs sm:text-sm font-poppins text-foreground/50 leading-snug px-1 mt-1 sm:mt-2">
+                  {PAYMENT_TERMS}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* ══ STEP 3: Date only ══════════════════════════════════════════════ */}
           {step === 3 && (
             <div className="flex flex-col gap-4">
@@ -1181,6 +1379,8 @@ export default function AdminReservationModal({
                 />
               </div>
 
+              {/* Promo / bundle code - hidden while buying a bundle (mutually exclusive) */}
+              {!bundleActive && (
               <div>
                 <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/60 font-poppins mb-2">PROMO KOD</p>
                 <div className="flex gap-2">
@@ -1259,6 +1459,7 @@ export default function AdminReservationModal({
                   </p>
                 )}
               </div>
+              )}
 
               {/* Price summary with savings */}
               {selectedIds.length > 0 && (
@@ -1271,14 +1472,28 @@ export default function AdminReservationModal({
                         <span className="text-xs sm:text-sm font-poppins text-foreground/60">{formatPrice(s.price)} RSD</span>
                       </div>
                     ))}
+                    {bundleActive && (
+                      <div className="flex justify-between items-center py-0.5 mt-1">
+                        <span className="text-xs sm:text-sm font-poppins text-foreground/76 font-semibold">Paket - {bundleSize} tretmana</span>
+                        <span className="text-xs sm:text-sm font-poppins text-foreground/60">× {bundleSize}</span>
+                      </div>
+                    )}
                   </div>
                   <div className="border-t border-foreground/10 pt-2.5">
                     <div className="flex justify-between items-center">
-                      <span className="text-sm sm:text-base font-poppins text-foreground/68">Redovna cena</span>
+                      <span className="text-sm sm:text-base font-poppins text-foreground/68">
+                        {bundleActive ? `Redovna cena (${bundleSize}×)` : "Redovna cena"}
+                      </span>
                       <span className={`text-sm sm:text-base font-poppins font-semibold ${anyDiscount ? "text-foreground/60 line-through" : "font-bold text-foreground"}`}>
-                        {formatPrice(totalPrice)} RSD
+                        {formatPrice(listTotal)} RSD
                       </span>
                     </div>
+                    {bundleActive && (
+                      <div className="flex justify-between items-center mt-1.5">
+                        <span className="text-sm sm:text-base font-poppins text-emerald-300 font-semibold">Cena paketa (−{bundleDeal!.pct}%)</span>
+                        <span className="text-sm sm:text-base font-poppins font-bold text-emerald-300">{formatPrice(finalPrice)} RSD</span>
+                      </div>
+                    )}
                     {studentActive && (
                       <div className="flex justify-between items-center mt-1.5">
                         <span className="text-sm sm:text-base font-poppins text-emerald-300 font-semibold">Studentski popust (−20%)</span>
@@ -1306,6 +1521,11 @@ export default function AdminReservationModal({
                     {studentActive && (
                       <p className="text-[11px] sm:text-[13px] font-poppins text-amber-300 font-semibold leading-snug mt-2.5 pt-2.5 border-t border-foreground/8">
                         Ova cena važi uz indeks. Bez njega se naplaćuje {formatPrice(totalPrice)} RSD.
+                      </p>
+                    )}
+                    {bundleActive && (
+                      <p className="text-[11px] sm:text-[13px] font-poppins text-foreground/60 leading-snug mt-2.5 pt-2.5 border-t border-foreground/8">
+                        {PAYMENT_TERMS}
                       </p>
                     )}
                   </div>
@@ -1345,14 +1565,18 @@ export default function AdminReservationModal({
                   <p className="text-[10px] sm:text-xs font-semibold tracking-widest text-foreground/60 font-poppins mb-1 sm:mb-2">CENA</p>
                   {anyDiscount && (
                     <p className="text-xs sm:text-sm text-foreground/55 font-poppins line-through leading-none mb-0.5">
-                      {formatPrice(totalPrice)} RSD
+                      {formatPrice(listTotal)} RSD
                     </p>
                   )}
                   <p className="text-3xl sm:text-5xl font-bold font-poppins leading-none tabular-nums" style={{ color: accent.hex }}>
                     {formatPrice(priceShown)}
                   </p>
                   <p className="text-xs sm:text-sm font-semibold font-poppins mt-1 sm:mt-2" style={{ color: accent.hex }}>RSD</p>
-                  {redeemActive ? (
+                  {bundleActive ? (
+                    <span className="mt-2 sm:mt-3 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-poppins text-white bg-green-500">
+                      PAKET {bundleSize}× · −{bundleDeal!.pct}%
+                    </span>
+                  ) : redeemActive ? (
                     <span className="mt-2 sm:mt-3 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-poppins text-white bg-green-500">
                       PLAĆENO U PAKETU
                     </span>
@@ -1455,7 +1679,7 @@ export default function AdminReservationModal({
                   </div>
                   <button
                     type="button"
-                    onClick={() => setStep(3)}
+                    onClick={() => setStep("plan")}
                     disabled={selectedIds.length === 0}
                     className={`${selectedIds.length > 0 ? "glow-halo" : ""} relative w-full py-3.5 sm:py-4.5 rounded-full text-sm sm:text-base font-semibold tracking-widest font-poppins bm-metal active:scale-95 transition-transform cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed`}
                     style={{ backgroundColor: accent.hex, "--glow": accent.hex } as CSSProperties}
