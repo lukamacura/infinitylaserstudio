@@ -5,11 +5,11 @@
 export const GOOGLE_ADS_ID = "AW-18503108271";
 
 /**
- * Label of the "Zakazivanje" conversion action - Google Ads → Ciljevi →
- * Konverzije → the action → Podešavanje oznake → "send_to: 'AW-…/<label>'".
+ * Label of the "Purchase" conversion action - Google Ads → Goals →
+ * Conversions → the action → Tag setup → "send_to: 'AW-…/<label>'".
  * Empty = the conversion is not sent.
  */
-export const GOOGLE_ADS_BOOKING_LABEL = "";
+export const GOOGLE_ADS_BOOKING_LABEL = "o7OMCPPX15YdEK-N_PZE";
 
 type Gtag = (...args: unknown[]) => void;
 
