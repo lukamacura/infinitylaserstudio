@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   X, ArrowLeft, Loader2, AlertCircle, Info, MapPin, ChevronRight, CalendarCheck,
-  Clock, Wallet, RotateCcw, Phone, FlaskConical,
+  Clock, Wallet, RotateCcw, Phone,
 } from "lucide-react";
 import {
   supabase, calcBookingDuration, calcTotalDuration, getAvailableSlots,
@@ -296,38 +296,48 @@ function CallUsHint() {
   );
 }
 
-function LaserFunFact({ accentHex }: { accentHex: string }) {
+/** Location cards glow in the colour of their photo: Novi Sad's sunset
+    coral, Sombor's terracotta-gold roofs. */
+const STUDIO_GLOW: Record<LocationId, string> = {
+  novi_sad: "#E8876A",
+  sombor: "#D9A35E",
+};
+
+/** One client's words on the paket step, for the gender just picked:
+    men hear "it is for men too", women hear "it does not hurt". */
+const TESTIMONIALS: Record<Gender, { name: string; role: string; photo: string; quote: ReactNode }> = {
+  muskarci: {
+    name: "Filip",
+    role: "klijent",
+    photo: "/ugc/filip.webp",
+    quote: <>„Muškarci, verujte mi, <b className="text-foreground">ISPLATI SE</b>. Ja sam bio jako skeptičan u vezi epilacije. Svi su mi govorili <b className="text-foreground">&quot;to nije za muškarce&quot;</b>, ali već nakon 1. tretmana sam shvatio da sam samo gubio vreme.“</>,
+  },
+  zene: {
+    name: "Sara",
+    role: "klijentkinja",
+    photo: "/ugc/sara.webp",
+    quote: <>„Ja sam čula priče kako epilacija strašno boli, ali me je drugarica ubedila da to <b className="text-foreground">ništa ne boli</b> i uradila mi epilaciju. <b className="text-foreground">Bila je u pravu.</b> Imaju neki sistem hlađenja koji to omogućava.“</>,
+  },
+};
+
+function Testimonial({ gender }: { gender: Gender }) {
+  const t = TESTIMONIALS[gender];
+  const hex = ACCENTS[gender].hex;
   return (
-    <div className="relative isolate overflow-hidden rounded-2xl sm:rounded-3xl border border-foreground/8 font-poppins">
-      {/* Barely-visible backdrop, darkened so the copy stays readable on top. */}
-      <Image
-        src="/zaniljivost/zanimljivost.webp"
-        alt=""
-        aria-hidden="true"
-        fill
-        sizes="(max-width: 640px) 100vw, 640px"
-        className="-z-20 object-cover object-[center_30%] opacity-70 saturate-75 pointer-events-none select-none"
-      />
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 -z-10"
-        style={{ background: "linear-gradient(to bottom, rgba(18,10,14,0.85) 0%, rgba(18,10,14,0.55) 55%, rgba(18,10,14,0.15) 100%)" }}
-      />
-      <div className="flex flex-col gap-1.5 p-4 sm:p-5 pb-10 sm:pb-14">
-        <p
-          className="flex items-center gap-1.5 text-[10px] sm:text-[11px] font-semibold font-poppins uppercase tracking-[0.18em]"
-          style={{ color: accentHex }}
-        >
-          <FlaskConical size={13} aria-hidden="true" />
-          Da li ste znali?
-        </p>
-        <p className="font-playfair italic text-[13px] sm:text-[15px] leading-relaxed text-foreground/75">
-          Laserska epilacija nastala je sasvim slučajno, kada je naučnik na Harvardu greškom prešao laserom preko
-          svoje ruke i primetio da mu dlake na tom mestu više nikada nisu porasle. Zahvaljujući toj nezgodi rođena je
-          ideja koja je promenila modernu kozmetologiju.
-        </p>
+    <figure
+      className="flex items-start gap-3 sm:gap-4 px-4 py-4 sm:px-5 rounded-2xl border bg-foreground/[0.03]"
+      style={{ borderColor: `${hex}33` }}
+    >
+      <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden border shrink-0" style={{ borderColor: `${hex}55` }}>
+        <Image src={t.photo} alt={t.name} fill sizes="56px" className="object-cover" />
       </div>
-    </div>
+      <div className="min-w-0">
+        <blockquote className="text-sm sm:text-base font-poppins text-foreground/80 leading-snug italic">{t.quote}</blockquote>
+        <figcaption className="mt-1.5 text-xs sm:text-sm font-semibold font-poppins" style={{ color: hex }}>
+          {t.name}, {t.role}
+        </figcaption>
+      </div>
+    </figure>
   );
 }
 
@@ -1576,7 +1586,27 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               )}
             </div>
           ) : (
-            <p className="text-lg sm:text-xl font-medium leading-snug text-foreground/90 font-poppins mt-4">{STEP_LABELS[step]}</p>
+            <>
+              {/* Meta ads open the modal straight away, so the first screen
+                  carries the hero's offer - the visitor never saw the landing. */}
+              {step === "location" && (
+                <p className="mt-4 font-playfair font-bold text-foreground text-[1.75rem] leading-[1.12] sm:text-4xl">
+                  Reši se{" "}
+                  <span className="marker">
+                    70–90%
+                    <span className="marker-ink" aria-hidden="true">
+                      <span className="marker-stroke" />
+                      <span className="relative">70–90%</span>
+                    </span>
+                  </span>{" "}
+                  dlačica{" "}
+                  <span className="block">
+                    ili <span className="text-accent">vraćamo novac</span>
+                  </span>
+                </p>
+              )}
+              <p className="text-lg sm:text-xl font-medium leading-snug text-foreground/90 font-poppins mt-4">{STEP_LABELS[step]}</p>
+            </>
           )}
         </div>
 
@@ -1589,43 +1619,60 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
           {/* ══ STEP "location": Studio ═════════════════════════════════════ */}
           {step === "location" && (
-            <div className="flex flex-col gap-5 sm:gap-7 py-2">
-            <div className="flex flex-col gap-4 sm:grid sm:grid-cols-2">
+            <div className="flex flex-col gap-8 pt-7 pb-2">
+            {/* The halo reaches ~30px past each card - the top padding and the
+                gaps leave it room so the scroll area never cuts it off. */}
+            <div className="flex flex-col gap-8 sm:grid sm:grid-cols-2">
               {LOCATIONS.map((loc, index) => {
                 const isSelected = studioId === loc.id;
                 return (
-                  <button
+                  /* Same treatment as "Celo telo": the halo sits on the wrapper,
+                     the button clips the light sweep. */
+                  <div
                     key={loc.id}
+                    className="bm-card-in glow-halo relative rounded-2xl sm:rounded-3xl"
+                    style={{ ...cascade(index, 60, 4), "--glow": STUDIO_GLOW[loc.id] } as CSSProperties}
+                  >
+                  <button
                     type="button"
                     onClick={() => handleLocationSelect(loc.id)}
-                    style={cascade(index, 60, 4)}
-                    className={`bm-card-in flex flex-row sm:flex-col items-center text-left sm:text-center gap-4 w-full px-4 sm:px-3 py-5 sm:py-8 rounded-2xl sm:rounded-3xl border-2 active:scale-[0.98] transition-all cursor-pointer ${
-                      isSelected
-                        ? "border-foreground/40 bg-foreground/5"
-                        : "border-foreground/8 hover:border-foreground/25"
+                    style={{ borderColor: STUDIO_GLOW[loc.id] }}
+                    className={`glow-card relative overflow-hidden flex flex-row sm:flex-col items-center text-left sm:text-center gap-4 w-full px-4 sm:px-3 py-3.5 sm:py-8 rounded-2xl sm:rounded-3xl border-2 hover:bg-foreground/5 active:scale-[0.98] transition-[transform,background-color] cursor-pointer ${
+                      isSelected ? "bg-foreground/5" : ""
                     }`}
                   >
-                    <div className="relative w-24 h-24 sm:w-32 sm:h-32 rounded-full overflow-hidden border-2 border-foreground/15 bg-foreground/5 flex items-center justify-center shrink-0">
+                    {/* Waits until the cards have landed, then staggers so the two
+                        don't flash in unison; `backwards` keeps it off-card meanwhile. */}
+                    <span
+                      className="shimmer-sweep"
+                      style={{ animationDelay: `${0.9 + index * 1.2}s`, animationFillMode: "backwards" }}
+                      aria-hidden="true"
+                    />
+                    <div
+                      className="relative w-20 h-20 sm:w-32 sm:h-32 rounded-full overflow-hidden border-2 bg-foreground/5 flex items-center justify-center shrink-0"
+                      style={{ borderColor: `${STUDIO_GLOW[loc.id]}99` }}
+                    >
                       {loc.image ? (
                         <Image
                           src={loc.image}
                           alt={`Infinity Laser Studio ${loc.name}`}
                           fill
-                          sizes="(max-width: 640px) 96px, 128px"
+                          sizes="(max-width: 640px) 80px, 128px"
                           className="object-cover"
                         />
                       ) : (
                         <MapPin size={32} className="text-foreground/35 sm:w-10 sm:h-10" />
                       )}
                     </div>
-                    <div className="min-w-0 flex-1 sm:flex-none">
+                    <div className="relative min-w-0 flex-1 sm:flex-none">
                       <p className="text-xl font-bold font-playfair tracking-wide">{loc.name}</p>
                       {loc.address && (
                         <p className="text-sm text-foreground/50 font-poppins mt-0.5">{loc.address}</p>
                       )}
                     </div>
-                    <ChevronRight size={20} className="sm:hidden shrink-0 text-foreground/30" aria-hidden="true" />
+                    <ChevronRight size={20} className="relative sm:hidden shrink-0 text-foreground/30" aria-hidden="true" />
                   </button>
+                  </div>
                 );
               })}
             </div>
@@ -1635,7 +1682,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
             <ul className="flex flex-col gap-2 px-1 text-xs sm:text-sm font-poppins text-foreground/65">
               {([
                 [Clock,     "Zakazivanje traje 1 minut"],
-                [Wallet,    "Ništa ne plaćaš unapred"],
+                [Wallet,    "Plaćanje u studiju po završetku tretmana"],
                 [RotateCcw, "Besplatno otkazivanje do 24h pre termina"],
               ] as const).map(([Icon, text]) => (
                 <li key={text} className="flex items-center gap-2.5">
@@ -1701,46 +1748,6 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                   <ChevronRight size={20} className="sm:hidden shrink-0" style={{ color: `${opt.hex}80` }} aria-hidden="true" />
                 </button>
               ))}
-              {/* Men's testimonial - answers the "laser is for women" doubt. */}
-              <figure
-                style={{ ...cascade(GENDER_OPTIONS.length, 60, 4), borderColor: `${ACCENTS.muskarci.hex}33` }}
-                className="bm-card-in sm:col-span-2 flex items-start gap-3 sm:gap-4 px-4 py-4 sm:px-5 rounded-2xl border bg-foreground/[0.03]"
-              >
-                <div
-                  className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden border shrink-0"
-                  style={{ borderColor: `${ACCENTS.muskarci.hex}55` }}
-                >
-                  <Image src="/ugc/filip.webp" alt="Filip" fill sizes="56px" className="object-cover" />
-                </div>
-                <div className="min-w-0">
-                  <blockquote className="text-sm sm:text-base font-poppins text-foreground/80 leading-snug italic">
-                    „Muškarci, verujte mi, <span className="font-bold text-foreground">ISPLATI SE</span>. Ja sam bio jako skeptičan u vezi epilacije. Svi su mi govorili <span className=" font-bold text-foreground">"to nije za muškarce"</span>, ali već nakon 1. tretmana sam shvatio da sam samo gubio vreme.“
-                  </blockquote>
-                  <figcaption className="mt-1.5 text-xs sm:text-sm font-semibold font-poppins" style={{ color: ACCENTS.muskarci.hex }}>
-                    Filip, klijent
-                  </figcaption>
-                </div>
-              </figure>
-              {/* Women's testimonial - answers the "it hurts" fear. */}
-              <figure
-                style={{ ...cascade(GENDER_OPTIONS.length + 1, 60, 4), borderColor: `${ACCENTS.zene.hex}33` }}
-                className="bm-card-in sm:col-span-2 flex items-start gap-3 sm:gap-4 px-4 py-4 sm:px-5 rounded-2xl border bg-foreground/[0.03]"
-              >
-                <div
-                  className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden border shrink-0"
-                  style={{ borderColor: `${ACCENTS.zene.hex}55` }}
-                >
-                  <Image src="/ugc/sara.webp" alt="Sara" fill sizes="56px" className="object-cover" />
-                </div>
-                <div className="min-w-0">
-                  <blockquote className="text-sm sm:text-base font-poppins text-foreground/80 leading-snug italic">
-                    „Ja sam čula priče kako epilacija strašno boli, ali me je drugarica ubedila da to <span className="font-bold text-foreground">ništa ne boli</span> i uradila mi epilaciju. <span className="font-bold text-foreground">Bila je u pravu.</span> Imaju neki sistem hlađenja koji to omogućava.“
-                  </blockquote>
-                  <figcaption className="mt-1.5 text-xs sm:text-sm font-semibold font-poppins" style={{ color: ACCENTS.zene.hex }}>
-                    Sara, klijentkinja
-                  </figcaption>
-                </div>
-              </figure>
             </div>
           )}
 
@@ -2063,6 +2070,10 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                   {PAYMENT_TERMS}
                 </p>
               )}
+
+              <div className="mt-2 sm:mt-3">
+                <Testimonial gender={gender ?? "zene"} />
+              </div>
             </div>
           )}
 
@@ -2136,7 +2147,6 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                   })}
                 </div>
               )}
-              <LaserFunFact accentHex={accent.hex} />
               <CallUsHint />
             </div>
           )}
