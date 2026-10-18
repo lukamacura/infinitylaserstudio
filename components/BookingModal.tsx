@@ -28,6 +28,7 @@ import {
 import { hasLinkPromo } from "@/lib/linkPromo";
 import { fetchPriceRows, PriceBook } from "@/lib/prices";
 import { trackFunnel, type FunnelStage, type FunnelSource } from "@/lib/funnel";
+import { trackGoogleAdsBooking } from "@/lib/googleAds";
 import { JOURNEY_STEPS } from "@/lib/journey";
 import { fetchPublicStaffDays, staffPhoto } from "@/lib/staff";
 import {
@@ -1375,6 +1376,17 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       },
       { value: usdValue, currency: "USD" },
     );
+    // A session from an already-paid bundle is no new sale - the bundle
+    // booking was the conversion.
+    if (!redeemActive) {
+      afterPaint(() => trackGoogleAdsBooking({
+        reservationId,
+        value: finalForSubmit,
+        email: emailTrim,
+        phone: phoneTrim || undefined,
+        newCustomer: !returningSubmit,
+      }));
+    }
 
     setStep("success");
   }

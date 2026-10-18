@@ -7,6 +7,7 @@ import Navbar from "@/components/Navbar";
 import FloatingBookingButton from "@/components/FloatingBookingButton";
 import SocialProofToast from "@/components/SocialProofToast";
 import { OG_BASE } from "@/lib/seo";
+import { GOOGLE_ADS_ID } from "@/lib/googleAds";
 
 // Serbian š/č/ž/ć/đ live in latin-ext. The hero headline, its subtitle and the
 // main button all contain them — preload that subset too, or the text
@@ -54,6 +55,8 @@ export const viewport: Viewport = { themeColor: "#120A0E" };
 
 const CLARITY_ID =
   process.env.NODE_ENV === "production" ? process.env.NEXT_PUBLIC_CLARITY_ID : undefined;
+// Production only, so a test booking on localhost is never a Google Ads conversion.
+const GADS_ID = process.env.NODE_ENV === "production" ? GOOGLE_ADS_ID : undefined;
 
 
 export default function RootLayout({
@@ -65,8 +68,9 @@ export default function RootLayout({
     <html lang="sr-Latn" className="scroll-smooth">
       <head>
         {/* Meta Pixel + Clarity together cost ~0.6s of main-thread time on a
-            mid-range phone. Their command queues are set up immediately (so
-            PageView and any early fbq/clarity calls are queued, not lost), but
+            mid-range phone, and the Google tag adds to that. Their command
+            queues are set up immediately (so PageView and any early
+            fbq/clarity/gtag calls are queued, not lost), but
             the scripts themselves download only on the first interaction or
             5s after load — whichever comes first — keeping them out of the
             page's loading phase. */}
@@ -79,6 +83,7 @@ export default function RootLayout({
               fbq('init', '924353527086297');
               fbq('track', 'PageView');
               ${CLARITY_ID ? `w.clarity=w.clarity||function(){(w.clarity.q=w.clarity.q||[]).push(arguments)};` : ""}
+              ${GADS_ID ? `w.dataLayer=w.dataLayer||[];w.gtag=function(){w.dataLayer.push(arguments)};gtag('js',new Date());gtag('config','${GADS_ID}');` : ""}
 
               var done=false, evts=['scroll','pointerdown','keydown','touchstart'];
               function add(src){var t=d.createElement('script');t.async=true;t.src=src;d.head.appendChild(t);}
@@ -87,6 +92,7 @@ export default function RootLayout({
                 evts.forEach(function(e){w.removeEventListener(e,load)});
                 add('https://connect.facebook.net/en_US/fbevents.js');
                 ${CLARITY_ID ? `add('https://www.clarity.ms/tag/${CLARITY_ID}');` : ""}
+                ${GADS_ID ? `add('https://www.googletagmanager.com/gtag/js?id=${GADS_ID}');` : ""}
               }
               evts.forEach(function(e){w.addEventListener(e,load,{once:true,passive:true})});
               function later(){setTimeout(load,5000)}

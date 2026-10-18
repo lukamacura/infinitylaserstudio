@@ -5,7 +5,7 @@ import { OG_BASE, SITE_URL } from "@/lib/seo";
 import { LOCATIONS, fullAddress } from "@/lib/locations";
 
 const PAGE_URL = `${SITE_URL}/uslovi-koriscenja`;
-const LAST_UPDATED = "30. septembar 2026.";
+const LAST_UPDATED = "18. oktobar 2026.";
 const EMAIL = "ana.infinitystudio@gmail.com";
 
 /** Registered business details (APR), required on the site by law. */
@@ -285,6 +285,12 @@ const privacySections: Section[] = [
             dobija podatke o poseti (IP adresu, podatke o pregledaču, kolačiće), a kada zakažete
             termin i vrednost rezervacije i heširan, nečitljiv oblik Vaše email adrese i broja
             telefona.
+          </li>
+          <li>
+            Google Ads meri uspešnost naših oglasa na Google pretrazi i drugim Google servisima.
+            Kompanija Google dobija iste podatke: podatke o poseti (IP adresu, podatke o
+            pregledaču, kolačiće), a kada zakažete termin i vrednost rezervacije i heširan,
+            nečitljiv oblik Vaše email adrese i broja telefona.
           </li>
           <li>Wistia prikazuje video na početnoj strani i beleži njegovo gledanje.</li>
         </ul>
