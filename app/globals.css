@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+/* While the hero numbers' font loads (see instrumentSerif in app/layout.tsx).
+   The metrics are the ones next/font/google used to generate for it. */
+@font-face {
+  font-family: "Instrument Serif Fallback";
+  src: local("Times New Roman");
+  ascent-override: 117.94%;
+  descent-override: 36.93%;
+  line-gap-override: 0%;
+  size-adjust: 83.94%;
+}
+
 /* ── Palette ──────────────────────────────────────────────────────────────────
    The whole app runs on the booking modal's women's theme: midnight plum with
    rose gold (see `.bm-theme-zene` below - the values are the same on purpose).

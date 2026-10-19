@@ -49,16 +49,21 @@ export type FunnelSource = "hero" | "plutajuce" | "navbar" | "footer" | "zajedni
 
 const UTM_KEY = "ils_funnel_utm";
 
+/** Click ids Google Ads auto-tagging adds - gbraid / wbraid replace gclid on iOS. */
+const GOOGLE_CLICK_IDS = ["gclid", "gbraid", "wbraid"];
+
 /**
  * Remembers where this visit came from, on landing - the form may be opened
- * pages later, after the ad's URL is gone. utm_source wins; a bare Facebook
- * click id still says "meta". The first landing of the tab is kept.
+ * pages later, after the ad's URL is gone. A Google Ads click id wins (it is
+ * only ever on a paid click), then utm_source; a bare Facebook click id still
+ * says "meta" (Meta adds it to organic links too). The first landing of the tab is kept.
  */
 export function rememberVisitUtm() {
   try {
     if (sessionStorage.getItem(UTM_KEY) !== null) return;
     const params = new URLSearchParams(window.location.search);
-    const utm = params.get("utm_source")?.trim().toLowerCase().slice(0, 60)
+    const utm = (GOOGLE_CLICK_IDS.some((k) => params.has(k)) ? "google-ads" : "")
+      || params.get("utm_source")?.trim().toLowerCase().slice(0, 60)
       || (params.has("fbclid") ? "meta" : "");
     sessionStorage.setItem(UTM_KEY, utm);
   } catch { /* storage blocked - simply not recorded */ }

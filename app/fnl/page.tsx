@@ -78,6 +78,12 @@ const SOURCE_LABELS: Record<string, string> = {
 const META_UTM = /^(ig|insta|instagram|fb|facebook|meta|msg|messenger|an|th|threads)/;
 
 /**
+ * Our "google-ads" for a Google Ads click id (rememberVisitUtm), or a hand-tagged
+ * ad link. A plain utm_source=google stays out - Business Profile links use it too.
+ */
+const GOOGLE_UTM = /^(google-ads|googleads|gads|adwords)/;
+
+/**
  * First full day with every home-page visit counted (sql/funnel_land.sql went
  * live the evening before). Only a period starting here can judge sources by
  * visits - an earlier one would compare bookings against half the visits.
@@ -93,12 +99,21 @@ const add = (t: Tally, r: SourceRow) => {
   t.landed += r.landed;
 };
 
+/** One ad platform, split by how the ad opened the form. */
+type AdTally = { all: Tally; link: Tally; site: Tally };
+const adTally = (): AdTally => ({ all: tally(), link: tally(), site: tally() });
+const addAd = (t: AdTally, r: SourceRow, viaLink: boolean) => {
+  add(t.all, r);
+  add(viaLink ? t.link : t.site, r);
+};
+
 /**
- * A few clear groups: the ad (split by how it opened the form), then everything
+ * A few clear groups: the ads (each split by how it opened the form), then everything
  * without an ad. byLanding: the platform split counts visits, else form openings.
  */
 function groupSources(rows: SourceRow[], byLanding: boolean) {
-  const ad = { all: tally(), link: tally(), site: tally(), instagram: 0, facebook: 0, rest: 0 };
+  const ad = { ...adTally(), instagram: 0, facebook: 0, rest: 0 };
+  const google = adTally();
   const link = tally();
   const site = tally();
   const before = tally();
@@ -110,12 +125,13 @@ function groupSources(rows: SourceRow[], byLanding: boolean) {
     // How the visit came in - from the landing, or (older visits) from what opened the form.
     const viaLink = r.entry ? r.entry === "link" : r.source === "link";
     if (u && META_UTM.test(u)) {
-      add(ad.all, r);
-      add(viaLink ? ad.link : ad.site, r);
+      addAd(ad, r, viaLink);
       const n = byLanding ? r.landed : r.opened;
       if (/^(ig|insta)/.test(u)) ad.instagram += n;
       else if (/^(fb|facebook)/.test(u)) ad.facebook += n;
       else ad.rest += n;
+    } else if (GOOGLE_UTM.test(u)) {
+      addAd(google, r, viaLink);
     } else if (u) {
       add(other, r);
       if (!other.names.includes(u)) other.names.push(u);
@@ -129,7 +145,7 @@ function groupSources(rows: SourceRow[], byLanding: boolean) {
     }
   }
   const topButton = [...buttons.entries()].sort((x, y) => y[1] - x[1])[0]?.[0];
-  return { ad, link, site, before, other, topButton: topButton ? SOURCE_LABELS[topButton] ?? topButton : null };
+  return { ad, google, link, site, before, other, topButton: topButton ? SOURCE_LABELS[topButton] ?? topButton : null };
 }
 
 /** Phone screenshots of each step (public/fnl/<stage>.webp, 390×844 screens at 560px wide). */
@@ -468,14 +484,13 @@ export default function FunnelPage() {
                         t={g.ad.all}
                         byLanding={byLanding}
                       />
-                      <div className="flex flex-col gap-1 px-2 pb-2 md:px-3 md:pb-3">
-                        {show(g.ad.link) && (
-                          <SourceLine sub icon={<IconBadge Icon={Link2} />} label="Direktan link (na BookingModal)" detail="forma se otvorila odmah" t={g.ad.link} byLanding={byLanding} />
-                        )}
-                        {show(g.ad.site) && (
-                          <SourceLine sub icon={<IconBadge Icon={MousePointerClick} />} label="Na početnu stranu" detail="forma se otvara tek kad kliknu dugme" t={g.ad.site} byLanding={byLanding} />
-                        )}
-                      </div>
+                      <AdSplit ad={g.ad} byLanding={byLanding} />
+                    </li>
+                  )}
+                  {show(g.google.all) && (
+                    <li className="rounded-2xl bg-foreground/3">
+                      <SourceLine icon={<GoogleAdsLogo />} label="Reklama (Google Ads)" detail="klik na Google oglas" t={g.google.all} byLanding={byLanding} />
+                      <AdSplit ad={g.google} byLanding={byLanding} />
                     </li>
                   )}
                   {show(g.link) && (
@@ -614,6 +629,21 @@ function SourceLine({ icon, label, detail, t, byLanding, sub = false }: {
   );
 }
 
+/** The two ways an ad brings people in, under its platform's line. */
+function AdSplit({ ad, byLanding }: { ad: AdTally; byLanding: boolean }) {
+  const show = (t: Tally) => t.opened > 0 || t.landed > 0;
+  return (
+    <div className="flex flex-col gap-1 px-2 pb-2 md:px-3 md:pb-3">
+      {show(ad.link) && (
+        <SourceLine sub icon={<IconBadge Icon={Link2} />} label="Direktan link (na BookingModal)" detail="forma se otvorila odmah" t={ad.link} byLanding={byLanding} />
+      )}
+      {show(ad.site) && (
+        <SourceLine sub icon={<IconBadge Icon={MousePointerClick} />} label="Na početnu stranu" detail="forma se otvara tek kad kliknu dugme" t={ad.site} byLanding={byLanding} />
+      )}
+    </div>
+  );
+}
+
 function IconBadge({ Icon }: { Icon: typeof Users }) {
   return (
     <span className="w-9 h-9 rounded-xl flex items-center justify-center bg-foreground/6 text-foreground/70">
@@ -646,6 +676,17 @@ function FacebookLogo() {
     <svg viewBox="0 0 24 24" className="w-9 h-9 rounded-xl ring-2 ring-surface" aria-label="Facebook" role="img">
       <rect width="24" height="24" rx="6" fill="#1877F2" />
       <path d="M15.6 24v-8.7h2.9l.45-3.4H15.6V9.75c0-.98.27-1.65 1.68-1.65h1.8V5.07a24 24 0 0 0-2.62-.13c-2.6 0-4.37 1.58-4.37 4.48v2.5H9.15v3.4h2.94V24z" fill="#fff" />
+    </svg>
+  );
+}
+
+function GoogleAdsLogo() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-9 h-9 rounded-xl ring-2 ring-surface" aria-label="Google Ads" role="img">
+      <rect width="24" height="24" rx="6" fill="#fff" />
+      <path d="M12 7.2 6.6 16.6" stroke="#FBBC04" strokeWidth="4.4" strokeLinecap="round" />
+      <path d="M12 7.2l5.4 9.4" stroke="#4285F4" strokeWidth="4.4" strokeLinecap="round" />
+      <circle cx="6.6" cy="16.6" r="2.2" fill="#34A853" />
     </svg>
   );
 }

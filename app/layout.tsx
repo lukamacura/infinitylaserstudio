@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { DM_Serif_Display, Instrument_Serif, Poppins } from "next/font/google";
+import localFont from "next/font/local";
 import Script from "next/script";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
@@ -9,30 +9,49 @@ import SocialProofToast from "@/components/SocialProofToast";
 import { OG_BASE } from "@/lib/seo";
 import { GOOGLE_ADS_ID } from "@/lib/googleAds";
 
-// Serbian š/č/ž/ć/đ live in latin-ext. The hero headline, its subtitle and the
-// main button all contain them — preload that subset too, or the text
-// re-paints late when it arrives.
-const dmSerif = DM_Serif_Display({
+// Self-hosted cuts of the Google Fonts originals (app/fonts). Google splits
+// each weight into latin + latin-ext, so Serbian text (š/č/ć/ž/đ) cost two
+// preloads per weight - 11 files, ~96 KB, all competing with the hero photo.
+// Each file here is Google's latin set plus those 10 letters, in one file:
+// 6 files, ~52 KB, the same glyphs and kerning. Made with fonttools:
+//   pyftsubset <font>.ttf --flavor=woff2 --layout-features='*' --no-hinting
+//     --unicodes="U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,
+//       U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,
+//       U+2212,U+2215,U+FEFF,U+FFFD,U+0106-0107,U+010C-010D,U+0110-0111,
+//       U+0160-0161,U+017D-017E"
+const dmSerif = localFont({
   variable: "--font-playfair",
-  subsets: ["latin", "latin-ext"],
-  weight: ["400"],
+  src: "./fonts/dm-serif-display-400.woff2",
+  weight: "400",
   display: "swap",
+  adjustFontFallback: "Times New Roman",
 });
 
-const poppins = Poppins({
+const poppins = localFont({
   variable: "--font-poppins",
-  subsets: ["latin", "latin-ext"],
-  weight: ["400", "500", "600", "700"],
+  src: [
+    { path: "./fonts/poppins-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/poppins-500.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/poppins-600.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/poppins-700.woff2", weight: "700", style: "normal" },
+  ],
   display: "swap",
+  adjustFontFallback: "Arial",
 });
 
 // The hero's numbers (2000+, 5 god., 97%). One weight only - never put a bold
-// class on it, the browser would fake it.
-const instrumentSerif = Instrument_Serif({
+// class on it, the browser would fake it. The file holds only what those
+// numbers need: 0-9 + % . , - – space and the letters g o d (2 KB instead of
+// 15 KB). Any other letter falls back to a serif - re-cut it with --text= if
+// the numbers ever change. next/font can't size a fallback from a file with
+// no letters, so its fallback is declared in globals.css with Google's metrics.
+const instrumentSerif = localFont({
   variable: "--font-instrument",
-  subsets: ["latin"],
-  weight: ["400"],
+  src: "./fonts/instrument-serif-400.woff2",
+  weight: "400",
   display: "swap",
+  adjustFontFallback: false,
+  fallback: ["Instrument Serif Fallback"],
 });
 
 export const metadata: Metadata = {
