@@ -236,7 +236,7 @@ export default function BundlePhoneDemo() {
                 <div className="flex-1 min-h-0 px-4 pt-1 flex flex-col gap-3">
                   <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-2xl border-2 border-foreground/8">
                     <div className="min-w-0">
-                      <p className="text-[13px] font-bold">Samo 1 tretman</p>
+                      <p className="text-[13px] font-bold">Pojedinačan tretman</p>
                       <p className="text-[10px] text-foreground/45">Bez popusta</p>
                     </div>
                     <p className="text-sm font-bold tabular-nums shrink-0">

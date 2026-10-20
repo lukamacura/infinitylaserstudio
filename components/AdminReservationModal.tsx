@@ -1045,7 +1045,7 @@ export default function AdminReservationModal({
                 className="flex items-center justify-between gap-3 sm:gap-4 w-full px-3.5 py-3 sm:p-5 rounded-2xl sm:rounded-3xl border-2 border-foreground/8 hover:border-foreground/20 text-left cursor-pointer transition-all"
               >
                 <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
-                  <p className="text-sm sm:text-base md:text-lg font-bold font-poppins">Samo 1 tretman</p>
+                  <p className="text-sm sm:text-base md:text-lg font-bold font-poppins">Pojedinačan tretman</p>
                   <span className="text-[11px] sm:text-[13px] font-poppins text-foreground/45 leading-snug">
                     Bez popusta
                   </span>
