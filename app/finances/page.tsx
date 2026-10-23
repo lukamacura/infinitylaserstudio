@@ -237,7 +237,11 @@ export default function FinancesPage() {
   const troskovi        = calculated.reduce((s, r) => s + Math.round(r.calc.totalPrice * 0.25), 0);
   const zarada          = prihod - troskovi;
   const totalBookings   = reservations.length;
-  const uniqueKlijenti  = new Set(reservations.map(r => r.customer_email.trim().toLowerCase())).size;
+  // Booked without an email: the phone, else the name, tells clients apart.
+  const uniqueKlijenti  = new Set(reservations.map(r =>
+    r.customer_email.trim().toLowerCase() ||
+    r.customer_phone?.replace(/\D/g, "") ||
+    r.customer_name.trim().toLowerCase())).size;
 
   // ── Login screen ──────────────────────────────────────────────────────────
   if (!authenticated) {

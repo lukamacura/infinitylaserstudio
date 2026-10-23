@@ -12,6 +12,7 @@ import {
   supabase, timeToMinutes, minutesToTime, calcTotalDuration, calcBookingDuration, type BusinessWindow,
 } from "@/lib/supabase";
 import AdminReservationModal from "@/components/AdminReservationModal";
+import HoursEditor, { fmtMin } from "@/components/AdminHoursEditor";
 import AdminLogin from "@/components/AdminLogin";
 import AdminHeader from "@/components/AdminHeader";
 import { useAdminAuth } from "@/lib/adminAuth";
@@ -28,7 +29,7 @@ import {
 } from "@/lib/staff";
 import { computeReservationPrice, type PriceResult } from "@/lib/pricing";
 import { parseBundlePromo } from "@/lib/bundles";
-import { isComboService, isFullBody, isAllowedWithFullBody } from "@/components/booking/shared";
+import { isComboService, isFullBody, isAllowedWithFullBody, EMAIL_REGEX } from "@/components/booking/shared";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const SLOT_PX     = 16;
@@ -148,8 +149,9 @@ function srPlural(n: number, one: string, few: string, many: string) {
   return many;
 }
 
-/** One person's whole history, keyed by lower-cased email. */
+/** One person's whole history, keyed by lower-cased email (or phone, for clients without one). */
 type ClientGroup = {
+  key: string;
   email: string;
   name: string;              // name from the most recent booking
   phone: string | null;
@@ -160,23 +162,32 @@ type ClientGroup = {
   lastVisit: string | null;  // date of the newest confirmed appointment
 };
 
+/** Who a booking belongs to: the email, or the phone number when it was booked without one. */
+function clientKey(r: Pick<ReservationFull, "customer_email" | "customer_phone">) {
+  const email = (r.customer_email ?? "").trim().toLowerCase();
+  if (email) return email;
+  const digits = (r.customer_phone ?? "").replace(/\D/g, "");
+  return digits ? `tel:${digits}` : "";
+}
+
 /** Collapse a flat reservation list into one entry per person, newest first. */
 function groupByClient(rows: ReservationFull[]): ClientGroup[] {
   const map = new Map<string, ReservationFull[]>();
   for (const r of rows) {
-    const key = (r.customer_email ?? "").trim().toLowerCase();
+    const key = clientKey(r);
     if (!key) continue;
     const list = map.get(key);
     if (list) list.push(r); else map.set(key, [r]);
   }
 
   const groups: ClientGroup[] = [];
-  for (const [email, list] of map) {
+  for (const [key, list] of map) {
     const sorted = [...list].sort((a, b) =>
       a.date !== b.date ? b.date.localeCompare(a.date) : b.start_time.localeCompare(a.start_time));
     const confirmed = sorted.filter(r => r.status === "confirmed");
     groups.push({
-      email,
+      key,
+      email: sorted.find(r => r.customer_email.trim())?.customer_email.trim() ?? "",
       name: sorted[0].customer_name,
       phone: sorted.find(r => r.customer_phone)?.customer_phone ?? null,
       reservations: sorted,
@@ -252,125 +263,6 @@ function closedSegments(windows: BusinessWindow[] | null, start: number, end: nu
 function fmtWindows(windows: BusinessWindow[] | null) {
   if (!windows || windows.length === 0) return null;
   return windows.map(w => `${fmtMin(w.start)}–${fmtMin(w.end)}`).join(" · ");
-}
-
-// ── Working-hours editor ────────────────────────────────────────────────────
-const HOUR_PRESETS: { label: string; windows: BusinessWindow[] }[] = [
-  { label: "10–16", windows: [{ start: 600, end: 960 }] },
-  { label: "14–20", windows: [{ start: 840, end: 1200 }] },
-  { label: "15–20", windows: [{ start: 900, end: 1200 }] },
-  { label: "13–18", windows: [{ start: 780, end: 1080 }] },
-  { label: "13–20", windows: [{ start: 780, end: 1200 }] },
-  { label: "10–21", windows: [{ start: 600, end: 1260 }] },
-];
-
-function fmtMin(m: number) {
-  const h = Math.floor(m / 60);
-  const mm = m % 60;
-  return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-}
-
-/** "HH:MM" or "H:MM" → minutes since midnight, or null if invalid. */
-function parseHM(v: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(v.trim());
-  if (!m) return null;
-  const h = Number(m[1]);
-  const min = Number(m[2]);
-  if (h > 23 || min > 59) return null;
-  return h * 60 + min;
-}
-
-/** Chips + presets + custom "od–do" for editing a day's list of open windows. */
-function WindowsEditor({
-  windows,
-  onChange,
-}: {
-  windows: BusinessWindow[];
-  onChange: (next: BusinessWindow[]) => void;
-}) {
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-
-  function addCustom() {
-    const s = parseHM(from);
-    const e = parseHM(to);
-    if (s == null || e == null || e <= s) return;
-    onChange([...windows, { start: s, end: e }].sort((a, b) => a.start - b.start));
-    setFrom("");
-    setTo("");
-  }
-
-  return (
-    <div className="flex flex-col gap-3">
-      {/* Current windows */}
-      <div className="flex flex-wrap items-center gap-2 min-h-8">
-        {windows.length === 0 ? (
-          <span className="text-xs font-poppins text-foreground/60 italic">Zatvoreno</span>
-        ) : (
-          windows.map((w, i) => (
-            <span key={i} className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-lg bg-accent/10 border border-accent/15 text-accent text-xs font-bold font-poppins">
-              {fmtMin(w.start)}–{fmtMin(w.end)}
-              <button
-                type="button"
-                onClick={() => onChange(windows.filter((_, j) => j !== i))}
-                className="w-5 h-5 flex items-center justify-center rounded-md hover:bg-accent/20 transition-colors cursor-pointer"
-                aria-label="Ukloni prozor"
-              >
-                <X size={12} />
-              </button>
-            </span>
-          ))
-        )}
-      </div>
-
-      {/* Presets */}
-      <div className="flex flex-wrap gap-1.5">
-        {HOUR_PRESETS.map((p) => (
-          <button
-            key={p.label}
-            type="button"
-            onClick={() => onChange(p.windows)}
-            className="px-3 py-1.5 rounded-lg bg-foreground/4 border border-foreground/8 text-[11px] font-bold font-poppins text-foreground/76 hover:bg-accent/10 hover:border-accent/20 hover:text-accent transition-all cursor-pointer"
-          >
-            {p.label}
-          </button>
-        ))}
-        <button
-          type="button"
-          onClick={() => onChange([])}
-          className="px-3 py-1.5 rounded-lg bg-red-400/10 border border-red-400/30 text-[11px] font-bold font-poppins text-red-400 hover:bg-red-400/20 transition-all cursor-pointer"
-        >
-          Zatvoreno
-        </button>
-      </div>
-
-      {/* Custom range */}
-      <div className="flex items-center gap-2">
-        <input
-          value={from}
-          onChange={(e) => setFrom(e.target.value)}
-          placeholder="14:00"
-          inputMode="numeric"
-          className="w-20 px-3 py-2 rounded-lg border border-foreground/10 font-poppins text-xs focus:outline-none focus:border-accent/40 transition-colors"
-        />
-        <span className="text-foreground/50 text-xs">–</span>
-        <input
-          value={to}
-          onChange={(e) => setTo(e.target.value)}
-          placeholder="20:00"
-          inputMode="numeric"
-          className="w-20 px-3 py-2 rounded-lg border border-foreground/10 font-poppins text-xs focus:outline-none focus:border-accent/40 transition-colors"
-        />
-        <button
-          type="button"
-          onClick={addCustom}
-          className="px-3 py-2 rounded-lg bg-accent/10 border border-accent/15 text-accent text-[11px] font-bold font-poppins hover:bg-accent/15 transition-all cursor-pointer flex items-center gap-1"
-        >
-          <Plus size={13} /> Dodaj
-        </button>
-      </div>
-    </div>
-  );
 }
 
 /** Toggle chips: tap a name to put that person on (or take them off) the day. */
@@ -523,6 +415,17 @@ export default function AdminPage() {
   const [staffSchedule, setStaffSchedule] = useState<StaffSchedule>(EMPTY_STAFF_SCHEDULE);
   const [overrideStaffDraft, setOverrideStaffDraft] = useState<string[]>([]);
   const [newStaffName, setNewStaffName]   = useState("");
+  /** The studio's most common open hours - what a day switched on starts with. */
+  const usualWindows = useMemo<BusinessWindow[]>(() => {
+    const seen = new Map<string, { windows: BusinessWindow[]; n: number }>();
+    for (const w of availability.template) {
+      if (!w || w.length === 0) continue;
+      const key = JSON.stringify(w);
+      seen.set(key, { windows: w, n: (seen.get(key)?.n ?? 0) + 1 });
+    }
+    const top = [...seen.values()].sort((a, b) => b.n - a.n)[0];
+    return top?.windows ?? [{ start: 14 * 60, end: 20 * 60 }];
+  }, [availability.template]);
 
   const [weekStart, setWeekStart]         = useState<Date>(() => getMonday(new Date()));
   const [selectedDate, setSelectedDate]   = useState<Date>(() => {
@@ -545,6 +448,8 @@ export default function AdminPage() {
   const [selectedBundle, setSelectedBundle] = useState<BundleUsage | null>(null);
   /** Price correction: the typed amount, null while not editing. */
   const [priceDraft, setPriceDraft]       = useState<string | null>(null);
+  /** Contact editor: the typed name / phone / email, null while not editing. */
+  const [contactDraft, setContactDraft]   = useState<{ name: string; phone: string; email: string } | null>(null);
   /** Region editor: the draft list of service ids, null while not editing. */
   const [servicesDraft, setServicesDraft] = useState<string[] | null>(null);
   const [draftGender, setDraftGender]     = useState<Gender>("zene");
@@ -1047,6 +952,7 @@ export default function AdminPage() {
     setServicesDraft(null);
     setServicesClash(false);
     setPriceDraft(null);
+    setContactDraft(null);
     const req = ++modalReq.current;
     if (r.customer_email) {
       // One round trip for the client's whole relevant history.
@@ -1367,6 +1273,43 @@ export default function AdminPage() {
     setNewNotes(revokedNote);
     setSelectedPrice(priceFor({ ...selected, promo_code: null }, selectedIsFirst));
     setSaving(false);
+  }
+
+  /** Name, phone and email of this one reservation, as corrected by hand. */
+  async function handleContactSave() {
+    if (!selected || !contactDraft) return;
+    const name  = contactDraft.name.trim();
+    const email = contactDraft.email.trim();
+    const phone = contactDraft.phone.trim() || null;
+    if (!name || (email && !EMAIL_REGEX.test(email))) return;
+    setSaving(true);
+    const patch = { customer_name: name, customer_email: email, customer_phone: phone };
+    const { error } = await supabase.from("reservations").update(patch).eq("id", selected.id);
+    if (error) {
+      console.error("Saving the contact failed:", error);
+      setNotice("Kontakt nije sačuvan. Pokušaj ponovo.");
+      setSaving(false);
+      return;
+    }
+    patchReservation(selected.id, patch);
+    setCallReservations(prev => prev.map(r => (r.id === selected.id ? { ...r, ...patch } : r)));
+    setClientGroups(prev => prev.map(g => ({
+      ...g, reservations: g.reservations.map(r => (r.id === selected.id ? { ...r, ...patch } : r)),
+    })));
+    setContactDraft(null);
+    setSaving(false);
+    const updated = { ...selected, ...patch };
+    if (email.toLowerCase() === selected.customer_email.trim().toLowerCase()) {
+      setSelected(updated);
+      return;
+    }
+    // A different email is a different history: reload the badges and price,
+    // keeping a status or note typed but not saved yet.
+    const keepStatus = newStatus;
+    const keepNotes  = newNotes;
+    void openModal(updated);
+    setNewStatus(keepStatus);
+    setNewNotes(keepNotes);
   }
 
   /**
@@ -1830,17 +1773,17 @@ export default function AdminPage() {
                 </p>
                 <div className="space-y-3">
                   {clientGroups.map((c) => {
-                    const open = expandedClient === c.email;
+                    const open = expandedClient === c.key;
                     return (
                       <div
-                        key={c.email}
+                        key={c.key}
                         className={`rounded-2xl border-2 bg-surface shadow-sm overflow-hidden transition-all ${
                           c.blacklisted ? "border-red-400/30" : "border-foreground/5"
                         }`}
                       >
                         <button
                           type="button"
-                          onClick={() => setExpandedClient(open ? null : c.email)}
+                          onClick={() => setExpandedClient(open ? null : c.key)}
                           className="w-full p-4 flex items-start gap-4 text-left cursor-pointer hover:bg-foreground/1 transition-colors"
                         >
                           <div className={`shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${
@@ -1860,7 +1803,7 @@ export default function AdminPage() {
                                 </span>
                               )}
                             </div>
-                            <p className="text-[12px] font-medium font-poppins text-foreground/68 mt-0.5 truncate">{c.email}</p>
+                            {c.email && <p className="text-[12px] font-medium font-poppins text-foreground/68 mt-0.5 truncate">{c.email}</p>}
                             <p className="text-[11px] font-poppins text-foreground/55 mt-0.5">{c.phone ?? "—"}</p>
 
                             <div className="flex items-center gap-3 mt-2 flex-wrap">
@@ -1984,21 +1927,31 @@ export default function AdminPage() {
               </p>
             </div>
             <div className="space-y-3">
-              {SR_DAYS_LONG.map((dayName, idx) => (
-                <div key={dayName} className="rounded-2xl border border-foreground/8 bg-surface p-4 shadow-sm">
-                  <p className="text-sm font-bold font-poppins text-foreground/82 mb-3">{dayName}</p>
-                  <WindowsEditor
-                    windows={availability.template[idx] ?? []}
-                    onChange={(next) => saveTemplateDay(idx, next)}
-                  />
-                  <p className="mt-4 mb-2 text-[10px] font-bold font-poppins uppercase tracking-widest text-foreground/55">Ko radi</p>
-                  <StaffPicker
-                    staff={staff}
-                    selected={staffSchedule.template[idx] ?? []}
-                    onChange={(next) => saveTemplateStaff(idx, next)}
-                  />
-                </div>
-              ))}
+              {SR_DAYS_LONG.map((dayName, idx) => {
+                const dayWindows = availability.template[idx] ?? [];
+                const dayStaff   = staffSchedule.template[idx] ?? [];
+                return (
+                  <div key={dayName} className="rounded-2xl border border-foreground/8 bg-surface p-4 shadow-sm">
+                    <HoursEditor
+                      title={dayName}
+                      windows={dayWindows}
+                      fallback={usualWindows}
+                      onChange={(next) => saveTemplateDay(idx, next)}
+                    />
+                    {/* A closed day needs no one - unless someone is still on it. */}
+                    {(dayWindows.length > 0 || dayStaff.length > 0) && (
+                      <>
+                        <p className="mt-4 mb-2 text-[10px] font-bold font-poppins uppercase tracking-widest text-foreground/55">Ko radi</p>
+                        <StaffPicker
+                          staff={staff}
+                          selected={dayStaff}
+                          onChange={(next) => saveTemplateStaff(idx, next)}
+                        />
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -2299,27 +2252,124 @@ export default function AdminPage() {
             </div>
 
             <div className="flex-1 overflow-y-auto overscroll-contain px-5 sm:px-8 py-5 sm:py-8 space-y-5 sm:space-y-8 custom-scrollbar">
-              <div className="grid grid-cols-2 gap-2.5 sm:gap-4">
-                {[
-                  { icon: User,     label: "Klijent", value: selected.customer_name },
-                  { icon: Clock,    label: "Vreme",   value: `${selected.start_time.slice(0, 5)} – ${selected.end_time.slice(0, 5)}` },
-                  { icon: Phone,    label: "Telefon", value: selected.customer_phone ?? "—",
-                    href: selected.customer_phone ? `tel:${selected.customer_phone.replace(/\s/g, "")}` : undefined },
-                  { icon: Mail,     label: "E-mail",  value: selected.customer_email,
-                    href: selected.customer_email ? `mailto:${selected.customer_email}` : undefined },
-                ].map(({ icon: Icon, label, value, href }) => (
-                  <div key={label} className="min-w-0 p-3 sm:p-4 rounded-2xl bg-foreground/2 border border-foreground/3">
-                    <div className="flex items-center gap-2 sm:gap-3 mb-1">
-                      <Icon size={14} className="text-foreground/38" />
-                      <span className="text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-wider">{label}</span>
-                    </div>
-                    {href ? (
-                      <a href={href} className="block text-sm font-semibold font-poppins text-accent truncate px-0.5 underline-offset-2 hover:underline">{value}</a>
-                    ) : (
-                      <p className="text-sm font-semibold font-poppins text-foreground/80 truncate px-0.5">{value}</p>
-                    )}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3 px-1">
+                  <p className="text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-widest">Kontakt</p>
+                  {contactDraft === null && (
+                    <button
+                      onClick={() => setContactDraft({
+                        name:  selected.customer_name,
+                        phone: selected.customer_phone ?? "",
+                        email: selected.customer_email.trim(),
+                      })}
+                      className="inline-flex items-center gap-1.5 text-[10px] font-bold font-poppins uppercase tracking-widest text-accent hover:opacity-80 transition-opacity cursor-pointer"
+                    >
+                      <Pencil size={12} />
+                      Izmeni kontakt
+                    </button>
+                  )}
+                </div>
+                {contactDraft === null ? (
+                  <div className="grid grid-cols-2 gap-2.5 sm:gap-4">
+                    {[
+                      { icon: User,     label: "Klijent", value: selected.customer_name },
+                      { icon: Clock,    label: "Vreme",   value: `${selected.start_time.slice(0, 5)} – ${selected.end_time.slice(0, 5)}` },
+                      { icon: Phone,    label: "Telefon", value: selected.customer_phone ?? "—",
+                        href: selected.customer_phone ? `tel:${selected.customer_phone.replace(/\s/g, "")}` : undefined },
+                      { icon: Mail,     label: "E-mail",  value: selected.customer_email.trim() || "—",
+                        href: selected.customer_email.trim() ? `mailto:${selected.customer_email.trim()}` : undefined },
+                    ].map(({ icon: Icon, label, value, href }) => (
+                      <div key={label} className="min-w-0 p-3 sm:p-4 rounded-2xl bg-foreground/2 border border-foreground/3">
+                        <div className="flex items-center gap-2 sm:gap-3 mb-1">
+                          <Icon size={14} className="text-foreground/38" />
+                          <span className="text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-wider">{label}</span>
+                        </div>
+                        {href ? (
+                          <a href={href} className="block text-sm font-semibold font-poppins text-accent truncate px-0.5 underline-offset-2 hover:underline">{value}</a>
+                        ) : (
+                          <p className="text-sm font-semibold font-poppins text-foreground/80 truncate px-0.5">{value}</p>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                ))}
+                ) : (() => {
+                  const emailTyped = contactDraft.email.trim();
+                  const emailBad   = emailTyped !== "" && !EMAIL_REGEX.test(emailTyped);
+                  const nameBad    = !contactDraft.name.trim();
+                  const field = "w-full px-3.5 py-2.5 rounded-xl bg-foreground/5 border-2 border-foreground/10 text-base font-semibold font-poppins text-foreground focus:outline-none focus:border-accent";
+                  const label = "block text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-wider mb-1.5 px-0.5";
+                  return (
+                    <form
+                      onSubmit={(e) => { e.preventDefault(); void handleContactSave(); }}
+                      onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setContactDraft(null); } }}
+                      className="rounded-2xl border border-accent/20 bg-accent/3 p-3 sm:p-4 space-y-3"
+                    >
+                      <div>
+                        <label htmlFor="contact-name" className={label}>Ime i prezime</label>
+                        <input
+                          id="contact-name"
+                          type="text"
+                          autoComplete="off"
+                          enterKeyHint="next"
+                          value={contactDraft.name}
+                          onChange={(e) => setContactDraft(d => d && { ...d, name: e.target.value })}
+                          className={`${field} ${nameBad ? "border-red-400/70" : ""}`}
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="contact-phone" className={label}>Telefon</label>
+                        <input
+                          id="contact-phone"
+                          type="tel"
+                          inputMode="tel"
+                          autoComplete="off"
+                          enterKeyHint="next"
+                          placeholder="065 373 8991"
+                          value={contactDraft.phone}
+                          onChange={(e) => setContactDraft(d => d && { ...d, phone: e.target.value })}
+                          className={`${field} tabular-nums`}
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="contact-email" className={label}>E-mail</label>
+                        <input
+                          id="contact-email"
+                          type="email"
+                          inputMode="email"
+                          autoComplete="off"
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          spellCheck={false}
+                          enterKeyHint="done"
+                          placeholder="Prazno ako nema email"
+                          value={contactDraft.email}
+                          onChange={(e) => setContactDraft(d => d && { ...d, email: e.target.value })}
+                          className={`${field} ${emailBad ? "border-red-400/70" : ""}`}
+                        />
+                        {emailBad && (
+                          <p className="text-xs text-red-400 font-poppins mt-1 px-0.5">Email nije ispravan - ispravi ga ili ostavi prazno.</p>
+                        )}
+                      </div>
+                      <div className="flex justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setContactDraft(null)}
+                          disabled={saving}
+                          className="h-11 px-4 rounded-xl bg-foreground/4 border border-foreground/10 text-foreground/76 text-[11px] font-bold tracking-widest font-poppins uppercase hover:bg-foreground/8 transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          Odustani
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={saving || nameBad || emailBad}
+                          className="h-11 px-5 rounded-xl bg-accent text-on-accent text-[11px] font-bold tracking-widest font-poppins uppercase disabled:opacity-40 transition-all active:scale-95 cursor-pointer"
+                        >
+                          {saving ? "Čuvam…" : "Sačuvaj kontakt"}
+                        </button>
+                      </div>
+                    </form>
+                  );
+                })()}
               </div>
 
               <div className="p-4 rounded-2xl bg-foreground/2 border border-foreground/3">
@@ -2711,8 +2761,14 @@ export default function AdminPage() {
                   : "Ovaj dan prati nedeljni šablon. Sve što ovde promeniš postaje izuzetak samo za ovaj datum."}
               </p>
 
-              <p className="text-[10px] font-bold font-poppins uppercase tracking-widest text-foreground/55">Radno vreme</p>
-              <WindowsEditor windows={overrideDraft} onChange={setOverrideDraft} />
+              <HoursEditor
+                title="Radno vreme"
+                windows={overrideDraft}
+                fallback={availability.template[weekdayOf(overrideDate)]?.length
+                  ? availability.template[weekdayOf(overrideDate)]
+                  : usualWindows}
+                onChange={setOverrideDraft}
+              />
 
               <p className="pt-2 text-[10px] font-bold font-poppins uppercase tracking-widest text-foreground/55">Ko radi</p>
               <StaffPicker staff={staff} selected={overrideStaffDraft} onChange={setOverrideStaffDraft} />

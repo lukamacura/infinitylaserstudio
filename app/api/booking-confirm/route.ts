@@ -218,6 +218,12 @@ export async function POST(req: NextRequest) {
       bookingRef:      row.id.slice(-8).toUpperCase(),
     };
 
+    // Booked in the studio for a client without an email: only the admin group hears of it.
+    if (!row.customer_email.trim()) {
+      await notifyAdmins(row, data);
+      return NextResponse.json({ ok: true, email: false });
+    }
+
     const notify = process.env.BOOKING_NOTIFY_EMAIL;
     const [res] = await Promise.all([fetch("https://api.resend.com/emails", {
       method: "POST",

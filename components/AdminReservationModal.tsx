@@ -611,7 +611,10 @@ export default function AdminReservationModal({
 
   async function handleSubmit() {
     if (submitLockRef.current) return;
-    const errors = { name: !form.name.trim(), email: !form.email.trim() };
+    // Email is optional here - a client booked by phone may not have one - but
+    // one that is typed must be real, or the confirmation goes nowhere.
+    const emailTyped = form.email.trim();
+    const errors = { name: !form.name.trim(), email: emailTyped !== "" && !EMAIL_REGEX.test(emailTyped) };
     setFieldErrors(errors);
     if (errors.name || errors.email) return;
     if (!selectedDate || !selectedTime) {
@@ -633,14 +636,18 @@ export default function AdminReservationModal({
   }
 
   async function submitReservation() {
+    // Without an email there is no history to look up: a new client, with the
+    // consultation in the term.
     const emailTrim = form.email.trim();
-    const { data: existingReservation } = await supabase
-      .from("reservations")
-      .select("id")
-      .ilike("customer_email", escapeLike(emailTrim))
-      .eq("status", "confirmed")
-      .limit(1)
-      .maybeSingle();
+    const { data: existingReservation } = emailTrim
+      ? await supabase
+          .from("reservations")
+          .select("id")
+          .ilike("customer_email", escapeLike(emailTrim))
+          .eq("status", "confirmed")
+          .limit(1)
+          .maybeSingle()
+      : { data: null };
     const returningSubmit = !!existingReservation;
 
     // Resolve the recorded promo code + final price for this booking. Mutually
@@ -1299,7 +1306,7 @@ export default function AdminReservationModal({
               </div>
 
               <div>
-                <label htmlFor="arm-email" className="block text-xs sm:text-sm text-foreground/68 font-poppins mb-1 sm:mb-1.5">Email *</label>
+                <label htmlFor="arm-email" className="block text-xs sm:text-sm text-foreground/68 font-poppins mb-1 sm:mb-1.5">Email <span className="text-foreground/55">(opcionalno)</span></label>
                 <input
                   id="arm-email"
                   name="email"
@@ -1331,7 +1338,11 @@ export default function AdminReservationModal({
                     void runReturningEmailCheck(e.target.value);
                   }}
                 />
-                {fieldErrors.email && <p className="text-xs text-red-400 font-poppins mt-1">Unesite email adresu.</p>}
+                {fieldErrors.email ? (
+                  <p className="text-xs text-red-400 font-poppins mt-1">Email nije ispravan - ispravi ga ili ostavi prazno.</p>
+                ) : !form.email.trim() && (
+                  <p className="text-xs text-foreground/60 font-poppins mt-1.5">Nema email? Ostavi prazno - potvrda se tada ne šalje.</p>
+                )}
                 {checkingReturningEmail && (
                   <p className="text-xs text-foreground/64 font-poppins mt-1.5">Proveravamo istoriju zakazivanja…</p>
                 )}
@@ -1548,7 +1559,9 @@ export default function AdminReservationModal({
                 <CheckCircle2 size={44} className="text-emerald-400 sm:w-13 sm:h-13" strokeWidth={1.5} />
               </div>
               <h3 className="text-2xl sm:text-3xl md:text-4xl font-bold font-playfair mb-2 sm:mb-3">Rezervacija kreirana!</h3>
-              <p className="text-sm sm:text-base text-foreground/68 font-poppins mb-6 sm:mb-8">Potvrda je poslata na {form.email}</p>
+              <p className="text-sm sm:text-base text-foreground/68 font-poppins mb-6 sm:mb-8">
+                {form.email.trim() ? `Potvrda je poslata na ${form.email.trim()}` : "Bez emaila - potvrda nije poslata."}
+              </p>
 
               {/* ── Stats banner: duration + animated price ── */}
               <div className="grid grid-cols-2 gap-3 sm:gap-4 w-full mb-4 sm:mb-6">
