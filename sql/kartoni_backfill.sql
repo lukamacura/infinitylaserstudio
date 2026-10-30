@@ -1,10 +1,11 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Kartoni for everyone who has ever booked. Run after the first part of
--- sql/kartoni.sql. Safe to run again: it only picks up what is still missing.
+-- sql/kartoni.sql. Safe to run again: it only picks up what is still missing,
+-- and that includes a card or row someone deleted by hand.
 --
--- Past treatments stay off the cards - their energies are on paper, so those
--- cards start empty. Bookings still to come do get their row, exactly as a new
--- booking would, or today's client would open a card with no row for today.
+-- Every booking gets its row, past ones too, exactly as a new booking would:
+-- date, studio and regions. Past energies are on paper, so those cells stay
+-- empty until someone copies them over.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 begin;
@@ -60,9 +61,9 @@ do $$
 declare r record;
 begin
   for r in
-    select id from public.reservations
-     where date >= (now() at time zone 'Europe/Belgrade')::date
-       and status not in ('cancelled', 'blacklisted')
+    select res.id from public.reservations res
+     where res.status not in ('cancelled', 'blacklisted')
+       and not exists (select 1 from public.karton_rows kr where kr.reservation_id = res.id)
   loop
     perform public.karton_sync_reservation(r.id);
   end loop;
