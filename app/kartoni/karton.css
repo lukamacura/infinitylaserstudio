@@ -1,0 +1,568 @@
+/* ── Kartoni ──────────────────────────────────────────────────────────────────
+   The admin stays dark: the dark page is the desk, and the card lying on it is
+   paper. Plain CSS on purpose - the look is its own world, and these pages are
+   the only ones that load it. */
+
+.karton-paper,
+.karton-sheet,
+.karton-index,
+.karton-folder {
+  --paper: #F6EEDC;
+  --paper-deep: #ECE0C6;
+  --manila: #DCC292;
+  --manila-deep: #C9AB76;
+  --ink: #2B2621;
+  --ink-soft: #62574A;
+  --ink-faint: #8A7D69;
+  --rule: rgba(62, 98, 148, 0.3);
+  --rule-soft: rgba(62, 98, 148, 0.16);
+  --margin: rgba(186, 58, 52, 0.62);
+  --stamp: #A52F2A;
+  --mark: #F9E7A0;
+  --pen: #24477C;
+  /* A little tooth in the paper. */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .27 0 0 0 0 .16 0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+  /* Date pickers and carets follow the paper, not the dark page around it. */
+  color-scheme: light;
+  color: var(--ink);
+}
+
+.karton-paper,
+.karton-sheet,
+.karton-index {
+  background-color: var(--paper);
+  background-image: var(--grain);
+}
+
+.karton-type { font-family: var(--font-typewriter), "Courier New", monospace; }
+
+.karton-eyebrow {
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+/* ── The card ─────────────────────────────────────────────────────────────── */
+
+.karton-paper {
+  position: relative;
+  border-radius: 3px 3px 10px 10px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.35),
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 22px 44px -18px rgba(0, 0, 0, 0.75);
+}
+
+/* The punched hole a card sits on in the drawer. */
+.karton-hole {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  margin-left: -9px;
+  border-radius: 50%;
+  background: var(--background, #1c1619);
+  box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.75), 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.karton-stamp {
+  display: inline-block;
+  padding: 3px 9px 2px;
+  border: 2px solid var(--stamp);
+  border-radius: 4px;
+  color: var(--stamp);
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  transform: rotate(-4deg);
+  opacity: 0.86;
+}
+
+.karton-rule-double {
+  border: 0;
+  height: 4px;
+  border-top: 1.5px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+  opacity: 0.8;
+}
+
+/* A form line: printed label, then what was written on it. */
+.karton-field {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  padding: 7px 0 3px;
+  border-bottom: 1px dotted var(--ink-faint);
+}
+
+.karton-field-label {
+  flex: none;
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.karton-field-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 15px;
+  color: var(--pen);
+}
+
+a.karton-field-value { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--rule); }
+
+.karton-field-empty { color: var(--ink-faint); font-style: italic; }
+
+.karton-name {
+  font-family: var(--font-hand), "Segoe Script", cursive;
+  font-weight: 700;
+  font-size: 34px;
+  line-height: 1.05;
+  color: var(--pen);
+  overflow-wrap: anywhere;
+}
+
+/* ── The table: dates down, regions across ────────────────────────────────── */
+
+.karton-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-faint) transparent;
+}
+
+.karton-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.karton-table th {
+  padding: 8px 5px;
+  border-bottom: 2px solid var(--ink);
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-align: center;
+  vertical-align: bottom;
+  color: var(--ink);
+}
+
+/* Date column stays put while the regions scroll, behind the red margin line. */
+.karton-date {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  /* As narrow as its contents; the spare width goes to the regions. */
+  width: 1%;
+  background-color: var(--paper);
+  background-image: var(--grain);
+  border-right: 3px double var(--margin);
+}
+
+.karton-table th.karton-date { text-align: left; padding-left: 10px; }
+
+.karton-table th.karton-col-end { padding: 8px 12px 8px 8px; }
+
+.karton-table td {
+  border-bottom: 1px solid var(--rule);
+  height: 64px;
+}
+
+.karton-table tbody th.karton-date {
+  padding: 0;
+  border-bottom: 1px solid var(--rule);
+  font-weight: 400;
+  text-transform: none;
+}
+
+.karton-empty { border-bottom: 1px solid var(--rule); }
+
+.karton-date-button {
+  display: block;
+  width: 86px;
+  height: 100%;
+  min-height: 63px;
+  padding: 6px 4px 6px 10px;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  color: var(--ink);
+}
+
+.karton-date-button:hover { background: rgba(62, 98, 148, 0.07); }
+.karton-date-day { display: block; font-size: 16px; font-weight: 700; line-height: 1.15; }
+.karton-date-sub { display: block; font-size: 11px; line-height: 1.25; color: var(--ink-soft); }
+
+.karton-cell {
+  padding: 3px 4px;
+  border-left: 1px solid var(--rule-soft);
+  text-align: center;
+  vertical-align: middle;
+}
+
+.karton-cell:first-of-type { border-left: 0; }
+
+.karton-cell-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 78px;
+  min-height: 56px;
+  border: 1.5px solid transparent;
+  border-radius: 7px;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.karton-cell-box:focus-within { background: var(--mark); border-color: var(--pen); }
+
+/* Booked for this date, energy not written down yet. */
+.karton-cell-box.is-planned { border: 1.5px dashed var(--ink-faint); background: rgba(255, 255, 255, 0.28); }
+.karton-cell-box.is-error { border: 1.5px solid var(--stamp); background: rgba(165, 47, 42, 0.08); }
+
+.karton-energy-line { display: flex; align-items: baseline; justify-content: flex-end; width: 68px; }
+
+.karton-paper .karton-cell input.karton-energy,
+.karton-paper .karton-cell input.karton-energy:not([type="checkbox"]):not([type="radio"]) {
+  width: 54px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  text-align: right;
+  color: var(--pen);
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 19px;
+  font-weight: 700;
+  caret-color: var(--stamp);
+}
+
+.karton-energy::placeholder { color: var(--ink-faint); font-weight: 400; opacity: 0.8; }
+.karton-unit { margin-left: 2px; font-family: var(--font-typewriter), "Courier New", monospace; font-size: 12px; color: var(--ink-soft); }
+
+.karton-hz {
+  width: 68px;
+  height: 16px;
+  text-align: right;
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-soft);
+}
+
+.karton-hz b { color: var(--stamp); font-weight: 700; }
+.karton-cell-error { font-size: 10.5px; font-weight: 700; color: var(--stamp); }
+
+/* Today's row gets the highlighter, a booking still to come is a pencil note. */
+.karton-row-today td,
+.karton-row-today .karton-date { background-color: var(--mark); background-image: none; }
+.karton-row-today .karton-cell-box.is-planned { background: rgba(255, 255, 255, 0.55); border-color: var(--ink); }
+.karton-row-future .karton-date-day { font-weight: 400; color: var(--ink-soft); }
+.karton-row-future .karton-cell-box.is-planned { border-color: rgba(138, 125, 105, 0.55); background: transparent; }
+.karton-row-future .karton-energy::placeholder { opacity: 0.4; }
+
+.karton-today-tag {
+  display: inline-block;
+  padding: 0 4px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 15px;
+}
+
+.karton-col-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 34px;
+  padding: 0 9px;
+  border: 1.5px dashed var(--ink-faint);
+  border-radius: 7px;
+  color: var(--ink-soft);
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.karton-col-add:hover { background: rgba(62, 98, 148, 0.07); color: var(--ink); }
+
+.karton-add-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 52px;
+  border-bottom: 1px solid var(--rule);
+  color: var(--pen);
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.karton-add-row:hover { background: rgba(62, 98, 148, 0.07); }
+
+.karton-blank-line { height: 44px; border-bottom: 1px solid var(--rule); }
+
+/* ── Note: ruled lines that scroll with the writing ───────────────────────── */
+
+.karton-note {
+  display: block;
+  width: 100%;
+  min-height: 150px;
+  padding: 0 2px;
+  border: 0;
+  outline: 0;
+  resize: none;
+  field-sizing: content;
+  color: var(--pen);
+  font-family: var(--font-hand), "Segoe Script", cursive;
+  font-weight: 500;
+  font-size: 23px !important;
+  line-height: 30px;
+  background-color: transparent;
+  background-image: repeating-linear-gradient(to bottom, transparent 0 29px, var(--rule) 29px 30px);
+  background-attachment: local;
+}
+
+.karton-note::placeholder { color: var(--ink-faint); opacity: 0.85; }
+
+.karton-printed {
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+.karton-printed b { color: var(--stamp); }
+
+/* ── Sheets: a slip of the same paper ─────────────────────────────────────── */
+
+.karton-sheet {
+  border-top: 3px double var(--margin);
+  border-radius: 14px 14px 0 0;
+  box-shadow: 0 -18px 50px rgba(0, 0, 0, 0.6);
+}
+
+@media (min-width: 640px) {
+  .karton-sheet { border-radius: 6px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65); }
+}
+
+.karton-sheet-title {
+  font-family: var(--font-hand), "Segoe Script", cursive;
+  font-weight: 700;
+  font-size: 30px;
+  line-height: 1.05;
+  color: var(--ink);
+}
+
+.karton-label {
+  display: block;
+  margin-bottom: 5px;
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.karton-input {
+  display: block;
+  width: 100%;
+  height: 46px;
+  padding: 0 12px;
+  border: 1.5px solid var(--ink-faint);
+  border-radius: 7px;
+  outline: 0;
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--ink);
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 16px;
+}
+
+.karton-input:focus { border-color: var(--pen); background: #fff; }
+.karton-input-search { padding-left: 36px; }
+.karton-pick { border: 1px solid rgba(138, 125, 105, 0.5); }
+
+.karton-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 42px;
+  padding: 0 13px;
+  border: 1.5px solid var(--ink-faint);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.4);
+  color: var(--ink);
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.12s, color 0.12s;
+}
+
+.karton-chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.karton-chip small { font-weight: 400; font-size: 12px; opacity: 0.8; }
+
+.karton-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 18px;
+  border-radius: 8px;
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.karton-btn:disabled { opacity: 0.5; cursor: default; }
+.karton-btn-primary { background: var(--ink); color: var(--paper); }
+.karton-btn-ghost { border: 1.5px solid var(--ink-faint); color: var(--ink); }
+.karton-btn-danger { background: var(--stamp); color: #fff; }
+.karton-btn-text { color: var(--stamp); }
+
+.karton-warning {
+  padding: 10px 12px;
+  border-left: 3px solid var(--stamp);
+  background: rgba(165, 47, 42, 0.08);
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+/* ── The drawer ───────────────────────────────────────────────────────────── */
+
+.karton-index {
+  position: relative;
+  padding: 11px 14px 10px 16px;
+  border-top: 2px solid var(--margin);
+  border-radius: 2px;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.45), 0 5px 10px -5px rgba(0, 0, 0, 0.55);
+  transition: transform 0.14s ease-out;
+}
+
+.karton-index:hover { transform: translateY(-2px); }
+.karton-index:active { transform: translateY(0); }
+
+.karton-index-name {
+  display: block;
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  text-transform: capitalize;
+}
+
+.karton-index-meta {
+  display: block;
+  margin-top: 3px;
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--ink-soft);
+}
+
+.karton-index-no {
+  flex: none;
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--stamp);
+  opacity: 0.85;
+}
+
+/* A divider tab sticking up out of the cards. */
+.karton-letter {
+  display: inline-block;
+  min-width: 42px;
+  padding: 4px 12px 3px;
+  border-radius: 7px 7px 0 0;
+  background: var(--manila, #DCC292);
+  color: #2B2621;
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.karton-folder {
+  position: relative;
+  padding: 12px;
+  border-radius: 0 10px 10px 10px;
+  background: var(--manila);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 28px -14px rgba(0, 0, 0, 0.7);
+}
+
+.karton-folder-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px 4px;
+  border-radius: 8px 8px 0 0;
+  background: #DCC292;
+  color: #2B2621;
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.karton-today-time {
+  flex: none;
+  width: 48px;
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--stamp);
+}
+
+.karton-status {
+  flex: none;
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.karton-status.is-waiting { color: var(--ink-soft); }
+.karton-status.is-done { color: #2D6A3E; }
+
+@media (prefers-reduced-motion: reduce) {
+  .karton-index, .karton-chip, .karton-cell-box { transition: none; }
+  .karton-index:hover { transform: none; }
+}

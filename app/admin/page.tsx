@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef, type TouchEvent as ReactTouchEvent } from "react";
+import { useRouter } from "next/navigation";
 import {
   ChevronLeft, ChevronRight, X,
   Clock, User, Mail, Phone, Calendar, CalendarPlus,
   PhoneCall, PhoneOff, AlertTriangle, StickyNote, HeartPulse, Tag, Package,
-  Plus, RotateCcw, Ban, Search, Users, Pencil,
+  Plus, RotateCcw, Ban, Search, Users, Pencil, NotebookPen,
 } from "lucide-react";
 import { fetchAll, escapeLike } from "@/lib/fetchAll";
 import {
@@ -27,6 +28,7 @@ import {
   fetchStaff, fetchStaffSchedule, resolveStaff, sameStaff, EMPTY_STAFF_SCHEDULE,
   type StaffMember, type StaffSchedule,
 } from "@/lib/staff";
+import { kartonForReservation } from "@/lib/kartoni";
 import { computeReservationPrice, type PriceResult } from "@/lib/pricing";
 import { parseBundlePromo } from "@/lib/bundles";
 import { isComboService, isFullBody, isAllowedWithFullBody, EMAIL_REGEX } from "@/components/booking/shared";
@@ -391,6 +393,7 @@ function hoursUntilExpiry(attemptedAt: string): number {
 // Admin Page
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function AdminPage() {
+  const router = useRouter();
   const { authenticated: authState, signIn, signOut } = useAdminAuth();
   const authenticated = authState === true;
   /** Calendar, calls, clients and working hours all show this one studio. */
@@ -474,6 +477,20 @@ export default function AdminPage() {
     const t = setTimeout(() => setNotice(null), 5000);
     return () => clearTimeout(t);
   }, [notice]);
+
+  /** The treatment card of the person behind a booking (makes one if it is missing). */
+  const [openingKarton, setOpeningKarton] = useState<string | null>(null);
+  async function openKarton(reservationId: string) {
+    setOpeningKarton(reservationId);
+    try {
+      const id = await kartonForReservation(reservationId);
+      if (!id) throw new Error("no card");
+      router.push(`/kartoni/${id}`);
+    } catch {
+      setNotice("Karton nije otvoren. Proverite internet i pokušajte ponovo.");
+      setOpeningKarton(null);
+    }
+  }
 
   /** Weeks already loaded, keyed "location|monday" — revisiting one paints instantly. */
   const weekCache   = useRef(new Map<string, ReservationFull[]>());
@@ -1831,30 +1848,51 @@ export default function AdminPage() {
 
                         {open && (
                           <div className="px-4 pb-4 pt-0 space-y-2">
+                            <button
+                              type="button"
+                              onClick={() => void openKarton(c.reservations[0].id)}
+                              disabled={openingKarton !== null}
+                              className="w-full min-h-11 px-3 flex items-center justify-center gap-2 rounded-xl border border-accent/30 bg-accent/10 hover:bg-accent/15 text-accent text-[13px] font-bold font-poppins transition-colors cursor-pointer disabled:opacity-60"
+                            >
+                              <NotebookPen size={15} className="shrink-0" />
+                              <span className="truncate">Karton: {c.name}</span>
+                            </button>
                             {c.reservations.map((r) => {
                               const st = STATUS_STYLES[r.status] ?? UNKNOWN_STATUS_STYLE;
                               const services = r.reservation_services
                                 .map(rs => rs.services?.name).filter(Boolean).join(", ");
                               return (
-                                <button
-                                  key={r.id}
-                                  type="button"
-                                  onClick={() => openModal(r)}
-                                  className="w-full flex items-center gap-3 p-3 rounded-xl border border-foreground/8 hover:border-accent/30 hover:bg-accent/10 transition-all text-left cursor-pointer"
-                                >
-                                  <span className={`w-2 h-2 rounded-full shrink-0 ${st.dot}`} />
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-[12px] font-bold font-poppins text-foreground/82">
-                                      {fmtFull(new Date(`${r.date}T00:00:00`))} · {r.start_time.slice(0, 5)}
-                                    </p>
-                                    {services && (
-                                      <p className="text-[11px] font-poppins text-foreground/60 truncate mt-0.5">{services}</p>
-                                    )}
-                                  </div>
-                                  <span className={`shrink-0 text-[10px] font-bold font-poppins uppercase tracking-wider px-2 py-1 rounded-lg ${st.bg} ${st.text}`}>
-                                    {st.label}
-                                  </span>
-                                </button>
+                                <div key={r.id} className="flex items-stretch gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => openModal(r)}
+                                    className="flex-1 min-w-0 flex items-center gap-3 p-3 rounded-xl border border-foreground/8 hover:border-accent/30 hover:bg-accent/10 transition-all text-left cursor-pointer"
+                                  >
+                                    <span className={`w-2 h-2 rounded-full shrink-0 ${st.dot}`} />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-[12px] font-bold font-poppins text-foreground/82">
+                                        {fmtFull(new Date(`${r.date}T00:00:00`))} · {r.start_time.slice(0, 5)}
+                                      </p>
+                                      {services && (
+                                        <p className="text-[11px] font-poppins text-foreground/60 truncate mt-0.5">{services}</p>
+                                      )}
+                                    </div>
+                                    <span className={`shrink-0 text-[10px] font-bold font-poppins uppercase tracking-wider px-2 py-1 rounded-lg ${st.bg} ${st.text}`}>
+                                      {st.label}
+                                    </span>
+                                  </button>
+                                  {/* One email can hide several people (a filler address), so each booking opens its own person's card. */}
+                                  <button
+                                    type="button"
+                                    onClick={() => void openKarton(r.id)}
+                                    disabled={openingKarton !== null}
+                                    aria-label={`Karton: ${r.customer_name}`}
+                                    title={`Karton: ${r.customer_name}`}
+                                    className="shrink-0 w-11 flex items-center justify-center rounded-xl border border-foreground/8 text-foreground/60 hover:text-accent hover:border-accent/30 hover:bg-accent/10 transition-all cursor-pointer disabled:opacity-60"
+                                  >
+                                    <NotebookPen size={16} />
+                                  </button>
+                                </div>
                               );
                             })}
                           </div>
@@ -2252,6 +2290,16 @@ export default function AdminPage() {
             </div>
 
             <div className="flex-1 overflow-y-auto overscroll-contain px-5 sm:px-8 py-5 sm:py-8 space-y-5 sm:space-y-8 custom-scrollbar">
+              <button
+                type="button"
+                onClick={() => void openKarton(selected.id)}
+                disabled={openingKarton !== null}
+                className="w-full min-h-12 px-4 flex items-center justify-center gap-2 rounded-2xl border-2 border-accent/30 bg-accent/10 hover:bg-accent/15 text-accent text-sm font-bold font-poppins transition-colors cursor-pointer disabled:opacity-60"
+              >
+                <NotebookPen size={17} />
+                {openingKarton === selected.id ? "Otvaram karton…" : "Otvori karton"}
+              </button>
+
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-3 px-1">
                   <p className="text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-widest">Kontakt</p>

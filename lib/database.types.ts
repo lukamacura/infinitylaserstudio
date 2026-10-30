@@ -138,6 +138,7 @@ export type Database = {
         Row: {
           call_attempted_at: string | null
           call_status: string
+          client_id: string | null
           created_at: string | null
           customer_email: string
           customer_name: string
@@ -157,6 +158,7 @@ export type Database = {
         Insert: {
           call_attempted_at?: string | null
           call_status?: string
+          client_id?: string | null
           created_at?: string | null
           customer_email: string
           customer_name: string
@@ -176,6 +178,7 @@ export type Database = {
         Update: {
           call_attempted_at?: string | null
           call_status?: string
+          client_id?: string | null
           created_at?: string | null
           customer_email?: string
           customer_name?: string
@@ -193,6 +196,141 @@ export type Database = {
           total_duration?: number
         }
         Relationships: []
+      }
+      clients: {
+        Row: {
+          created_at: string
+          email: string | null
+          email_norm: string | null
+          gender: string | null
+          id: string
+          name: string
+          name_norm: string | null
+          phone: string | null
+          phone_norm: string | null
+          search_text: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          gender?: string | null
+          id?: string
+          name: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          gender?: string | null
+          id?: string
+          name?: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      kartoni: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          note: string
+          number: number
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          note?: string
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          note?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kartoni_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: true
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      karton_rows: {
+        Row: {
+          created_at: string
+          date: string
+          id: string
+          karton_id: string
+          location: string
+          reservation_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          id?: string
+          karton_id: string
+          location?: string
+          reservation_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          id?: string
+          karton_id?: string
+          location?: string
+          reservation_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "karton_rows_karton_id_fkey"
+            columns: ["karton_id"]
+            isOneToOne: false
+            referencedRelation: "kartoni"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      karton_entries: {
+        Row: {
+          energy_j: number | null
+          frequency_hz: number | null
+          planned: boolean
+          region: string
+          row_id: string
+          updated_at: string
+        }
+        Insert: {
+          energy_j?: number | null
+          planned?: boolean
+          region: string
+          row_id: string
+          updated_at?: string
+        }
+        Update: {
+          energy_j?: number | null
+          planned?: boolean
+          region?: string
+          row_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "karton_entries_row_id_fkey"
+            columns: ["row_id"]
+            isOneToOne: false
+            referencedRelation: "karton_rows"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       service_prices: {
         Row: {
@@ -364,6 +502,27 @@ export type Database = {
     }
     Functions: {
       is_admin: { Args: Record<string, never>; Returns: boolean }
+      karton_search: {
+        Args: { p_query?: string; p_limit?: number; p_offset?: number }
+        Returns: {
+          karton_id: string; number: number; client_id: string; name: string; name_norm: string;
+          phone: string | null; email: string | null; rows_count: number;
+          last_date: string | null; next_date: string | null; total: number
+        }[]
+      }
+      karton_today: {
+        Args: { p_location: string }
+        Returns: {
+          karton_id: string; number: number; name: string; start_time: string | null; regions: string[]; filled: number
+        }[]
+      }
+      karton_create: {
+        Args: { p_name: string; p_phone?: string | null; p_email?: string | null; p_gender?: string | null; p_force?: boolean }
+        Returns: Json
+      }
+      karton_for_reservation: { Args: { p_reservation_id: string }; Returns: string | null }
+      karton_delete: { Args: { p_id: string }; Returns: undefined }
+      karton_merge: { Args: { p_keep: string; p_drop: string }; Returns: undefined }
       public_busy_slots: {
         Args: { p_from: string; p_to: string; p_location?: string }
         Returns: { date: string; start_time: string; end_time: string; status: string }[]

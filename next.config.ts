@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 
-const PRIVATE_PAGES = ["/admin", "/finances", "/stats", "/fnl"];
+const PRIVATE_PAGES = ["/admin", "/kartoni", "/finances", "/stats", "/fnl"];
 
 const nextConfig: NextConfig = {
   images: {

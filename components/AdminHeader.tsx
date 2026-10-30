@@ -2,12 +2,13 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Calendar, Wallet, BarChart3, Filter, LogOut, ChevronDown, Check } from "lucide-react";
+import { Calendar, NotebookPen, Wallet, BarChart3, Filter, LogOut, ChevronDown, Check } from "lucide-react";
 import AdminLocationSwitch from "@/components/AdminLocationSwitch";
 import type { LocationId } from "@/lib/locations";
 
 const PAGES = [
   { key: "admin",    href: "/admin",    label: "Admin",      Icon: Calendar  },
+  { key: "kartoni",  href: "/kartoni",  label: "Kartoni",    Icon: NotebookPen },
   { key: "finances", href: "/finances", label: "Finansije",  Icon: Wallet    },
   { key: "stats",    href: "/stats",    label: "Statistike", Icon: BarChart3 },
   { key: "fnl",      href: "/fnl",      label: "Funnel",     Icon: Filter    },
