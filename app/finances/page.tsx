@@ -13,7 +13,7 @@ import { fetchAll } from "@/lib/fetchAll";
 import { useAdminAuth } from "@/lib/adminAuth";
 import AdminLogin from "@/components/AdminLogin";
 import type { ReservationStatus } from "@/lib/database.types";
-import { computeReservationPrice } from "@/lib/pricing";
+import { computeReservationPrice, isGiftPromoCode, isGiftService } from "@/lib/pricing";
 import { fetchPriceRows, PriceBook } from "@/lib/prices";
 import AdminHeader from "@/components/AdminHeader";
 import { useAdminLocation } from "@/lib/adminLocation";
@@ -213,7 +213,8 @@ export default function FinancesPage() {
     const base = priceBook.apply(
       r.reservation_services.map(rs => rs.services).filter((s): s is ServiceWithPrice => s !== null),
       location, r.created_at);
-    const effectiveServices = applyComboRules(base, priceBook.apply(allServices, location, r.created_at));
+    const all = priceBook.apply(allServices, location, r.created_at);
+    const effectiveServices = applyComboRules(base, all);
     const totalPrice = effectiveServices.reduce((sum, s) => sum + s.price, 0);
 
     const email   = r.customer_email.trim().toLowerCase();
@@ -223,6 +224,9 @@ export default function FinancesPage() {
 
     const price = computeReservationPrice({
       listPrice: totalPrice,
+      giftPrice: isGiftPromoCode(r.promo_code)
+        ? applyComboRules(base.filter(s => !isGiftService(s.name)), all).reduce((sum, s) => sum + s.price, 0)
+        : null,
       isFirstTreatment: isFirst,
       createdAt: r.created_at,
       promoCode: r.promo_code,
@@ -344,7 +348,7 @@ export default function FinancesPage() {
               <li className="px-6 py-16 text-center opacity-20"><Wallet size={40} className="mx-auto mb-2"/><p className="font-poppins text-sm font-medium uppercase tracking-widest">Nema podataka</p></li>
             ) : (
               calculated.map(r => {
-                const { finalPrice, effectiveServices, fiftyOff, promoOff, studentOff, linkOff, promoCode, listPrice, overridden } = r.calc;
+                const { finalPrice, effectiveServices, fiftyOff, promoOff, studentOff, linkOff, giftOff, promoCode, listPrice, overridden } = r.calc;
                 const services = effectiveServices.map(s => s.name).join(", ");
                 const d = new Date(`${r.date}T00:00:00`);
                 return (
@@ -366,12 +370,13 @@ export default function FinancesPage() {
                           <p className="shrink-0 text-[10px] font-medium font-poppins text-foreground/38 line-through tabular-nums">{listPrice.toLocaleString("sr-RS")}</p>
                         )}
                       </div>
-                      {(fiftyOff || promoOff || studentOff || linkOff || overridden) && (
+                      {(fiftyOff || promoOff || studentOff || linkOff || giftOff || overridden) && (
                         <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                           {fiftyOff && <span className="px-1.5 py-0.5 rounded-md bg-rose/10 text-[9px] font-bold text-rose uppercase tracking-wider">−50% prvi put</span>}
                           {promoOff && <span className="px-1.5 py-0.5 rounded-md bg-green-400/10 text-[9px] font-bold text-green-400 uppercase tracking-wider">−10% promo{promoCode ? ` · ${promoCode}` : ""}</span>}
                           {studentOff && <span className="px-1.5 py-0.5 rounded-md bg-amber-400/10 text-[9px] font-bold text-amber-300 uppercase tracking-wider">−20% student</span>}
                           {linkOff && <span className="px-1.5 py-0.5 rounded-md bg-green-400/10 text-[9px] font-bold text-green-400 uppercase tracking-wider">−20% link</span>}
+                          {giftOff && <span className="px-1.5 py-0.5 rounded-md bg-green-400/10 text-[9px] font-bold text-green-400 uppercase tracking-wider">Nausnice gratis</span>}
                           {overridden && <span className="px-1.5 py-0.5 rounded-md bg-sky-400/10 text-[9px] font-bold text-sky-300 uppercase tracking-wider">Korigovano</span>}
                         </div>
                       )}
@@ -397,7 +402,7 @@ export default function FinancesPage() {
                   <tr><td colSpan={4} className="px-8 py-20 text-center opacity-20"><Wallet size={48} className="mx-auto mb-2"/><p className="font-poppins text-sm font-medium uppercase tracking-widest">Nema podataka</p></td></tr>
                 ) : (
                   calculated.map(r => {
-                    const { finalPrice, effectiveServices, fiftyOff, promoOff, studentOff, linkOff, promoCode, listPrice, overridden } = r.calc;
+                    const { finalPrice, effectiveServices, fiftyOff, promoOff, studentOff, linkOff, giftOff, promoCode, listPrice, overridden } = r.calc;
                     const services = effectiveServices.map(s => s.name).join(", ");
                     const hasDiscount = finalPrice !== listPrice;
                     const d = new Date(`${r.date}T00:00:00`);
@@ -438,6 +443,11 @@ export default function FinancesPage() {
                               {linkOff && (
                                 <div className="flex items-center gap-1 text-[9px] font-bold text-green-400 uppercase tracking-widest">
                                   <Tag size={10} /> −20% link · {promoCode}
+                                </div>
+                              )}
+                              {giftOff && (
+                                <div className="flex items-center gap-1 text-[9px] font-bold text-green-400 uppercase tracking-widest">
+                                  <Tag size={10} /> Nausnice gratis
                                 </div>
                               )}
                               {overridden && (

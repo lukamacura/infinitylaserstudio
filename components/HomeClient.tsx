@@ -6,7 +6,8 @@ import ScrollReveal from "@/components/ScrollReveal";
 import { OpenBookingContext } from "@/components/OpenBooking";
 import type { LocationId } from "@/lib/locations";
 import { trackLanding, type FunnelSource } from "@/lib/funnel";
-import { urlHasLinkPromo } from "@/lib/linkPromo";
+import { urlLinkPromo } from "@/lib/linkPromo";
+import { isGiftPromoCode } from "@/lib/pricing";
 
 // Heavy (Supabase + framer-motion) and never visible on first paint — load it on demand.
 const BookingModal = dynamic(() => import("@/components/BookingModal"), { ssr: false });
@@ -82,7 +83,8 @@ export default function HomeClient({ children }: { children: ReactNode }) {
   //   ?pol=zene|muskarci         skips the gender step
   //   ?regija=<slug>             preselects regions (implies Žene without ?pol=)
   //   ?book=1                    opens with nothing preselected
-  //   ?promo=popust20            −20% on everything (see lib/linkPromo.ts)
+  //   ?promo=popust20|luka20|halloween20  −20% on everything (see lib/linkPromo.ts)
+  //   ?promo=nausnice            free earrings, can swap to −20% (implies Žene without ?pol=)
   // An unknown value is ignored, the rest of the link still applies.
   // Runs once on mount (after hydration) to read the URL — an external system.
   useEffect(() => {
@@ -90,12 +92,13 @@ export default function HomeClient({ children }: { children: ReactNode }) {
     const polParam = params.get("pol")?.toLowerCase();
     const pol: Gender | undefined =
       polParam === "zene" || polParam === "muskarci" ? polParam : undefined;
+    const linkPromo = urlLinkPromo();
     const regija = params.get("regija")?.toLowerCase();
     const studio = LOCATION_SLUGS[params.get("lokacija")?.toLowerCase() ?? ""];
     const keywords = regija ? REGION_SLUGS[pol ?? "zene"][regija] : undefined;
-    const gender: Gender | undefined = pol ?? (keywords ? "zene" : undefined);
+    const gender: Gender | undefined = pol ?? (keywords || isGiftPromoCode(linkPromo) ? "zene" : undefined);
 
-    const opensForm = !!(keywords || gender || studio || params.get("book") === "1" || urlHasLinkPromo());
+    const opensForm = !!(keywords || gender || studio || params.get("book") === "1" || linkPromo);
     trackLanding(opensForm ? "link" : "root");
     if (!opensForm) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect

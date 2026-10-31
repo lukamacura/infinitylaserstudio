@@ -19,6 +19,7 @@ export type SuccessDiscount =
   | { kind: "redeem" }
   | { kind: "student" }
   | { kind: "link" }
+  | { kind: "gift" }
   | null;
 
 export interface BookingSuccessProps {
@@ -58,6 +59,7 @@ function discountNote(d: NonNullable<SuccessDiscount>): string {
   if (d.kind === "bundle") return `↳ paket ${d.size}× · −${d.pct}%`;
   if (d.kind === "redeem") return "↳ plaćeno u paketu";
   if (d.kind === "link") return "↳ popust −20%";
+  if (d.kind === "gift") return "↳ nausnice gratis";
   return "↳ student −20% · uz indeks";
 }
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
 import { parseBundlePromo } from "@/lib/bundles";
-import { isIlsPromoCode, isLinkPromoCode, isStudentPromoCode, linkSinglePrice } from "@/lib/pricing";
+import { isGiftPromoCode, isIlsPromoCode, isLinkPromoCode, isStudentPromoCode, linkSinglePrice } from "@/lib/pricing";
 import { DEFAULT_LOCATION, getLocation, isLocationId } from "@/lib/locations";
 import {
   bookingEmailHtml, bookingEmailSubject, bookingEmailText, formatEmailDate,
@@ -45,6 +45,7 @@ const DISCOUNT_LABEL: Record<BookingDiscount, string | null> = {
   none: null,
   student: "Studentski −20% (uz indeks)",
   link: "Popust −20% (link)",
+  gift: "Nausnice gratis (link)",
   promo: "Promo −10%",
   bundle: "Paket - plaća se ceo na prvom tretmanu",
   bundle_redeem: "Tretman iz paketa - već plaćen",
@@ -121,7 +122,7 @@ function readServices(raw: unknown): { name: string; price: number }[] {
     .map((s) => ({ name: s.name.slice(0, 120), price: s.price }));
 }
 
-function priceFor(promoCode: string | null, listPrice: number): {
+function priceFor(promoCode: string | null, listPrice: number, services: { price: number }[]): {
   discount: BookingDiscount; finalPrice: number; bundleSessions: number | null;
 } {
   const bundle = parseBundlePromo(promoCode);
@@ -135,6 +136,10 @@ function priceFor(promoCode: string | null, listPrice: number): {
   }
   if (isLinkPromoCode(promoCode)) {
     return { discount: "link", finalPrice: linkSinglePrice(listPrice), bundleSessions: null };
+  }
+  if (isGiftPromoCode(promoCode)) {
+    // The treatment list already has the earrings at 0 and no combo with them.
+    return { discount: "gift", finalPrice: services.reduce((sum, s) => sum + s.price, 0), bundleSessions: null };
   }
   if (isIlsPromoCode(promoCode)) {
     return { discount: "promo", finalPrice: Math.round(listPrice * 0.9), bundleSessions: null };
@@ -214,7 +219,7 @@ export async function POST(req: NextRequest) {
       studio:          getLocation(isLocationId(row.location) ? row.location : DEFAULT_LOCATION),
       services,
       listPrice,
-      ...priceFor(row.promo_code, listPrice),
+      ...priceFor(row.promo_code, listPrice, services),
       bookingRef:      row.id.slice(-8).toUpperCase(),
     };
 

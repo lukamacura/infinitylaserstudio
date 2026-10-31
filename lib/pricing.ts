@@ -30,16 +30,34 @@ export function isStudentPromoCode(raw: string | null | undefined): boolean {
 }
 
 /**
- * Link discount: −20% for anyone who arrives on `?promo=popust20` - new or
+ * Link discount: −20% for anyone who arrives on `?promo=<code>` - new or
  * returning, single session or bundle. On a single session the code is stored
  * on the reservation; on a bundle the cut is already in the bundle total, so a
  * bundle reservation keeps its usual paket-N-<total> code.
+ * A new code also has to be added to public_create_booking (sql/link_codes.sql).
  */
 export const LINK_PROMO_CODE = "popust20";
+export const LINK_PROMO_CODES = [LINK_PROMO_CODE, "luka20", "halloween20"];
 export const LINK_DISCOUNT_PCT = 20;
 
 export function isLinkPromoCode(raw: string | null | undefined): boolean {
-  return !!raw && raw.trim().toLowerCase() === LINK_PROMO_CODE;
+  return !!raw && LINK_PROMO_CODES.includes(raw.trim().toLowerCase());
+}
+
+/**
+ * Gift link: `?promo=nausnice` makes "Nausnice" free, and the visitor can swap
+ * that for the −20% link discount. Everything else is charged as if the
+ * earrings were not booked, so Brada keeps its own price instead of the combo.
+ */
+export const GIFT_PROMO_CODE = "nausnice";
+
+export function isGiftPromoCode(raw: string | null | undefined): boolean {
+  return !!raw && raw.trim().toLowerCase() === GIFT_PROMO_CODE;
+}
+
+/** The free region itself - not the "Nausnice i brada" combo. */
+export function isGiftService(name: string): boolean {
+  return name.trim().toLowerCase() === "nausnice";
 }
 
 /** Single-session price after the link discount. */
@@ -58,6 +76,7 @@ export type DiscountKind =
   | "fifty_promo"
   | "student"
   | "link"
+  | "gift"
   | "bundle"
   | "bundle_redeem"
   | "none";
@@ -73,9 +92,11 @@ export interface PriceResult {
   promoOff: boolean;
   /** −20% student code applied (pending a student ID at the studio). */
   studentOff: boolean;
-  /** −20% popust20 link code applied. */
+  /** −20% link code applied. */
   linkOff: boolean;
-  /** The applied promo code (only when promoOff, studentOff or linkOff). */
+  /** Free "Nausnice" from the gift link applied. */
+  giftOff: boolean;
+  /** The applied promo code (only when promoOff, studentOff, linkOff or giftOff). */
   promoCode: string | null;
   /** Number of treatments in the bundle (only when kind is a bundle). */
   bundleSessions: number | null;
@@ -98,6 +119,8 @@ export function computeReservationPrice(opts: {
   isFirstTreatment: boolean;
   createdAt: string | null;
   promoCode: string | null;
+  /** The list price without the free earrings - what the gift link charges. */
+  giftPrice?: number | null;
   /** A price corrected by hand in the admin panel - wins over every rule below. */
   priceOverride?: number | null;
 }): PriceResult {
@@ -113,8 +136,9 @@ function computeRulePrice(opts: {
   isFirstTreatment: boolean;
   createdAt: string | null;
   promoCode: string | null;
+  giftPrice?: number | null;
 }): PriceResult {
-  const { listPrice, isFirstTreatment, createdAt, promoCode } = opts;
+  const { listPrice, isFirstTreatment, createdAt, promoCode, giftPrice } = opts;
 
   // Bundles ("Napravi svoj paket") are paid in full upfront on the first session
   // and never stack with the 50%/ils discounts. The full bundle total is encoded
@@ -128,6 +152,7 @@ function computeRulePrice(opts: {
       promoOff: false,
       studentOff: false,
       linkOff: false,
+      giftOff: false,
       promoCode: promoCode!.trim(),
       bundleSessions: bundle.sessions,
       kind: bundle.redeem ? "bundle_redeem" : "bundle",
@@ -141,8 +166,9 @@ function computeRulePrice(opts: {
   const promoOff = isIlsPromoCode(promoCode);
   const studentOff = isStudentPromoCode(promoCode);
   const linkOff = isLinkPromoCode(promoCode);
+  const giftOff = isGiftPromoCode(promoCode) && giftPrice != null;
 
-  let finalPrice = listPrice;
+  let finalPrice = giftOff ? giftPrice! : listPrice;
   if (fiftyOff) finalPrice = Math.round(finalPrice * 0.5);
   if (promoOff) finalPrice = Math.round(finalPrice * 0.9);
   if (studentOff) finalPrice = Math.round(finalPrice * 0.8);
@@ -154,6 +180,7 @@ function computeRulePrice(opts: {
       : promoOff ? "promo"
       : studentOff ? "student"
       : linkOff ? "link"
+      : giftOff ? "gift"
       : "none";
 
   return {
@@ -163,7 +190,8 @@ function computeRulePrice(opts: {
     promoOff,
     studentOff,
     linkOff,
-    promoCode: promoOff || studentOff || linkOff ? promoCode!.trim() : null,
+    giftOff,
+    promoCode: promoOff || studentOff || linkOff || giftOff ? promoCode!.trim() : null,
     bundleSessions: null,
     kind,
     overridden: false,

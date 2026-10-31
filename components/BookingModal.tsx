@@ -23,9 +23,10 @@ import {
 } from "@/lib/bundles";
 import {
   STUDENT_PROMO_CODE, isStudentPromoCode, LINK_PROMO_CODE, LINK_DISCOUNT_PCT,
-  linkSinglePrice, linkBundleTotal,
+  isLinkPromoCode, linkSinglePrice, linkBundleTotal,
+  GIFT_PROMO_CODE, isGiftPromoCode, isGiftService,
 } from "@/lib/pricing";
-import { hasLinkPromo } from "@/lib/linkPromo";
+import { readLinkPromo } from "@/lib/linkPromo";
 import { fetchPriceRows, PriceBook } from "@/lib/prices";
 import { trackFunnel, type FunnelStage, type FunnelSource } from "@/lib/funnel";
 import { trackGoogleAdsBooking } from "@/lib/googleAds";
@@ -542,8 +543,10 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   const [checkingPromo, setCheckingPromo]       = useState(false);
   /** Why a code was refused - a plain "invalid" reads as wrong for a real code. */
   const [promoErrorMsg, setPromoErrorMsg]       = useState<string | null>(null);
-  /** Arrived on ?promo=popust20 - −20% on everything, single sessions and bundles. */
-  const [linkDiscount] = useState(hasLinkPromo);
+  /** Arrived on a ?promo= link - a −20% code or the free earrings (lib/linkPromo.ts). */
+  const [linkPromo] = useState(readLinkPromo);
+  /** On the gift link: the free earrings, until swapped for the −20%. */
+  const [giftChosen, setGiftChosen] = useState(isGiftPromoCode(linkPromo));
 
   // Step "plan" state
   const [bookingMode, setBookingMode] = useState<BookingMode>("single");
@@ -589,7 +592,21 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   const fullBodySelected = selectedServices.some((s) => isFullBody(s.name));
   /** Whole face is selected - earrings & chin are already covered by it. */
   const fullFaceSelected = selectedServices.some((s) => isFullFace(s.name));
-  const { effective: effectiveServices, appliedCombos } = applyComboRules(selectedServices, services);
+  const { effective: effectiveServices } = applyComboRules(selectedServices, services);
+  /** Men have no earrings in their list - the gift link is plain −20% for them. */
+  const giftOn = giftChosen && gender !== "muskarci";
+  const giftInBasket = giftOn && selectedServices.some((s) => isGiftService(s.name));
+  const giftSwitchable = isGiftPromoCode(linkPromo) && gender !== "muskarci" &&
+    (step === "location" || step === 1 || step === 2 || step === "plan");
+  /** −20% on everything, single sessions and bundles. */
+  const linkDiscount = linkPromo !== null && !giftOn;
+  /** Recorded on the booking: the gift link swapped to −20% counts as the plain code. */
+  const linkCode = isLinkPromoCode(linkPromo) ? linkPromo! : LINK_PROMO_CODE;
+  /** What gets charged for: with the gift on, everything but the earrings (so no combo with them). */
+  const { effective: paidServices, appliedCombos } = applyComboRules(
+    giftOn ? selectedServices.filter((s) => !isGiftService(s.name)) : selectedServices,
+    services,
+  );
   /** With 10 min consultation - used for day/slot picking so first-time bookings always fit. */
   const slotDuration =
     selectedServices.length > 0 ? calcBookingDuration(selectedServices) : 0;
@@ -601,6 +618,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
         ? calcTotalDuration(selectedServices)
         : calcBookingDuration(selectedServices);
   const totalPrice       = effectiveServices.reduce((sum, s) => sum + s.price, 0);
+  const paidTotal        = paidServices.reduce((sum, s) => sum + s.price, 0);
+  /** One session after the link's offer, before any code typed in later. */
+  const singlePrice      = linkDiscount ? linkSinglePrice(totalPrice) : paidTotal;
   const accent           = ACCENTS[gender ?? "zene"];
   const reduceMotion     = useReducedMotion();
   const proof            = SOCIAL_PROOF[gender ?? "zene"];
@@ -632,10 +652,10 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   }, [services, pinnedIds]);
 
   // ── Bundle ("Napravi svoj paket") ───────────────────────────────────────────
-  const eligibleSizes = eligibleBundleSizes(effectiveServices);
+  const eligibleSizes = eligibleBundleSizes(paidServices);
   const bundleResult: BundleResult | null =
-    bundleSize != null && eligibleSizes.includes(bundleSize) && effectiveServices.length > 0
-      ? computeBundle(effectiveServices, bundleSize)
+    bundleSize != null && eligibleSizes.includes(bundleSize) && paidServices.length > 0
+      ? computeBundle(paidServices, bundleSize)
       : null;
   const bundleActive = bookingMode === "bundle" && bundleResult != null;
   /** A bundle's price card - the link discount comes on top of the bundle's own. */
@@ -659,6 +679,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     !bundleActive && !redeemActive && promoKind === "student" && promoStatus === "valid";
   /** Link discount on a single session. */
   const linkActive = linkDiscount && !bundleActive && !redeemActive && !studentActive;
+  /** Free earrings on a single session. */
+  const giftActive = giftInBasket && !bundleActive && !redeemActive && !studentActive;
 
   const listTotal = bundleActive ? bundleResult!.originalTotal : totalPrice;
   const finalPrice = bundleActive
@@ -669,7 +691,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
         ? Math.round(totalPrice * 0.8)
         : linkActive
           ? linkSinglePrice(totalPrice)
-          : totalPrice;
+          : giftActive
+            ? paidTotal
+            : totalPrice;
   const savingsVsList = listTotal - finalPrice;
 
   // For today: slots must start ≥ now+120min. Read the clock on every render -
@@ -881,6 +905,15 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, preselectedStudio]);
 
+  // ── The gift link keeps the free earrings in the basket, pinned on top ────
+  const giftServiceId = giftOn && gender ? services.find((s) => isGiftService(s.name))?.id : undefined;
+  useEffect(() => {
+    if (!giftServiceId || selectedIds.includes(giftServiceId)) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSelectedIds((prev) => prev.includes(giftServiceId) ? prev : [...prev, giftServiceId]);
+    setPinnedIds((prev) => prev.includes(giftServiceId) ? prev : [giftServiceId, ...prev]);
+  }, [giftServiceId, selectedIds]);
+
   // ── Auto-select preselected services when modal opens ─────────────────────
   useEffect(() => {
     if (!isOpen) {
@@ -1062,6 +1095,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     if (fullFaceSelected && !isSelected && isCoveredByFullFace(svc.name)) {
       return;
     }
+    // Without the earrings the gift link's offer is the −20%; "Celo lice" drops them too.
+    if (giftOn && (isSelected ? isGiftService(svc.name) : isFullFace(svc.name))) setGiftChosen(false);
     // Selecting "Celo lice" drops already-selected earrings & chin.
     if (!isSelected && isFullFace(svc.name)) {
       setSelectedIds((prev) => [
@@ -1085,6 +1120,16 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       return;
     }
     setSelectedIds((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
+  }
+
+  /** The gift link's switch: free earrings, or −20% without them. */
+  function chooseGift(on: boolean) {
+    const nameOf = (id: string) => services.find((s) => s.id === id)?.name ?? "";
+    setGiftChosen(on);
+    // The earrings effect above adds them back; "Celo lice" can't sit next to them.
+    const rest = selectedIds.filter((id) => !(on ? isFullFace(nameOf(id)) : isGiftService(nameOf(id))));
+    setSelectedIds(rest);
+    if (!on && rest.length === 0 && step === "plan") setStep(2);
   }
 
   function handleDaySelect(date: string) {
@@ -1136,8 +1181,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     // Student code - −20%, first treatment only. The student ID itself is checked
     // at the studio; all we can verify here is that this email has never booked.
     if (isStudentPromoCode(raw)) {
-      if (linkDiscount) {
-        rejectPromo(`Već imaš popust −${LINK_DISCOUNT_PCT}%. Popusti se ne sabiraju.`);
+      if (linkPromo) {
+        rejectPromo(`${giftOn ? "Već imaš nausnice gratis" : `Već imaš popust −${LINK_DISCOUNT_PCT}%`}. Popusti se ne sabiraju.`);
         return;
       }
       const email = form.email.trim();
@@ -1250,7 +1295,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       notesForRecord =
         `Paket ${bundleSize}× - ukupno ${formatPrice(bundleDeal!.finalTotal)} RSD ` +
         `(ušteda ${formatPrice(bundleDeal!.savings)} RSD)` +
-        (linkDiscount ? ` · uračunat popust −${LINK_DISCOUNT_PCT}% (${LINK_PROMO_CODE})` : "");
+        (linkDiscount ? ` · uračunat popust −${LINK_DISCOUNT_PCT}% (${linkCode})` : "") +
+        (giftInBasket ? " · nausnice gratis" : "");
     } else if (redeemActive) {
       promoForRecord = bundleRedeemCode(appliedPromoCode!);
       notesForRecord = `Iskorišćen tretman iz paketa ${appliedPromoCode}`;
@@ -1258,7 +1304,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       promoForRecord = STUDENT_PROMO_CODE;
       notesForRecord = "STUDENTSKI POPUST −20% - proveri indeks pri dolasku!";
     } else if (linkActive) {
-      promoForRecord = LINK_PROMO_CODE;
+      promoForRecord = linkCode;
+    } else if (giftActive) {
+      promoForRecord = GIFT_PROMO_CODE;
     }
     const listForSubmit  = listTotal;
     const finalForSubmit = finalPrice;
@@ -1346,7 +1394,10 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
         date:             selectedDate,
         start_time:       selectedTime,
         end_time:         endTime,
-        services:         effectiveServices.map((s) => ({ name: s.name, price: s.price })),
+        services:         [
+          ...paidServices.map((s) => ({ name: s.name, price: s.price })),
+          ...(giftInBasket ? [{ name: "Nausnice (gratis)", price: 0 }] : []),
+        ],
         total_duration:   durationForReservation,
         total_price:      listForSubmit,
         discounted_price: finalForSubmit,
@@ -1566,10 +1617,34 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               style={{ width: `${progress * 100}%`, ...(gender ? { backgroundColor: accent.hex } : {}) }}
             />
           </div>
-          {linkDiscount && step !== "success" && step !== "preparation" && (
-            <p className="inline-flex items-center gap-1.5 mt-3 px-2.5 py-1 rounded-full bg-emerald-400/10 border border-emerald-400/25 text-[11px] sm:text-xs font-semibold font-poppins text-emerald-300">
-              Popust −{LINK_DISCOUNT_PCT}% aktiviran · važi na sve tretmane i pakete
-            </p>
+          {linkPromo && step !== "success" && step !== "preparation" && (
+            giftSwitchable ? (
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 mt-3 font-poppins">
+                <span className="text-[11px] sm:text-xs font-semibold text-foreground/60">Tvoj poklon</span>
+                <div role="radiogroup" aria-label="Tvoj poklon" className="inline-flex p-0.5 rounded-full bg-emerald-400/10 border border-emerald-400/25">
+                  {([[true, "Nausnice gratis"], [false, `Popust −${LINK_DISCOUNT_PCT}%`]] as const).map(([on, label]) => (
+                    <button
+                      key={label}
+                      type="button"
+                      role="radio"
+                      aria-checked={giftOn === on}
+                      onClick={() => { if (giftOn !== on) chooseGift(on); }}
+                      className={`px-3 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-colors cursor-pointer ${
+                        giftOn === on ? "bg-emerald-400/25 text-emerald-200" : "text-foreground/55 hover:text-foreground/80"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="inline-flex items-center gap-1.5 mt-3 px-2.5 py-1 rounded-full bg-emerald-400/10 border border-emerald-400/25 text-[11px] sm:text-xs font-semibold font-poppins text-emerald-300">
+                {giftOn
+                  ? "Nausnice gratis · uračunato u cenu"
+                  : `Popust −${LINK_DISCOUNT_PCT}% aktiviran · važi na sve tretmane i pakete`}
+              </p>
+            )
           )}
           {step === 4 && selectedDate ? (
             <div className="mt-4">
@@ -1917,7 +1992,12 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                         )}
                       </p>
                       <span className="text-xs sm:text-sm text-foreground/40 font-poppins mt-0.5">
-                        {formatPrice(service.price)} RSD
+                        {giftOn && isGiftService(service.name) && (
+                          <span className="mr-1.5 font-semibold text-emerald-300">Gratis</span>
+                        )}
+                        <span className={giftOn && isGiftService(service.name) ? "line-through" : undefined}>
+                          {formatPrice(service.price)} RSD
+                        </span>
                       </span>
                     </div>
                     <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg border-2 flex items-center justify-center transition-all shrink-0 ${isSelected ? `${accent.border} ${accent.bg}` : "border-foreground/20"}`}>
@@ -1949,9 +2029,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               >
                 <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
                   <p className="text-sm sm:text-base md:text-lg font-bold font-poppins">Pojedinačan tretman</p>
-                  {linkDiscount ? (
+                  {linkDiscount || giftInBasket ? (
                     <span className="text-[11px] sm:text-[13px] font-poppins font-semibold text-emerald-300 leading-snug">
-                      Popust −{LINK_DISCOUNT_PCT}%
+                      {giftInBasket ? "Nausnice gratis" : `Popust −${LINK_DISCOUNT_PCT}%`}
                     </span>
                   ) : (
                     <span className="text-[11px] sm:text-[13px] font-poppins text-foreground/45 leading-snug">
@@ -1961,9 +2041,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                 </div>
                 <div className="flex flex-col items-end shrink-0">
                   <p className="text-base sm:text-xl font-bold font-poppins leading-tight tabular-nums">
-                    {formatPrice(linkDiscount ? linkSinglePrice(totalPrice) : totalPrice)}<span className="ml-1 text-[10px] sm:text-sm font-semibold">RSD</span>
+                    {formatPrice(singlePrice)}<span className="ml-1 text-[10px] sm:text-sm font-semibold">RSD</span>
                   </p>
-                  {linkDiscount && (
+                  {singlePrice !== totalPrice && (
                     <p className="text-[11px] sm:text-[13px] text-foreground/35 font-poppins line-through tabular-nums">{formatPrice(totalPrice)}</p>
                   )}
                 </div>
@@ -1971,7 +2051,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
               {/* Bundle options */}
               {eligibleSizes.map((size, idx) => {
-                const b = computeBundle(effectiveServices, size);
+                const b = computeBundle(paidServices, size);
                 const deal = bundleOffer(b);
                 const isSelected = bundleActive && bundleSize === size;
                 const isBest = idx === eligibleSizes.length - 1;
@@ -2380,7 +2460,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                       {checkingPromo ? "…" : "Primeni"}
                     </button>
                   </div>
-                  {!promoCode && promoKind === "none" && isReturningCustomer !== true && !linkDiscount && (
+                  {!promoCode && promoKind === "none" && isReturningCustomer !== true && !linkPromo && (
                     <button
                       type="button"
                       onClick={() => { setPromoCode(STUDENT_PROMO_CODE); setPromoStatus("idle"); setPromoErrorMsg(null); }}
@@ -2423,12 +2503,18 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                   <p className="text-[10px] sm:text-xs font-semibold tracking-widest text-foreground/40 font-poppins mb-2 sm:mb-3">PREGLED CENE</p>
                   {/* Selected regions */}
                   <div className="mb-3">
-                    {effectiveServices.map((s) => (
+                    {paidServices.map((s) => (
                       <div key={s.id} className="flex justify-between items-center py-0.5">
                         <span className="text-xs sm:text-sm font-poppins text-foreground/60">{s.name}</span>
                         <span className="text-xs sm:text-sm font-poppins text-foreground/40">{formatPrice(s.price)} RSD</span>
                       </div>
                     ))}
+                    {giftInBasket && (
+                      <div className="flex justify-between items-center py-0.5">
+                        <span className="text-xs sm:text-sm font-poppins text-foreground/60">Nausnice</span>
+                        <span className="text-xs sm:text-sm font-poppins font-semibold text-emerald-300">Gratis</span>
+                      </div>
+                    )}
                     {bundleActive && (
                       <div className="flex justify-between items-center py-0.5 mt-1">
                         <span className="text-xs sm:text-sm font-poppins text-foreground/60 font-semibold">Paket - {bundleSize} tretmana</span>
@@ -2441,13 +2527,19 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                       <span className="text-sm sm:text-base font-poppins text-foreground/50">
                         {bundleActive ? `Redovna cena (${bundleSize}×)` : "Redovna cena"}
                       </span>
-                      <span className={`text-sm sm:text-base font-poppins font-semibold ${bundleActive || redeemActive || studentActive || linkActive ? "text-foreground/40 line-through" : "font-bold text-foreground"}`}>
+                      <span className={`text-sm sm:text-base font-poppins font-semibold ${bundleActive || redeemActive || studentActive || linkActive || giftActive ? "text-foreground/40 line-through" : "font-bold text-foreground"}`}>
                         {formatPrice(listTotal)} RSD
                       </span>
                     </div>
                     {studentActive && (
                       <div className="flex justify-between items-center mt-1.5">
                         <span className="flex items-center gap-2 text-sm sm:text-base font-poppins text-foreground/85 font-semibold">Studentska cena<span className="text-[10px] sm:text-xs font-poppins font-semibold text-emerald-300 bg-emerald-400/15 rounded-full px-2 py-0.5">−20%</span></span>
+                        <span className="text-base sm:text-lg font-poppins font-bold text-foreground">{formatPrice(finalPrice)} RSD</span>
+                      </div>
+                    )}
+                    {giftActive && (
+                      <div className="flex justify-between items-center mt-1.5">
+                        <span className="flex items-center gap-2 text-sm sm:text-base font-poppins text-foreground/85 font-semibold">Cena<span className="text-[10px] sm:text-xs font-poppins font-semibold text-emerald-300 bg-emerald-400/15 rounded-full px-2 py-0.5">Nausnice gratis</span></span>
                         <span className="text-base sm:text-lg font-poppins font-bold text-foreground">{formatPrice(finalPrice)} RSD</span>
                       </div>
                     )}
@@ -2611,6 +2703,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                 : redeemActive ? { kind: "redeem" }
                 : studentActive ? { kind: "student" }
                 : linkActive ? { kind: "link" }
+                : giftActive ? { kind: "gift" }
                 : null
               }
               bookingRef={bookingRef}
@@ -2645,10 +2738,10 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                     {selectedIds.length > 0 ? (
                       <>
                         <div className="flex items-center justify-center gap-2 flex-wrap">
-                          {linkDiscount && (
+                          {singlePrice !== totalPrice && (
                             <span className="text-xs sm:text-sm font-poppins text-foreground/40 line-through tabular-nums">{formatPrice(totalPrice)}</span>
                           )}
-                          <span className="text-base sm:text-xl font-bold font-poppins leading-none" style={{ color: accent.hex }}>{formatPrice(linkDiscount ? linkSinglePrice(totalPrice) : totalPrice)} RSD</span>
+                          <span className="text-base sm:text-xl font-bold font-poppins leading-none" style={{ color: accent.hex }}>{formatPrice(singlePrice)} RSD</span>
                           <span className="text-[10px] sm:text-xs text-foreground/40 font-poppins">· {slotDuration} min</span>
                         </div>
                         {appliedCombos.length > 0 && (

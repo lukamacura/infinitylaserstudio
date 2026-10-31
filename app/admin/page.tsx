@@ -29,7 +29,7 @@ import {
   type StaffMember, type StaffSchedule,
 } from "@/lib/staff";
 import { kartonForReservation } from "@/lib/kartoni";
-import { computeReservationPrice, type PriceResult } from "@/lib/pricing";
+import { computeReservationPrice, isGiftPromoCode, isGiftService, type PriceResult } from "@/lib/pricing";
 import { parseBundlePromo } from "@/lib/bundles";
 import { isComboService, isFullBody, isAllowedWithFullBody, EMAIL_REGEX } from "@/components/booking/shared";
 
@@ -945,10 +945,14 @@ export default function AdminPage() {
     const base = priceBook.apply(
       r.reservation_services.map(rs => rs.services).filter((s): s is ServiceRef => s !== null),
       r.location, bookedAt);
-    const effective = applyComboRules(base, priceBook.apply(allServices, r.location, bookedAt));
+    const all = priceBook.apply(allServices, r.location, bookedAt);
+    const effective = applyComboRules(base, all);
     const listPrice = effective.reduce((sum, s) => sum + s.price, 0);
     return computeReservationPrice({
       listPrice,
+      giftPrice: isGiftPromoCode(r.promo_code)
+        ? applyComboRules(base.filter(s => !isGiftService(s.name)), all).reduce((sum, s) => sum + s.price, 0)
+        : null,
       isFirstTreatment,
       createdAt: r.created_at,
       promoCode: r.promo_code,
@@ -2619,6 +2623,11 @@ export default function AdminPage() {
                       {selectedPrice.linkOff && (
                         <span className="text-[10px] font-bold font-poppins uppercase tracking-widest text-green-400 bg-green-400/10 px-2.5 py-1 rounded-lg border border-green-400/20">
                           −20% link · {selectedPrice.promoCode}
+                        </span>
+                      )}
+                      {selectedPrice.giftOff && (
+                        <span className="text-[10px] font-bold font-poppins uppercase tracking-widest text-green-400 bg-green-400/10 px-2.5 py-1 rounded-lg border border-green-400/20">
+                          Nausnice gratis · link
                         </span>
                       )}
                       {selectedPrice.kind === "none" && !selectedPrice.overridden && (
