@@ -25,6 +25,7 @@ import {
   STUDENT_PROMO_CODE, isStudentPromoCode, LINK_PROMO_CODE, LINK_DISCOUNT_PCT,
   isLinkPromoCode, linkSinglePrice, linkBundleTotal,
   GIFT_PROMO_CODE, isGiftPromoCode, isGiftService,
+  LOCAL_OFFER_STUDIO, LOCAL_OFFER_GENDER, isLocalOfferCode,
 } from "@/lib/pricing";
 import { readLinkPromo } from "@/lib/linkPromo";
 import { fetchPriceRows, PriceBook } from "@/lib/prices";
@@ -544,9 +545,15 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   /** Why a code was refused - a plain "invalid" reads as wrong for a real code. */
   const [promoErrorMsg, setPromoErrorMsg]       = useState<string | null>(null);
   /** Arrived on a ?promo= link - a −20% code or the free earrings (lib/linkPromo.ts). */
-  const [linkPromo] = useState(readLinkPromo);
+  const [arrivedPromo] = useState(readLinkPromo);
+  /** The offer in force: a local offer counts only at its studio, for its gender. */
+  const linkPromo =
+    isLocalOfferCode(arrivedPromo) &&
+    ((studioId && studioId !== LOCAL_OFFER_STUDIO) || (gender && gender !== LOCAL_OFFER_GENDER))
+      ? null
+      : arrivedPromo;
   /** On the gift link: the free earrings, until swapped for the −20%. */
-  const [giftChosen, setGiftChosen] = useState(isGiftPromoCode(linkPromo));
+  const [giftChosen, setGiftChosen] = useState(isGiftPromoCode(arrivedPromo));
 
   // Step "plan" state
   const [bookingMode, setBookingMode] = useState<BookingMode>("single");
@@ -593,10 +600,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   /** Whole face is selected - earrings & chin are already covered by it. */
   const fullFaceSelected = selectedServices.some((s) => isFullFace(s.name));
   const { effective: effectiveServices } = applyComboRules(selectedServices, services);
-  /** Men have no earrings in their list - the gift link is plain −20% for them. */
-  const giftOn = giftChosen && gender !== "muskarci";
+  const giftOn = giftChosen && linkPromo !== null;
   const giftInBasket = giftOn && selectedServices.some((s) => isGiftService(s.name));
-  const giftSwitchable = isGiftPromoCode(linkPromo) && gender !== "muskarci" &&
+  const giftSwitchable = isGiftPromoCode(linkPromo) &&
     (step === "location" || step === 1 || step === 2 || step === "plan");
   /** −20% on everything, single sessions and bundles. */
   const linkDiscount = linkPromo !== null && !giftOn;
@@ -658,9 +664,13 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       ? computeBundle(paidServices, bundleSize)
       : null;
   const bundleActive = bookingMode === "bundle" && bundleResult != null;
-  /** A bundle's price card - the link discount comes on top of the bundle's own. */
+  /** Only the plain popust20 rides on a bundle; local offers are for single sessions. */
+  const linkOnBundle = linkDiscount && !isLocalOfferCode(linkPromo);
+  /** A bundle booked on a local offer: no offer in force, so no badge either. */
+  const offerLeftOut = bundleActive && isLocalOfferCode(linkPromo) && (step === 3 || step === 4 || step === 5);
+  /** A bundle's price card - popust20 comes on top of the bundle's own discount. */
   function bundleOffer(b: BundleResult) {
-    const finalTotal = linkDiscount ? linkBundleTotal(b.finalTotal) : b.finalTotal;
+    const finalTotal = linkOnBundle ? linkBundleTotal(b.finalTotal) : b.finalTotal;
     return {
       finalTotal,
       savings: b.originalTotal - finalTotal,
@@ -670,8 +680,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   const bundleDeal = bundleResult ? bundleOffer(bundleResult) : null;
 
   // ── Discounts (mutually exclusive: bundle > redeem > student > link) ────────
-  // The link discount also rides on a bundle (see bundleOffer); the student
-  // code is refused while it is on - both are −20% and they never stack.
+  // popust20 also rides on a bundle (see bundleOffer); the student code is
+  // refused while a link offer is on - discounts never stack.
   const redeemActive =
     !bundleActive && promoKind === "bundle_redeem" && promoStatus === "valid" &&
     appliedPromoCode != null;
@@ -1295,8 +1305,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       notesForRecord =
         `Paket ${bundleSize}× - ukupno ${formatPrice(bundleDeal!.finalTotal)} RSD ` +
         `(ušteda ${formatPrice(bundleDeal!.savings)} RSD)` +
-        (linkDiscount ? ` · uračunat popust −${LINK_DISCOUNT_PCT}% (${linkCode})` : "") +
-        (giftInBasket ? " · nausnice gratis" : "");
+        (linkOnBundle ? ` · uračunat popust −${LINK_DISCOUNT_PCT}% (${linkCode})` : "");
     } else if (redeemActive) {
       promoForRecord = bundleRedeemCode(appliedPromoCode!);
       notesForRecord = `Iskorišćen tretman iz paketa ${appliedPromoCode}`;
@@ -1465,6 +1474,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   function handleSelectBundle(size: number) {
     setBookingMode("bundle");
     setBundleSize(size);
+    // The free earrings are single-session too: the card was priced without them, so they leave.
+    if (giftOn) chooseGift(false);
     // A bundle is paid in full upfront - drop any single-session promo.
     setPromoCode(""); setPromoStatus("idle"); setAppliedPromoCode(null); setPromoKind("none"); setPromoErrorMsg(null);
     setStep(3);
@@ -1617,10 +1628,10 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               style={{ width: `${progress * 100}%`, ...(gender ? { backgroundColor: accent.hex } : {}) }}
             />
           </div>
-          {linkPromo && step !== "success" && step !== "preparation" && (
+          {linkPromo && !offerLeftOut && step !== "success" && step !== "preparation" && (
             giftSwitchable ? (
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 mt-3 font-poppins">
-                <span className="text-[11px] sm:text-xs font-semibold text-foreground/60">Tvoj poklon</span>
+                <span className="text-[11px] sm:text-xs font-semibold text-foreground/60">Tvoj poklon · Novi Sad</span>
                 <div role="radiogroup" aria-label="Tvoj poklon" className="inline-flex p-0.5 rounded-full bg-emerald-400/10 border border-emerald-400/25">
                   {([[true, "Nausnice gratis"], [false, `Popust −${LINK_DISCOUNT_PCT}%`]] as const).map(([on, label]) => (
                     <button
@@ -1642,7 +1653,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
               <p className="inline-flex items-center gap-1.5 mt-3 px-2.5 py-1 rounded-full bg-emerald-400/10 border border-emerald-400/25 text-[11px] sm:text-xs font-semibold font-poppins text-emerald-300">
                 {giftOn
                   ? "Nausnice gratis · uračunato u cenu"
-                  : `Popust −${LINK_DISCOUNT_PCT}% aktiviran · važi na sve tretmane i pakete`}
+                  : isLocalOfferCode(linkPromo)
+                    ? `Popust −${LINK_DISCOUNT_PCT}% · Novi Sad · pojedinačan tretman`
+                    : `Popust −${LINK_DISCOUNT_PCT}% aktiviran · važi na sve tretmane i pakete`}
               </p>
             )
           )}

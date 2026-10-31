@@ -3,6 +3,9 @@
 --   popust20, luka20, halloween20  −20% (LINK_PROMO_CODES in lib/pricing.ts)
 --   nausnice                       free "Nausnice" (GIFT_PROMO_CODE in lib/pricing.ts)
 --
+-- All but popust20 count only for women in Novi Sad: that limit lives in the
+-- booking modal (isLocalOfferCode in lib/pricing.ts), not here.
+--
 -- Apply BEFORE deploying the code that sends the new codes. The only change to
 -- public_create_booking is that one branch; the rest is the live definition as
 -- of 2026-10-31.

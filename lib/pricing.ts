@@ -30,10 +30,10 @@ export function isStudentPromoCode(raw: string | null | undefined): boolean {
 }
 
 /**
- * Link discount: −20% for anyone who arrives on `?promo=<code>` - new or
- * returning, single session or bundle. On a single session the code is stored
- * on the reservation; on a bundle the cut is already in the bundle total, so a
- * bundle reservation keeps its usual paket-N-<total> code.
+ * Link discount: −20% for whoever arrives on `?promo=<code>` - new or returning.
+ * On a single session the code is stored on the reservation. Only popust20 also
+ * rides on a bundle: the cut is already in the bundle total, so a bundle
+ * reservation keeps its usual paket-N-<total> code. See isLocalOfferCode.
  * A new code also has to be added to public_create_booking (sql/link_codes.sql).
  */
 export const LINK_PROMO_CODE = "popust20";
@@ -53,6 +53,19 @@ export const GIFT_PROMO_CODE = "nausnice";
 
 export function isGiftPromoCode(raw: string | null | undefined): boolean {
   return !!raw && raw.trim().toLowerCase() === GIFT_PROMO_CODE;
+}
+
+/**
+ * Every link offer except the plain popust20 counts only for women at the Novi
+ * Sad studio - anywhere else regular prices apply. These links skip both steps.
+ * They are also for single sessions only: a bundle stays at its own price.
+ */
+export const LOCAL_OFFER_STUDIO = "novi_sad";
+export const LOCAL_OFFER_GENDER = "zene";
+
+export function isLocalOfferCode(raw: string | null | undefined): boolean {
+  const code = raw?.trim().toLowerCase();
+  return code !== LINK_PROMO_CODE && (isLinkPromoCode(code) || isGiftPromoCode(code));
 }
 
 /** The free region itself - not the "Nausnice i brada" combo. */
