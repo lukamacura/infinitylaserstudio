@@ -889,6 +889,14 @@ body {
 .admin-card-confirmed-bar   { background-color: #6FD394; }
 .admin-card-confirmed-sub   { color: #A6E8BD; }
 
+/* A card that can be dragged to another time: holding it on a phone must pick
+   it up, not open the iOS callout or select its text. */
+.admin-card-movable {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 @keyframes adminFadeIn {
   from { opacity: 0; }
   to   { opacity: 1; }

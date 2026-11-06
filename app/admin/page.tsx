@@ -6,13 +6,15 @@ import {
   ChevronLeft, ChevronRight, X,
   Clock, User, Mail, Phone, Calendar, CalendarPlus,
   PhoneCall, PhoneOff, AlertTriangle, StickyNote, HeartPulse, Tag, Package,
-  Plus, RotateCcw, Ban, Search, Users, Pencil, NotebookPen,
+  Plus, RotateCcw, Ban, Search, Users, Pencil, NotebookPen, CalendarClock, CheckCircle2,
 } from "lucide-react";
 import { fetchAll, escapeLike } from "@/lib/fetchAll";
 import {
-  supabase, timeToMinutes, minutesToTime, calcTotalDuration, calcBookingDuration, type BusinessWindow,
+  supabase, timeToMinutes, minutesToTime, calcTotalDuration, calcBookingDuration, SLOT_SIZE, type BusinessWindow,
 } from "@/lib/supabase";
 import AdminReservationModal from "@/components/AdminReservationModal";
+import AdminMoveDialog, { type MoveSubject, type MovedTo, type MoveEmail } from "@/components/AdminMoveDialog";
+import { useCalendarDrag, type CalendarDrop } from "@/lib/useCalendarDrag";
 import HoursEditor, { fmtMin } from "@/components/AdminHoursEditor";
 import AdminLogin from "@/components/AdminLogin";
 import AdminHeader from "@/components/AdminHeader";
@@ -462,6 +464,8 @@ export default function AdminPage() {
   const [newNotes, setNewNotes]           = useState<string>("");
   const [saving, setSaving]               = useState(false);
   const [reservationModalOpen, setReservationModalOpen] = useState(false);
+  /** "Pomeri termin": the appointment and, after a drag, where it was dropped. */
+  const [moveRequest, setMoveRequest] = useState<{ subject: MoveSubject; proposed: { date: string; time: string } | null } | null>(null);
 
   // Current time, for the "now" line and the open / closed indicator.
   const [now, setNow] = useState(() => new Date());
@@ -477,6 +481,14 @@ export default function AdminPage() {
     const t = setTimeout(() => setNotice(null), 5000);
     return () => clearTimeout(t);
   }, [notice]);
+
+  // Success toast — a short confirmation that something went out (a moved appointment).
+  const [success, setSuccess] = useState<string | null>(null);
+  useEffect(() => {
+    if (!success) return;
+    const t = setTimeout(() => setSuccess(null), 4000);
+    return () => clearTimeout(t);
+  }, [success]);
 
   /** The treatment card of the person behind a booking (makes one if it is missing). */
   const [openingKarton, setOpeningKarton] = useState<string | null>(null);
@@ -739,17 +751,17 @@ export default function AdminPage() {
     };
   }, [authenticated, weekStart, fetchRange, fetchPendingCalls, fetchAvail, fetchStaffAll]);
 
-  // Escape closes whichever dialog is on top.
+  // Escape closes whichever dialog is on top (the move dialog handles its own).
   useEffect(() => {
     if (!selected && !overrideDate) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
+      if (e.key !== "Escape" || moveRequest) return;
       setSelected(null);
       setOverrideDate(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selected, overrideDate]);
+  }, [selected, overrideDate, moveRequest]);
 
   /** A working-hours save failed: say so and put the real schedule back on screen. */
   function hoursSaveFailed() {
@@ -911,24 +923,6 @@ export default function AdminPage() {
     const next = addDays(selectedDate, n);
     setSelectedDate(next);
     setWeekStart(getMonday(next));
-  };
-
-  // Swipe left / right on the phone calendar for the next / previous day.
-  const swipe = useRef<{ x: number; y: number } | null>(null);
-  const onCalendarTouchStart = (e: ReactTouchEvent) => {
-    const t = e.touches[0];
-    swipe.current = e.touches.length === 1 ? { x: t.clientX, y: t.clientY } : null;
-  };
-  const onCalendarTouchEnd = (e: ReactTouchEvent) => {
-    const start = swipe.current;
-    swipe.current = null;
-    if (!start || window.innerWidth >= 768) return;
-    const t = e.changedTouches[0];
-    const dx = t.clientX - start.x;
-    const dy = t.clientY - start.y;
-    // Clearly sideways only, so scrolling through the hours never flips the day.
-    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-    shiftDay(dx < 0 ? 1 : -1);
   };
 
   const goToday = () => {
@@ -1365,6 +1359,63 @@ export default function AdminPage() {
     setSaving(false);
   }
 
+  // ── Moving an appointment (drag on the calendar, or "Pomeri termin") ──────
+  // The move is saved by /api/reservation-move (which also emails the client);
+  // the screen follows only once the database accepted it.
+
+  function toMoveSubject(r: ReservationFull): MoveSubject {
+    return {
+      id: r.id,
+      customer_name: r.customer_name,
+      customer_email: r.customer_email,
+      date: r.date,
+      start_time: r.start_time,
+      end_time: r.end_time,
+      total_duration: r.total_duration,
+      location: r.location,
+      services: servicesOf(r).map(s => s.name),
+    };
+  }
+
+  /** Put a moved appointment on its new day and time everywhere it is shown. */
+  function relocateReservation(id: string, patch: Pick<ReservationFull, "date" | "start_time" | "end_time">) {
+    const move   = (r: ReservationFull) => (r.id === id ? { ...r, ...patch } : r);
+    const byTime = (a: ReservationFull, b: ReservationFull) =>
+      a.date !== b.date ? a.date.localeCompare(b.date) : a.start_time.localeCompare(b.start_time);
+
+    let moved: ReservationFull | null = null;
+    for (const rows of weekCache.current.values()) {
+      const hit = rows.find(r => r.id === id);
+      if (hit) { moved = { ...hit, ...patch }; break; }
+    }
+    // Cached weeks are keyed "location|monday": the row leaves its old week and
+    // joins the one that holds its new date (if that week was loaded).
+    for (const [key, rows] of weekCache.current) {
+      const [loc, monday] = key.split("|");
+      const rest   = rows.filter(r => r.id !== id);
+      const sunday = toDateStr(addDays(new Date(`${monday}T00:00:00`), 6));
+      weekCache.current.set(key, moved && moved.location === loc && patch.date >= monday && patch.date <= sunday
+        ? [...rest, moved].sort(byTime)
+        : rest);
+    }
+    setReservations(weekCache.current.get(`${location}|${toDateStr(weekStart)}`) ?? []);
+    // The call queue only holds appointments still ahead.
+    setCallReservations(prev => prev.map(move).filter(r => r.date >= toDateStr(new Date())).sort(byTime));
+    setClientGroups(prev => prev.length === 0 ? prev : groupByClient(prev.flatMap(g => g.reservations).map(move)));
+    setSelected(prev => (prev && prev.id === id ? { ...prev, ...patch } : prev));
+  }
+
+  function handleMoved(id: string, moved: MovedTo, email: MoveEmail) {
+    relocateReservation(id, { date: moved.date, start_time: `${moved.start_time}:00`, end_time: `${moved.end_time}:00` });
+    setMoveRequest(null);
+    if (email === "failed") {
+      setNotice("Termin je pomeren, ali mejl klijentu nije otišao. Javi mu se telefonom.");
+      return;
+    }
+    setNotice(null);
+    setSuccess(email === "sent" ? "Termin je pomeren · klijentu je poslat mejl" : "Termin je pomeren");
+  }
+
   // ── Call action handlers ───────────────────────────────────────────────────
   // Each one touches the screen only after the database accepted the change.
   const CALL_SAVE_FAILED = "Poziv nije sačuvan. Pokušaj ponovo.";
@@ -1463,6 +1514,44 @@ export default function AdminPage() {
 
   /** The day the phone layout shows (it has room for one). */
   const mobileDay = days.find(d => d.dateStr === ds) ?? days[0];
+
+  // ── Drag to move ────────────────────────────────────────────────────────────
+  // Desktop: drag a card to another time or day. Phone / tablet: hold, then drag.
+  // A drop only proposes the new time - the move dialog confirms and saves it.
+  const calendarDrag = useCalendarDrag({
+    pxPerMin: PX_PER_MIN,
+    snapMin:  SLOT_SIZE,
+    minStart: gridStart,
+    // An appointment must end before midnight (the database refuses anything later).
+    maxEnd:   Math.min(gridEnd, 24 * 60 - SLOT_SIZE),
+    isFree: (id, date, start, end) => !reservations.some(r =>
+      r.id !== id && r.date === date && isActive(r) &&
+      start < timeToMinutes(r.end_time) && end > timeToMinutes(r.start_time)),
+    onDrop: (item, date, start) => {
+      const r = reservations.find(x => x.id === item.id);
+      if (r) setMoveRequest({ subject: toMoveSubject(r), proposed: { date, time: minutesToTime(start) } });
+    },
+    onBlocked: () => setNotice("Tu je već drugi termin - prevuci na slobodno mesto."),
+  });
+
+  // Swipe left / right on the phone calendar for the next / previous day.
+  const swipe = useRef<{ x: number; y: number } | null>(null);
+  const onCalendarTouchStart = (e: ReactTouchEvent) => {
+    const t = e.touches[0];
+    swipe.current = e.touches.length === 1 ? { x: t.clientX, y: t.clientY } : null;
+  };
+  const onCalendarTouchEnd = (e: ReactTouchEvent) => {
+    const start = swipe.current;
+    swipe.current = null;
+    // A card was being dragged - that was not a swipe.
+    if (!start || window.innerWidth >= 768 || calendarDrag.justDragged()) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    // Clearly sideways only, so scrolling through the hours never flips the day.
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    shiftDay(dx < 0 ? 1 : -1);
+  };
 
   /** Today's working hours for the header — from the schedule, whichever week is on screen. */
   const todayWindows = resolveWindows(todayStr, availability);
@@ -2011,6 +2100,7 @@ export default function AdminPage() {
           </div>
 
           <div
+            ref={calendarDrag.scrollerRef}
             className="flex-1 min-h-0 overflow-auto overscroll-y-contain custom-scrollbar"
             onTouchStart={onCalendarTouchStart}
             onTouchEnd={onCalendarTouchEnd}
@@ -2018,7 +2108,7 @@ export default function AdminPage() {
             <div className="max-w-400 mx-auto min-w-full">
 
               {/* Day headers */}
-              <div className="sticky top-0 z-20 bg-surface border-b border-foreground/8 shadow-md shadow-black/20">
+              <div ref={calendarDrag.headerRef} className="sticky top-0 z-20 bg-surface border-b border-foreground/8 shadow-md shadow-black/20">
 
                 {/* Phone — week controls, the week as a strip, then the chosen day */}
                 <div className="md:hidden">
@@ -2182,13 +2272,23 @@ export default function AdminPage() {
                 </div>
 
                 {/* Mobile Col */}
-                <div key={mobileDay.dateStr} className="md:hidden relative admin-fade-in" style={{ height: gridHeight }}>
+                <div
+                  key={mobileDay.dateStr}
+                  ref={calendarDrag.bindColumn(mobileDay.dateStr, true)}
+                  className="md:hidden relative admin-fade-in"
+                  style={{ height: gridHeight }}
+                >
                   {renderDayBody(mobileDay, true)}
                 </div>
 
                 {/* Desktop Cols */}
                 {days.map((day) => (
-                  <div key={day.dateStr} className="hidden md:block relative border-l border-foreground/5 first:border-l-0" style={{ height: gridHeight }}>
+                  <div
+                    key={day.dateStr}
+                    ref={calendarDrag.bindColumn(day.dateStr, false)}
+                    className="hidden md:block relative border-l border-foreground/5 first:border-l-0"
+                    style={{ height: gridHeight }}
+                  >
                     {renderDayBody(day, false)}
                   </div>
                 ))}
@@ -2244,6 +2344,35 @@ export default function AdminPage() {
           })}
         </div>
       </nav>
+
+      {/* Move an appointment: confirm a drop, or pick a new day and time */}
+      {moveRequest && (
+        <AdminMoveDialog
+          key={moveRequest.subject.id}
+          subject={moveRequest.subject}
+          proposed={moveRequest.proposed}
+          availability={availability}
+          now={now}
+          onClose={() => setMoveRequest(null)}
+          onMoved={(moved, email) => handleMoved(moveRequest.subject.id, moved, email)}
+          onStale={() => { void fetchRange(weekStart, true); }}
+        />
+      )}
+
+      {/* Success toast */}
+      {!notice && success && (
+        <div className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] md:bottom-6 inset-x-0 z-[60] flex justify-center px-4 pointer-events-none">
+          <button
+            type="button"
+            role="status"
+            onClick={() => setSuccess(null)}
+            className="admin-sheet-in pointer-events-auto flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-green-600 text-white text-xs font-bold font-poppins shadow-2xl shadow-black/50 cursor-pointer"
+          >
+            <CheckCircle2 size={16} className="shrink-0" />
+            {success}
+          </button>
+        </div>
+      )}
 
       {/* Error toast */}
       {notice && (
@@ -2425,9 +2554,21 @@ export default function AdminPage() {
               </div>
 
               <div className="p-4 rounded-2xl bg-foreground/2 border border-foreground/3">
-                 <div className="flex items-center gap-3 mb-2">
-                  <Calendar size={14} className="text-foreground/38" />
-                  <span className="text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-wider">Datum tretmana</span>
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <div className="flex items-center gap-3">
+                    <Calendar size={14} className="text-foreground/38" />
+                    <span className="text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-wider">Datum tretmana</span>
+                  </div>
+                  {isActive(selected) && (
+                    <button
+                      type="button"
+                      onClick={() => setMoveRequest({ subject: toMoveSubject(selected), proposed: null })}
+                      className="inline-flex items-center gap-1.5 text-[10px] font-bold font-poppins uppercase tracking-widest text-accent hover:opacity-80 transition-opacity cursor-pointer"
+                    >
+                      <CalendarClock size={13} />
+                      Pomeri termin
+                    </button>
+                  )}
                 </div>
                 <p className="text-sm font-semibold font-poppins text-foreground/80">{fmtFull(new Date(`${selected.date}T00:00:00`))}</p>
                 <div className="mt-3 text-[11px] font-bold font-poppins text-accent bg-accent/5 inline-flex px-3 py-1.5 rounded-xl border border-accent/10">Trajanje: {selected.total_duration} min</div>
@@ -2904,7 +3045,40 @@ export default function AdminPage() {
             <span className="flex-1 h-0.5 bg-accent-soft" />
           </div>
         )}
+
+        {calendarDrag.drop?.date === day.dateStr && renderDropPreview(calendarDrag.drop, isMobile)}
       </>
+    );
+  }
+
+  /** Where a dragged card would land: its new time, red when another appointment is in the way. */
+  function renderDropPreview(drop: CalendarDrop, isMobile: boolean) {
+    const r = reservations.find(x => x.id === drop.id);
+    if (!r) return null;
+    const heightPx = Math.max(toHeight(r.total_duration), isMobile ? MIN_CARD_PX_MOBILE : MIN_CARD_PX_DESKTOP) - 2;
+    const padPx    = isMobile ? 8 : 6;
+    const time     = `${minutesToTime(drop.start)}–${minutesToTime(drop.start + r.total_duration)}`;
+    const label    = drop.free ? r.customer_name : "Zauzeto";
+    return (
+      <div
+        aria-hidden
+        className={`absolute z-10 rounded-lg border-2 bg-surface pl-2.5 pr-1.5 overflow-hidden pointer-events-none shadow-xl shadow-black/50 ${
+          drop.free ? "border-accent text-accent" : "border-red-400 text-red-300"
+        }`}
+        style={{ top: toHeight(drop.start - gridStart), height: heightPx, left: padPx, right: padPx }}
+      >
+        {heightPx < 40 ? (
+          <span className="flex items-center gap-1.5 h-full text-[11px] font-bold font-poppins leading-none whitespace-nowrap">
+            <span className="tabular-nums">{time}</span>
+            <span className="truncate opacity-80">{label}</span>
+          </span>
+        ) : (
+          <span className="flex flex-col justify-center h-full gap-0.5">
+            <span className="text-[13px] md:text-xs font-bold font-poppins tabular-nums leading-tight">{time}</span>
+            <span className="text-[11px] md:text-[10px] font-bold font-poppins leading-tight truncate opacity-80">{label}</span>
+          </span>
+        )}
+      </div>
     );
   }
 
@@ -2931,6 +3105,9 @@ export default function AdminPage() {
 
     const time     = `${r.start_time.slice(0, 5)}–${r.end_time.slice(0, 5)}`;
     const oneLine  = heightPx < 40;
+    // Cancelled and blacklisted appointments hold no time - nothing to move.
+    const movable  = isActive(r);
+    const lifted   = calendarDrag.drop?.id === r.id;
     const narrow   = !isMobile && cols / span >= 3;
     const showServices = heightPx >= 58 && !!services;
 
@@ -2952,9 +3129,18 @@ export default function AdminPage() {
     return (
       <button
         key={r.id}
-        onClick={() => openModal(r)}
-        title={[r.customer_name, time, services, label, hasHealthNote ? "Zdravstvena napomena" : ""].filter(Boolean).join(" · ")}
-        className={`absolute rounded-lg ${look.box} pl-2.5 pr-1.5 text-left overflow-hidden cursor-pointer transition-[background-color,box-shadow,transform] duration-150 active:scale-[0.98] hover:shadow-lg hover:shadow-black/40 hover:z-10 focus-visible:outline-2 focus-visible:outline-accent focus-visible:z-10`}
+        onClick={() => { if (!calendarDrag.justDragged()) void openModal(r); }}
+        onPointerDown={movable ? (e) => calendarDrag.start(e, {
+          id: r.id, date: r.date, start: timeToMinutes(r.start_time), duration: r.total_duration,
+        }, isMobile) : undefined}
+        onContextMenu={movable ? (e) => e.preventDefault() : undefined}
+        title={[
+          r.customer_name, time, services, label, hasHealthNote ? "Zdravstvena napomena" : "",
+          movable && !isMobile ? "Prevuci da pomeriš" : "",
+        ].filter(Boolean).join(" · ")}
+        className={`absolute rounded-lg ${look.box} pl-2.5 pr-1.5 text-left overflow-hidden cursor-pointer transition-[background-color,box-shadow,transform] duration-150 active:scale-[0.98] hover:shadow-lg hover:shadow-black/40 hover:z-10 focus-visible:outline-2 focus-visible:outline-accent focus-visible:z-10 ${
+          movable ? "admin-card-movable" : ""
+        } ${lifted ? "opacity-35" : ""}`}
         style={{
           top: topPx,
           height: heightPx,

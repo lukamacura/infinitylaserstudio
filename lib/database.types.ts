@@ -502,6 +502,10 @@ export type Database = {
     }
     Functions: {
       is_admin: { Args: Record<string, never>; Returns: boolean }
+      admin_move_reservation: {
+        Args: { p_id: string; p_date: string; p_start_time: string }
+        Returns: Json
+      }
       karton_search: {
         Args: { p_query?: string; p_limit?: number; p_offset?: number }
         Returns: {

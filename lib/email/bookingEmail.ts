@@ -1,23 +1,16 @@
 /**
  * The confirmation email a client gets after booking. Built here, on the
- * server, and sent through Resend (see app/api/booking-confirm).
- *
- * Email programs ignore most modern CSS, so the layout is plain tables with
- * inline styles, on a light background - that is what renders the same in
- * Gmail, Apple Mail and Outlook.
+ * server, and sent through Resend (see app/api/booking-confirm). The frame and
+ * styles are shared with the other client emails (lib/email/layout.ts).
  */
 import { fullAddress, type StudioLocation } from "@/lib/locations";
 import { PREPARATION_STEPS } from "@/lib/preparation";
+import {
+  ACCENT, FONT, INK, LABEL, LINE, MUTED, PHONE_DISPLAY, PHONE_LINK, SITE_URL,
+  emailDocument, esc, firstNameOf, formatEmailDate, mapsLink, row,
+} from "./layout";
 
-const DAYS = ["Nedelja", "Ponedeljak", "Utorak", "Sreda", "Četvrtak", "Petak", "Subota"];
-const MONTHS = [
-  "januar", "februar", "mart", "april", "maj", "jun",
-  "jul", "avgust", "septembar", "oktobar", "novembar", "decembar",
-];
-
-const PHONE_DISPLAY = "065 373 8991";
-const PHONE_LINK = "+381653738991";
-const SITE_URL = "https://www.infinitylaserstudio.com";
+export { formatEmailDate };
 
 export type BookingDiscount = "none" | "student" | "link" | "gift" | "promo" | "bundle" | "bundle_redeem";
 
@@ -39,26 +32,8 @@ export interface BookingEmailData {
   bookingRef: string;
 }
 
-function esc(value: string): string {
-  return value
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
-
 function rsd(n: number): string {
   return `${Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".")} RSD`;
-}
-
-/** "Petak, 2. oktobar 2026." - from the date parts, so no timezone can shift the day. */
-export function formatEmailDate(date: string): string {
-  const [y, m, d] = date.split("-").map(Number);
-  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-  return `${DAYS[weekday]}, ${d}. ${MONTHS[m - 1]} ${y}.`;
-}
-
-function mapsLink(studio: StudioLocation): string {
-  const q = `Infinity Laser Studio, ${fullAddress(studio)}`;
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
 }
 
 /** The one line under the price that explains what the client pays and when. */
@@ -85,23 +60,8 @@ export function bookingEmailSubject(d: BookingEmailData): string {
   return `Termin je zakazan - ${formatEmailDate(d.date)} u ${d.startTime}`;
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
-const FONT = "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;";
-const INK = "#1E1017";
-const MUTED = "#7A6B70";
-const ACCENT = "#9E6F70";
-const LINE = "#EFE6E6";
-const LABEL = `${FONT}font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:${MUTED};`;
-
-function row(label: string, value: string): string {
-  return `<tr>
-    <td style="${FONT}padding:10px 0;border-bottom:1px solid ${LINE};font-size:14px;color:${MUTED};" valign="top">${label}</td>
-    <td style="${FONT}padding:10px 0;border-bottom:1px solid ${LINE};font-size:14px;color:${INK};font-weight:600;" align="right" valign="top">${value}</td>
-  </tr>`;
-}
-
 export function bookingEmailHtml(d: BookingEmailData): string {
-  const firstName = d.customerName.trim().split(/\s+/)[0] ?? "";
+  const firstName = firstNameOf(d.customerName);
   const address = fullAddress(d.studio);
   const hasDiscount = d.finalPrice !== d.listPrice;
   const note = priceNote(d);
@@ -120,24 +80,11 @@ export function bookingEmailHtml(d: BookingEmailData): string {
     </tr>`)
     .join("");
 
-  return `<!doctype html>
-<html lang="sr-Latn">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light only">
-<title>${esc(bookingEmailSubject(d))}</title>
-</head>
-<body style="margin:0;padding:0;background:#F6F1F1;">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;">Čekamo Vas ${esc(d.studio.cityLocative)}, ${esc(address)}. ${esc(formatEmailDate(d.date))} u ${esc(d.startTime)}.</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F6F1F1;">
-<tr><td align="center" style="padding:24px 12px;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#FFFFFF;border-radius:16px;">
-
-  <tr><td style="padding:28px 28px 0;">
-    <p style="${FONT}margin:0;font-size:12px;letter-spacing:3px;color:${ACCENT};font-weight:700;">INFINITY LASER STUDIO</p>
-  </td></tr>
-
+  return emailDocument({
+    title: bookingEmailSubject(d),
+    preheader: `Čekamo Vas ${d.studio.cityLocative}, ${address}. ${formatEmailDate(d.date)} u ${d.startTime}.`,
+    studio: d.studio,
+    body: `
   <tr><td style="padding:20px 28px 0;">
     <h1 style="${FONT}margin:0;font-size:24px;line-height:30px;color:${INK};font-weight:700;">Termin je zakazan</h1>
     <p style="${FONT}margin:10px 0 0;font-size:15px;line-height:23px;color:${MUTED};">${firstName ? `${esc(firstName)}, h` : "H"}vala na poverenju. Čekamo Vas ${esc(d.studio.cityLocative)}.</p>
@@ -176,16 +123,8 @@ export function bookingEmailHtml(d: BookingEmailData): string {
     <p style="${LABEL}margin:0 0 6px;">Otkazivanje</p>
     <p style="${FONT}margin:0;font-size:14px;line-height:21px;color:${INK};">Termin možete besplatno otkazati ili pomeriti najkasnije 24 sata pre tretmana - pozovite nas na <a href="tel:${PHONE_LINK}" style="color:${ACCENT};font-weight:600;white-space:nowrap;">${PHONE_DISPLAY}</a> ili odgovorite na ovaj email.</p>
   </td></tr>
-
-  <tr><td style="padding:28px;">
-    <p style="${FONT}margin:0;padding-top:18px;border-top:1px solid ${LINE};font-size:12px;line-height:18px;color:${MUTED};">Infinity Laser Studio · ${esc(address)}<br><a href="${SITE_URL}" style="color:${MUTED};">infinitylaserstudio.com</a></p>
-  </td></tr>
-
-</table>
-</td></tr>
-</table>
-</body>
-</html>`;
+`,
+  });
 }
 
 /** Same content without formatting - for email programs that show text only. */
