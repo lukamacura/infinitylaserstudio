@@ -1408,6 +1408,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
           ...(giftInBasket ? [{ name: "Nausnice (gratis)", price: 0 }] : []),
         ],
         total_duration:   durationForReservation,
+        with_consultation: !returningSubmit,
         total_price:      listForSubmit,
         discounted_price: finalForSubmit,
         promo_code:       promoForRecord ?? "redovna cena",

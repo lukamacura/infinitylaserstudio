@@ -218,6 +218,7 @@ export async function POST(req: NextRequest) {
       durationMinutes: row.total_duration,
       studio:          getLocation(isLocationId(row.location) ? row.location : DEFAULT_LOCATION),
       services,
+      withConsultation: payload.with_consultation === true,
       listPrice,
       ...priceFor(row.promo_code, listPrice, services),
       bookingRef:      row.id.slice(-8).toUpperCase(),

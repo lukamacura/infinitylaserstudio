@@ -12,8 +12,8 @@ export interface AvailabilityData {
   overrides: OverridesMap;
 }
 
-/** Public site shows this many days from today (rolling 3-week window). Server check in sql/booking_horizon_21.sql must stay ahead of this. */
-export const PUBLIC_HORIZON_DAYS = 21;
+/** Public site shows this many days from today (rolling 2-week window). Server check (sql/booking_horizon_14.sql, v_today + 15) must stay ahead of this. */
+export const PUBLIC_HORIZON_DAYS = 14;
 
 /** Admin can schedule this far ahead (not limited to the public window). */
 export const ADMIN_HORIZON_DAYS = 90;

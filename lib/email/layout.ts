@@ -25,11 +25,16 @@ export function esc(value: string): string {
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
-/** "Petak, 2. oktobar 2026." - from the date parts, so no timezone can shift the day. */
-export function formatEmailDate(date: string): string {
+/** "Petak, 2. oktobar" - from the date parts, so no timezone can shift the day. */
+export function formatEmailDay(date: string): string {
   const [y, m, d] = date.split("-").map(Number);
   const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-  return `${DAYS[weekday]}, ${d}. ${MONTHS[m - 1]} ${y}.`;
+  return `${DAYS[weekday]}, ${d}. ${MONTHS[m - 1]}`;
+}
+
+/** "Petak, 2. oktobar 2026." */
+export function formatEmailDate(date: string): string {
+  return `${formatEmailDay(date)} ${Number(date.slice(0, 4))}.`;
 }
 
 export function mapsLink(studio: StudioLocation): string {
@@ -61,13 +66,16 @@ export function row(label: string, value: string): string {
 /**
  * The whole email around its content: the brand line on top, the studio's
  * address at the bottom. `body` is the rows in between (`<tr>…</tr>`);
- * `preheader` is the hidden line inboxes show next to the subject.
+ * `preheader` is the hidden line inboxes show next to the subject. `head` is
+ * extra fonts / styles - only ever an extra: Gmail and Outlook drop them, so
+ * the email must look right without.
  */
 export function emailDocument(opts: {
   title: string;
   preheader: string;
   studio: StudioLocation;
   body: string;
+  head?: string;
 }): string {
   const address = fullAddress(opts.studio);
   return `<!doctype html>
@@ -77,6 +85,7 @@ export function emailDocument(opts: {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light only">
 <title>${esc(opts.title)}</title>
+${opts.head ?? ""}
 </head>
 <body style="margin:0;padding:0;background:#F6F1F1;">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${esc(opts.preheader)}</div>
