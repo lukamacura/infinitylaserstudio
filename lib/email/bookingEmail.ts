@@ -80,7 +80,7 @@ function priceNote(d: BookingEmailData): string | null {
 // ── The sheet ─────────────────────────────────────────────────────────────────
 
 /** The red note under the struck price - same words as the site. */
-function discountNote(d: BookingEmailData): string | null {
+function discountNote(d: Pick<BookingEmailData, "discount" | "bundleSessions">): string | null {
   switch (d.discount) {
     case "bundle": {
       const pct = d.bundleSessions ? BUNDLE_TIERS[d.bundleSessions] : undefined;
