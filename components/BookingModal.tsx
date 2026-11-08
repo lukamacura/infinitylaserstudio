@@ -535,7 +535,6 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   /** The code field stays behind a link until asked for - an open field sends people off hunting for a coupon. */
   const [submitting, setSubmitting]       = useState(false);
   const [submitError, setSubmitError]     = useState<string | null>(null);
-  const [bookingRef, setBookingRef]       = useState<string | null>(null);
   const [promoCode, setPromoCode]               = useState("");
   const [promoStatus, setPromoStatus]           = useState<"idle" | "valid" | "invalid">("idle");
   const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null);
@@ -1036,7 +1035,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     setFieldErrors({ name: false, email: false, phone: false, policy: false });
     setAcceptedPolicy(true);
     setShowPolicyInfo(false);
-    setSubmitError(null); setBookingRef(null);
+    setSubmitError(null);
     setPromoCode(""); setPromoStatus("idle"); setAppliedPromoCode(null);
     setPromoKind("none"); setCheckingPromo(false); setPromoErrorMsg(null);
     setBookingMode("single"); setBundleSize(null);
@@ -1388,8 +1387,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
     pendingBookingRef.current = null;
     invalidateBusy(); // this booking just changed the calendar
+    // Tells the email route which reservation this is (checked against the database).
     const bookingRefValue = reservationId.slice(-8).toUpperCase();
-    setBookingRef(bookingRefValue);
 
     fetch("/api/booking-confirm", {
       method: "POST",
@@ -2720,7 +2719,6 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                 : giftActive ? { kind: "gift" }
                 : null
               }
-              bookingRef={bookingRef}
               accentHex={accent.hex}
             />
           )}

@@ -53,7 +53,6 @@ export default function SuccessPreview() {
             listTotal={list}
             finalPrice={FINAL[variant]}
             discount={VARIANTS[variant]}
-            bookingRef="A7K29Q"
             accentHex={ACCENTS[gender].hex}
           />
         </div>

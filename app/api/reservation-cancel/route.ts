@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { DEFAULT_LOCATION, getLocation, isLocationId } from "@/lib/locations";
-import { clientCancel, isValidCancelLink } from "@/lib/cancelLink";
+import { cancelSheet, clientCancel, isValidCancelLink } from "@/lib/cancelLink";
 import { cancelledEmailHtml, cancelledEmailSubject, cancelledEmailText } from "@/lib/email/cancelledEmail";
 import { sendClientEmail } from "@/lib/email/send";
 
@@ -53,13 +53,9 @@ export async function POST(req: NextRequest) {
 
   if (result.customer_email) {
     const data = {
+      ...(await cancelSheet(result)),
       customerName: result.customer_name,
       studio:       getLocation(isLocationId(result.location) ? result.location : DEFAULT_LOCATION),
-      date:         result.date,
-      startTime:    result.start_time,
-      endTime:      result.end_time,
-      services:     result.services,
-      bookingRef:   result.id.slice(-8).toUpperCase(),
       late:         result.late,
     };
     const sent = await sendClientEmail({

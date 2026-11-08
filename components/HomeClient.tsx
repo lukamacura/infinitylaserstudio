@@ -84,7 +84,6 @@ export default function HomeClient({ children }: { children: ReactNode }) {
   //   ?regija=<slug>             preselects regions (implies Žene without ?pol=)
   //   ?book=1                    opens with nothing preselected
   //   ?promo=popust20            −20% on everything (see lib/linkPromo.ts)
-  //   ?promo=luka20|halloween20  −20% on single sessions, Novi Sad + Žene only, so it skips both steps
   //   ?promo=nausnice            free earrings, can swap to −20%; Novi Sad + Žene only, skips both steps
   // An unknown value is ignored, the rest of the link still applies.
   // Runs once on mount (after hydration) to read the URL — an external system.

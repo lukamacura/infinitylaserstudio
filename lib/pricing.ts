@@ -37,10 +37,23 @@ export function isStudentPromoCode(raw: string | null | undefined): boolean {
  * A new code also has to be added to public_create_booking (sql/link_codes.sql).
  */
 export const LINK_PROMO_CODE = "popust20";
-export const LINK_PROMO_CODES = [LINK_PROMO_CODE, "luka20", "halloween20"];
+/** The −20% links that work today. */
+export const LINK_PROMO_CODES = [LINK_PROMO_CODE];
+/**
+ * Links switched off (2026-11-08, sql/retire_link_codes.sql): a visit on one
+ * gets regular prices, but a booking already made with one keeps its −20%.
+ */
+const RETIRED_LINK_PROMO_CODES = ["luka20", "halloween20"];
 export const LINK_DISCOUNT_PCT = 20;
 
+/** A booking priced at −20%: a link code that works today, or did when it was booked. */
 export function isLinkPromoCode(raw: string | null | undefined): boolean {
+  const code = raw?.trim().toLowerCase();
+  return !!code && (LINK_PROMO_CODES.includes(code) || RETIRED_LINK_PROMO_CODES.includes(code));
+}
+
+/** A ?promo= link that still gives the −20% (lib/linkPromo.ts). */
+export function isLiveLinkPromoCode(raw: string | null | undefined): boolean {
   return !!raw && LINK_PROMO_CODES.includes(raw.trim().toLowerCase());
 }
 
@@ -209,4 +222,38 @@ function computeRulePrice(opts: {
     kind,
     overridden: false,
   };
+}
+
+// ── Combo packages ─────────────────────────────────────────────────────────────
+// Two regions booked together are priced as their combo service. Same rules as
+// the booking modal (components/booking/shared.tsx) and finances.
+export const COMBO_RULES = [
+  { parts: ["nausnice", "brada"],  comboKey: "nausnice i brada" },
+  { parts: ["noge", "intima"],     comboKey: "noge + intima" },
+  { parts: ["stomak", "grudi"],    comboKey: "stomak + grudi" },
+];
+
+/** The services as they are priced: matching parts replaced by their combo. */
+export function applyComboRules<S extends { name: string }>(selected: S[], all: S[]): S[] {
+  let effective = [...selected];
+  for (const rule of COMBO_RULES) {
+    const matched = rule.parts
+      .map(part => effective.find(s => s.name.toLowerCase().includes(part)))
+      .filter((s): s is S => s !== undefined);
+    if (matched.length === rule.parts.length) {
+      const combo = all.find(s => s.name.toLowerCase().includes(rule.comboKey));
+      if (combo) { effective = effective.filter(s => !matched.includes(s)); effective.push(combo); }
+    }
+  }
+  return effective;
+}
+
+/**
+ * What a late cancellation (under 24 h, sql/client_cancel.sql) costs at the
+ * next visit: 50% of that treatment. A bundle's price is the whole bundle, so
+ * there it is half of one treatment's regular price.
+ */
+export function lateCancelFee(price: Pick<PriceResult, "kind" | "listPrice" | "finalPrice">): number {
+  const base = price.kind === "bundle" || price.kind === "bundle_redeem" ? price.listPrice : price.finalPrice;
+  return Math.round(base / 2);
 }

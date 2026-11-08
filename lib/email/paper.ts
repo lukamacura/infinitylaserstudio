@@ -48,13 +48,18 @@ export function sheetTitle(text: string): string {
   return written(0, `display:inline-block;margin:0 0 16px;${HAND}font-size:28px;line-height:34px;font-weight:700;color:${PEN};border-bottom:2px solid ${RED};`, esc(text));
 }
 
-/** "Datum ........ Petak, 2. oktobar" lines, written from `fromStep` on. */
-export function sheetRows(rows: [string, string][], fromStep: number, struck = false): string {
-  return rows.map(([l, v], i) =>
-    written(fromStep + i, i ? "margin-top:4px;" : "", sheetRow(
+/**
+ * "Datum ........ Petak, 2. oktobar" lines, written from `fromStep` on. The
+ * first `strikeFirst` values are struck through in red (a cancelled term).
+ */
+export function sheetRows(rows: [string, string][], fromStep: number, strikeFirst = 0): string {
+  return rows.map(([l, v], i) => {
+    const value = `<span style="${SHEET_VALUE}">${esc(v)}</span>`;
+    return written(fromStep + i, i ? "margin-top:4px;" : "", sheetRow(
       `<span style="${SHEET_LABEL}">${esc(l)}</span>`,
-      struck ? strike(`<span style="${SHEET_VALUE}">${esc(v)}</span>`) : `<span style="${SHEET_VALUE}">${esc(v)}</span>`,
-    ))).join("\n");
+      i < strikeFirst ? strike(value) : value,
+    ));
+  }).join("\n");
 }
 
 /** "Usluge:" and a bullet per treatment, from `fromStep` on. Returns the next free step. */
@@ -72,12 +77,6 @@ export function sheetList(label: string, items: { name: string; faint?: boolean 
 /** A note in red pen, slightly askew - the "↳ popust −20%" of the sheet. */
 export function sheetNote(step: number, text: string, top = 0): string {
   return written(step, `${top ? `margin-top:${top}px;` : ""}${HAND}font-size:20px;line-height:26px;font-weight:700;color:${RED};`, esc(text), "ils-tilt");
-}
-
-/** "Ref. broj: #AB12CD34" at the bottom. */
-export function sheetRef(step: number, ref: string): string {
-  return written(step, `margin-top:20px;${HAND}font-size:18px;line-height:26px;color:${PEN};`,
-    `Ref. broj: <span style="font-weight:700;letter-spacing:1px;">#${esc(ref)}</span>`);
 }
 
 /**

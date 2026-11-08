@@ -13,7 +13,7 @@ import {
 } from "./layout";
 import {
   SHEET_LABEL, SHEET_VALUE,
-  paperHead, paperSheet, sheetList, sheetRef, sheetRow, sheetRows, sheetTitle, strike, written,
+  paperHead, paperSheet, sheetList, sheetRow, sheetRows, sheetTitle, strike, written,
 } from "./paper";
 
 export interface MovedEmailData {
@@ -29,7 +29,6 @@ export interface MovedEmailData {
   oldStartTime: string;
   /** Treatment names, as booked. */
   services: string[];
-  bookingRef: string;
   /** The client's own "Otkaži termin" link (lib/cancelLink.ts); null leaves the button out. */
   cancelUrl: string | null;
 }
@@ -45,7 +44,6 @@ function sheetHtml(d: MovedEmailData): { html: string; lastStep: number } {
   const list = d.services.length > 0
     ? sheetList("Usluge:", d.services.map((name) => ({ name })), wOld + 1)
     : { html: "", next: wOld + 1 };
-  const wRef = list.next;
 
   const html = [
     sheetTitle("Novi termin"),
@@ -55,10 +53,9 @@ function sheetHtml(d: MovedEmailData): { html: string; lastStep: number } {
       strike(`<span style="${SHEET_VALUE}">${esc(`${formatEmailDay(d.oldDate)} u ${d.oldStartTime}`)}</span>`),
     )),
     list.html,
-    sheetRef(wRef, d.bookingRef),
   ].join("\n");
 
-  return { lastStep: wRef, html: paperSheet(html) };
+  return { lastStep: list.next - 1, html: paperSheet(html) };
 }
 
 export function movedEmailSubject(d: MovedEmailData): string {
@@ -111,8 +108,6 @@ export function movedEmailText(d: MovedEmailData): string {
     `Gde: Infinity Laser Studio, ${fullAddress(d.studio)}`,
     `Mapa: ${mapsLink(d.studio)}`,
     ...(d.services.length > 0 ? ["", "Tretman:", ...d.services.map((name) => `- ${name}`)] : []),
-    "",
-    `Broj rezervacije: #${d.bookingRef}`,
     "",
     `Ne odgovara Vam novo vreme? Pozovite nas na ${PHONE_DISPLAY} ili odgovorite na ovaj email.`,
     ...(d.cancelUrl ? [`Otkaži termin: ${d.cancelUrl}`] : []),

@@ -19,7 +19,7 @@ import {
 } from "./layout";
 import {
   HAND, PEN, PEN_SOFT, RED, SHEET_LABEL,
-  paperHead, paperSheet, sheetList, sheetNote, sheetRef, sheetRow, sheetRows, sheetTitle, written,
+  paperHead, paperSheet, sheetList, sheetNote, sheetRow, sheetRows, sheetTitle, written,
 } from "./paper";
 
 export { formatEmailDate };
@@ -43,6 +43,7 @@ export interface BookingEmailData {
   discount: BookingDiscount;
   /** Treatments in the package - only for "bundle" and "bundle_redeem". */
   bundleSessions: number | null;
+  /** Last 8 of the id - for the admin group's message (n8n), not shown to the client. */
   bookingRef: string;
   /** The client's own "Otkaži termin" link (lib/cancelLink.ts); null leaves the button out. */
   cancelUrl: string | null;
@@ -52,7 +53,7 @@ function thousands(n: number): string {
   return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
 
-function rsd(n: number): string {
+export function rsd(n: number): string {
   return `${thousands(n)} RSD`;
 }
 
@@ -99,11 +100,23 @@ function amount(n: number, size: number): string {
   return `${thousands(n)}<span style="font-size:${Math.round(size * 0.6)}px;font-weight:600;">&nbsp;RSD</span>`;
 }
 
+/** What the sheet needs - a booking, or a saved reservation (lib/reservationSheet.ts). */
+export type BookingSheetData = Pick<BookingEmailData,
+  "date" | "startTime" | "endTime" | "durationMinutes" | "services" | "withConsultation" |
+  "listPrice" | "finalPrice" | "discount" | "bundleSessions">;
+
 /**
  * The booking written out by hand, in the same order and words as the site.
  * Returns the last step so the styles cover every line.
+ *
+ * `cancelled`: the same sheet after the client cancelled - day and time
+ * struck through in red, a red note under the sum. `noPrice` leaves the sum
+ * out (the price could not be worked out).
  */
-function sheetHtml(d: BookingEmailData): { html: string; lastStep: number } {
+export function bookingSheet(
+  d: BookingSheetData,
+  opts: { cancelled?: { late: boolean }; noPrice?: boolean } = {},
+): { html: string; lastStep: number } {
   const rows: [string, string][] = [
     ["Datum", formatEmailDay(d.date)],
     ["Vreme", `${d.startTime} – ${d.endTime}`],
@@ -117,41 +130,46 @@ function sheetHtml(d: BookingEmailData): { html: string; lastStep: number } {
   const note = struck ? discountNote(d) : null;
 
   // Writing order, as on the site: title, rows, "Usluge:", items, line,
-  // (regular price, struck, note), total, circle, ref.
+  // (regular price, struck, note), total, circle, (cancelled note).
   const list = sheetList("Usluge:", items, 1 + rows.length);
   const wLine = list.next;
   const wList = wLine + 1;
   const wTotal = struck ? wList + 3 : wLine + 1;
-  const wRef = wTotal + 3;
+  const wEnd = opts.noPrice ? list.next : wTotal + 2;
+  const cancelled = opts.cancelled;
 
   const html = [
     sheetTitle("Tvoj termin"),
-    sheetRows(rows, 1),
+    sheetRows(rows, 1, cancelled ? 2 : 0),
     list.html,
 
-    // The line under the sum.
-    written(wLine, `margin-top:14px;height:2px;line-height:2px;font-size:0;background-color:${PEN};border-radius:2px;`, "&nbsp;"),
+    ...(opts.noPrice ? [] : [
+      // The line under the sum.
+      written(wLine, `margin-top:14px;height:2px;line-height:2px;font-size:0;background-color:${PEN};border-radius:2px;`, "&nbsp;"),
 
-    // Regular price, struck through in red, with the reason.
-    struck ? `<div style="margin-top:8px;">${sheetRow(
-      written(wList, SHEET_LABEL, "Redovna cena"),
-      written(wList + 1, `display:inline-block;${HAND}font-size:20px;line-height:26px;font-weight:700;color:${RED};text-decoration:line-through;white-space:nowrap;`,
-        `<span style="color:${PEN_SOFT};">${amount(d.listPrice, 20)}</span>`),
-    )}</div>` : "",
-    note ? sheetNote(wList + 2, note) : "",
+      // Regular price, struck through in red, with the reason.
+      struck ? `<div style="margin-top:8px;">${sheetRow(
+        written(wList, SHEET_LABEL, "Redovna cena"),
+        written(wList + 1, `display:inline-block;${HAND}font-size:20px;line-height:26px;font-weight:700;color:${RED};text-decoration:line-through;white-space:nowrap;`,
+          `<span style="color:${PEN_SOFT};">${amount(d.listPrice, 20)}</span>`),
+      )}</div>` : "",
+      note ? sheetNote(wList + 2, note) : "",
 
-    // The total, circled in red.
-    `<div style="margin-top:16px;">${sheetRow(
-      written(wTotal, `${HAND}font-size:24px;line-height:30px;font-weight:700;color:${PEN};`, "Ukupno&nbsp;="),
-      `<div class="ils-ring ils-d${wTotal + 1}" style="display:inline-block;padding:5px 12px;border:2px solid ${RED};border-radius:50%;">${
-        written(wTotal, `display:inline-block;${HAND}font-size:28px;line-height:32px;font-weight:700;color:${PEN};white-space:nowrap;`, amount(d.finalPrice, 28))
-      }</div>`,
-    )}</div>`,
+      // The total, circled in red.
+      `<div style="margin-top:16px;">${sheetRow(
+        written(wTotal, `${HAND}font-size:24px;line-height:30px;font-weight:700;color:${PEN};`, "Ukupno&nbsp;="),
+        `<div class="ils-ring ils-d${wTotal + 1}" style="display:inline-block;padding:5px 12px;border:2px solid ${RED};border-radius:50%;">${
+          written(wTotal, `display:inline-block;${HAND}font-size:28px;line-height:32px;font-weight:700;color:${PEN};white-space:nowrap;`, amount(d.finalPrice, 28))
+        }</div>`,
+      )}</div>`,
+    ]),
 
-    sheetRef(wRef, d.bookingRef),
+    cancelled
+      ? sheetNote(wEnd, cancelled.late ? "↳ otkazano manje od 24 h pre termina" : "↳ otkazano na vreme · bez troškova", 18)
+      : "",
   ].join("\n");
 
-  return { lastStep: wRef, html: paperSheet(html) };
+  return { lastStep: wEnd, html: paperSheet(html) };
 }
 
 export function bookingEmailSubject(d: BookingEmailData): string {
@@ -162,7 +180,7 @@ export function bookingEmailHtml(d: BookingEmailData): string {
   const firstName = firstNameOf(d.customerName);
   const address = fullAddress(d.studio);
   const note = priceNote(d);
-  const sheet = sheetHtml(d);
+  const sheet = bookingSheet(d);
 
   const steps = PREPARATION_STEPS
     .map((s) => `<tr>
@@ -226,7 +244,6 @@ export function bookingEmailText(d: BookingEmailData): string {
     ...(d.finalPrice !== d.listPrice ? [`Redovna cena: ${rsd(d.listPrice)}`] : []),
     `Ukupno: ${rsd(d.finalPrice)}`,
     ...(note ? [note] : []),
-    `Broj rezervacije: #${d.bookingRef}`,
     "",
     "Priprema za tretman:",
     ...PREPARATION_STEPS.map((s) => `${s.num}. ${s.text}`),

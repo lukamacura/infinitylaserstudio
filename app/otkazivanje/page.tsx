@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
-import { clientCancel, isValidCancelLink } from "@/lib/cancelLink";
+import { cancelSheet, clientCancel, isValidCancelLink, type CancelSheet } from "@/lib/cancelLink";
 import { formatEmailDay, firstNameOf } from "@/lib/email/layout";
-import { DEFAULT_LOCATION, fullAddress, getLocation, isLocationId } from "@/lib/locations";
+import { BUNDLE_TIERS } from "@/lib/bundles";
+import { DEFAULT_LOCATION, getLocation, isLocationId } from "@/lib/locations";
+import type { SuccessDiscount } from "@/components/booking/BookingSheet";
 import CancelView, { type CancelAppointment, type CancelViewState } from "./CancelView";
 
 /**
@@ -11,7 +13,8 @@ import CancelView, { type CancelAppointment, type CancelViewState } from "./Canc
  * email on their own, so the cancelling itself is the button on the page
  * (POST /api/reservation-cancel). Less than 24 h before the treatment the
  * page says up front what the policy says: 50% at the next visit, unless the
- * reason is health.
+ * reason is health. The appointment is the same sheet as the confirmation
+ * (BookingSheet): treatments, price, total.
  */
 export const metadata: Metadata = {
   title: "Otkazivanje termina",
@@ -44,13 +47,21 @@ export default async function CancelPage({
   }
 
   const studio = getLocation(isLocationId(result.location) ? result.location : DEFAULT_LOCATION);
+  const sheet = await cancelSheet(result);
   const appointment: CancelAppointment = {
     firstName: firstNameOf(result.customer_name),
-    day:       formatEmailDay(result.date),
-    time:      `${result.start_time} – ${result.end_time}`,
-    studio:    fullAddress(studio),
-    services:  result.services,
-    ref:       result.id.slice(-8).toUpperCase(),
+    city:      studio.cityLocative,
+    lateFee:   sheet.lateFee,
+    sheet: {
+      date:             formatEmailDay(result.date),
+      timeRange:        `${result.start_time} – ${result.end_time}`,
+      duration:         result.total_duration,
+      withConsultation: sheet.withConsultation,
+      services:         sheet.services.map((s) => s.name),
+      listTotal:        sheet.listPrice,
+      finalPrice:       sheet.noPrice ? null : sheet.finalPrice,
+      discount:         sheet.noPrice ? null : sheetDiscount(sheet),
+    },
   };
   const initial: CancelViewState =
     result.status === "open" ? "open" :
@@ -61,4 +72,17 @@ export default async function CancelPage({
     : false;
 
   return <CancelView initial={initial} late={late} appointment={appointment} link={{ r: result.id, k: k as string }} />;
+}
+
+/** The sheet's red discount note - as the booking modal writes it. */
+function sheetDiscount(s: CancelSheet): SuccessDiscount {
+  switch (s.discount) {
+    case "bundle":        return { kind: "bundle", size: s.bundleSessions ?? 0, pct: BUNDLE_TIERS[s.bundleSessions ?? 0] ?? 0 };
+    case "bundle_redeem": return { kind: "redeem" };
+    case "student":       return { kind: "student" };
+    case "link":          return { kind: "link" };
+    case "gift":          return { kind: "gift" };
+    case "promo":         return { kind: "promo" };
+    default:              return null;
+  }
 }

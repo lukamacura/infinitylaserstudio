@@ -1,20 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import { useState } from "react";
+import type { ReactNode } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { Caveat } from "next/font/google";
 import { AlertCircle, CalendarPlus, Loader2 } from "lucide-react";
 import { PHONE_DISPLAY, PHONE_LINK } from "@/lib/email/layout";
-
-// Same handwriting as the booking modal's last step (BookingSuccess).
-const caveat = Caveat({
-  subsets: ["latin", "latin-ext"],
-  display: "swap",
-  preload: false,
-  variable: "--font-caveat",
-});
+import BookingSheet, { type BookingSheetProps } from "@/components/booking/BookingSheet";
+import { formatPrice } from "@/components/booking/shared";
 
 // Supabase + framer-motion stay out of the page until "Zakaži novi termin".
 const BookingModal = dynamic(() => import("@/components/BookingModal"), { ssr: false });
@@ -23,19 +16,12 @@ export type CancelViewState = "open" | "cancelled" | "already" | "past" | "inval
 
 export interface CancelAppointment {
   firstName: string;
-  /** "Ponedeljak, 9. novembar" */
-  day: string;
-  /** "10:00 – 11:10" */
-  time: string;
-  /** "Miloja Čiplića 51, Novi Sad" */
-  studio: string;
-  services: string[];
-  ref: string;
-}
-
-/** Place in the writing order of the sheet (`--w` in globals.css). */
-function write(i: number): CSSProperties {
-  return { "--w": i } as CSSProperties;
+  /** "u Novom Sadu" */
+  city: string;
+  /** The same sheet as the confirmation - without the cancelled marks, which follow the state. */
+  sheet: Omit<BookingSheetProps, "cancelled">;
+  /** 50% of this treatment, in RSD; null when the price is unknown. */
+  lateFee: number | null;
 }
 
 const phone = (
@@ -43,20 +29,23 @@ const phone = (
 );
 
 /** The amber box: what a cancellation under 24 h costs, and when it doesn't. */
-function LateNotice({ done }: { done: boolean }) {
+function LateNotice({ done, fee }: { done: boolean; fee: number | null }) {
+  const amount = (
+    <strong className="text-amber-200">
+      50% cene ovog tretmana{fee != null && <> ({formatPrice(fee)}&nbsp;RSD)</>}
+    </strong>
+  );
   return (
     <div className="bm-mail-in w-full max-w-md mt-8 flex items-start gap-3 p-4 rounded-2xl bg-amber-400/10 border-2 border-amber-400/40 text-left">
       <AlertCircle size={18} className="text-amber-300 shrink-0 mt-0.5" />
       <div className="text-xs sm:text-sm font-poppins text-amber-100/90 leading-relaxed">
         {done ? (
           <p>
-            Termin je otkazan manje od 24 sata pre tretmana, pa se pri sledećem dolasku naplaćuje{" "}
-            <strong className="text-amber-200">50% cene ovog tretmana</strong>.
+            Termin je otkazan manje od 24 sata pre tretmana, pa se pri sledećem dolasku naplaćuje {amount}.
           </p>
         ) : (
           <p>
-            Do termina je ostalo manje od 24 sata. Ako ga sada otkažete, pri sledećem dolasku naplaćuje se{" "}
-            <strong className="text-amber-200">50% cene ovog tretmana</strong>.
+            Do termina je ostalo manje od 24 sata. Ako ga sada otkažete, pri sledećem dolasku naplaćuje se {amount}.
           </p>
         )}
         <p className="mt-2 text-amber-100/70">
@@ -64,88 +53,6 @@ function LateNotice({ done }: { done: boolean }) {
           {done ? <> - samo nam javite na {phone}.</> : "."}{" "}
           <Link href="/uslovi-koriscenja" className="underline underline-offset-2">Uslovi otkazivanja</Link>
         </p>
-      </div>
-    </div>
-  );
-}
-
-/** A red pen stroke through whatever it sits on, drawn once when it appears. */
-function Strike({ delay }: { delay: number }) {
-  return (
-    <svg className="absolute -inset-x-1 top-1/2 -translate-y-1/2 w-[calc(100%+0.5rem)] h-3 overflow-visible pointer-events-none" viewBox="0 0 100 12" fill="none" preserveAspectRatio="none" aria-hidden>
-      <path className="notes-strike" style={{ "--d": `${delay}s` } as CSSProperties} pathLength={1} d="M-2 8 Q50 3 102 5" stroke="var(--pen)" strokeWidth="2.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function Sheet({ a, struck, late }: { a: CancelAppointment; struck: boolean; late: boolean }) {
-  // Start writing one frame after mount so the transitions actually run.
-  const [written, setWritten] = useState(false);
-  useEffect(() => {
-    const id = requestAnimationFrame(() => requestAnimationFrame(() => setWritten(true)));
-    return () => cancelAnimationFrame(id);
-  }, []);
-
-  const rows: [string, string][] = [["Datum", a.day], ["Vreme", a.time]];
-  const wItems = 1 + rows.length + 1;
-  const wStudio = wItems + a.services.length;
-
-  return (
-    <div className="w-full max-w-md bm-paper-in">
-      <div className={`notes-paper ${caveat.className} text-left px-5 pt-8 pb-6 sm:px-8 sm:pt-10 sm:pb-8`}>
-        <span className="notes-tape" aria-hidden />
-
-        <div className="notes-body" data-rv-in={written ? "" : undefined}>
-          <p className="notes-write relative inline-block text-[1.75rem] sm:text-[2rem] font-bold leading-none mb-5 sm:mb-6">
-            Tvoj termin
-            <svg className="absolute -bottom-2 left-0 w-full h-2" viewBox="0 0 200 8" fill="none" preserveAspectRatio="none" aria-hidden>
-              <path d="M2 5 Q40 1 90 4 T198 3" stroke="var(--pen)" strokeWidth="2.5" strokeLinecap="round" />
-            </svg>
-          </p>
-
-          {rows.map(([label, value], i) => (
-            <div
-              key={label}
-              className={`notes-write flex items-baseline justify-between gap-3 ${i > 0 ? "mt-1.5 sm:mt-2" : ""}`}
-              style={write(1 + i)}
-            >
-              <span className="text-lg sm:text-xl opacity-70">{label}</span>
-              <span className={`relative inline-block text-xl sm:text-2xl font-bold text-right leading-tight transition-opacity duration-700 ${struck ? "opacity-55" : ""}`}>
-                {value}
-                {struck && <Strike delay={0.15 + i * 0.25} />}
-              </span>
-            </div>
-          ))}
-
-          {a.services.length > 0 && (
-            <>
-              <p className="notes-write text-lg sm:text-xl opacity-70 mt-4 sm:mt-5" style={write(wItems - 1)}>Usluge:</p>
-              {a.services.map((name, i) => (
-                <p
-                  key={name}
-                  className={`notes-write text-xl sm:text-2xl font-semibold leading-tight transition-opacity duration-700 ${struck ? "opacity-55" : ""}`}
-                  style={write(wItems + i)}
-                >
-                  • {name}
-                </p>
-              ))}
-            </>
-          )}
-
-          <p className="notes-write text-lg sm:text-xl leading-tight mt-4 sm:mt-5 opacity-70" style={write(wStudio)}>
-            {a.studio}
-          </p>
-
-          {struck && (
-            <p className="notes-ink-in text-xl sm:text-2xl font-bold leading-none mt-4 -rotate-2 origin-left text-(--pen)">
-              {late ? "↳ otkazano manje od 24 h pre termina" : "↳ otkazano · bez troškova"}
-            </p>
-          )}
-
-          <p className="notes-write text-lg sm:text-xl leading-tight mt-6 sm:mt-7" style={write(wStudio + 1)}>
-            Ref. broj: <span className="font-bold tracking-wider">#{a.ref}</span>
-          </p>
-        </div>
       </div>
     </div>
   );
@@ -222,7 +129,7 @@ export default function CancelView({
         INFINITY LASER STUDIO
       </Link>
 
-      {view === "open" && <Header title="Otkazivanje termina">{name ? `${name}, d` : "D"}a li želite da otkažete ovaj termin?</Header>}
+      {view === "open" && <Header title="Otkazivanje termina">{name ? `${name}, d` : "D"}a li želite da otkažete ovaj termin{appointment ? ` ${appointment.city}` : ""}?</Header>}
       {view === "cancelled" && <Header title="Termin je otkazan">{name ? `${name}, h` : "H"}vala što ste nam javili. Potvrdu smo poslali na Vaš email.</Header>}
       {view === "already" && <Header title="Termin je već otkazan">Ovaj termin je otkazan i više Vas ne čeka.</Header>}
       {view === "past" && <Header title="Termin je prošao">Ovaj termin je već počeo ili prošao, pa ga ne možete otkazati preko linka. Pozovite nas na {phone}.</Header>}
@@ -230,13 +137,13 @@ export default function CancelView({
       {view === "error" && <Header title="Termin trenutno ne može da se učita">Pokušajte ponovo za minut ili nas pozovite na {phone}.</Header>}
 
       {appointment && (view === "open" || done) && (
-        <div className="w-full flex flex-col items-center mt-10 sm:mt-12">
-          <Sheet a={appointment} struck={done} late={late} />
+        <div className="w-full max-w-md mt-10 sm:mt-12 bm-paper-in">
+          <BookingSheet {...appointment.sheet} cancelled={done ? { late } : null} />
         </div>
       )}
 
-      {view === "open" && late && <LateNotice done={false} />}
-      {done && late && <LateNotice done />}
+      {view === "open" && late && <LateNotice done={false} fee={appointment?.lateFee ?? null} />}
+      {done && late && <LateNotice done fee={appointment?.lateFee ?? null} />}
 
       {view === "open" && (
         <div className="w-full max-w-md mt-8 flex flex-col items-center">

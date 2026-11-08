@@ -152,7 +152,6 @@ export async function POST(req: NextRequest) {
       oldDate:         result.old_date,
       oldStartTime:    result.old_start,
       services:        Array.isArray(result.services) ? result.services.filter((s) => typeof s === "string") : [],
-      bookingRef:      result.id.slice(-8).toUpperCase(),
       cancelUrl:       cancelUrl(result.id),
     });
     email = sent ? "sent" : "failed";

@@ -31,7 +31,7 @@ import {
   type StaffMember, type StaffSchedule,
 } from "@/lib/staff";
 import { kartonForReservation } from "@/lib/kartoni";
-import { computeReservationPrice, isGiftPromoCode, isGiftService, type PriceResult } from "@/lib/pricing";
+import { applyComboRules, computeReservationPrice, isGiftPromoCode, isGiftService, lateCancelFee, type PriceResult } from "@/lib/pricing";
 import { parseBundlePromo } from "@/lib/bundles";
 import { isComboService, isFullBody, isAllowedWithFullBody, EMAIL_REGEX } from "@/components/booking/shared";
 
@@ -88,27 +88,6 @@ const UNKNOWN_CARD_STYLE = {
 /** Appointments that take up the studio's time (not cancelled, not blacklisted). */
 function isActive(r: { status: ReservationStatus }) {
   return r.status !== "cancelled" && r.status !== "blacklisted";
-}
-
-// ── Combo packages — replace component services with their combo price ─────────
-const COMBO_RULES = [
-  { parts: ["nausnice", "brada"],  comboKey: "nausnice i brada" },
-  { parts: ["noge", "intima"],     comboKey: "noge + intima" },
-  { parts: ["stomak", "grudi"],    comboKey: "stomak + grudi" },
-];
-
-function applyComboRules(selected: ServiceRef[], all: ServiceRef[]): ServiceRef[] {
-  let effective = [...selected];
-  for (const rule of COMBO_RULES) {
-    const matched = rule.parts
-      .map(part => effective.find(s => s.name.toLowerCase().includes(part)))
-      .filter((s): s is ServiceRef => s !== undefined);
-    if (matched.length === rule.parts.length) {
-      const combo = all.find(s => s.name.toLowerCase().includes(rule.comboKey));
-      if (combo) { effective = effective.filter(s => !matched.includes(s)); effective.push(combo); }
-    }
-  }
-  return effective;
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -1044,11 +1023,7 @@ export default function AdminPage() {
         setSelectedLateCancels(owed.map(o => {
           const row = rows.find(f => f.id === o.id);
           const price = row ? priceFor(row, false) : null;
-          // A bundle's price is the whole bundle - half of one treatment is meant.
-          const base = price
-            ? (price.kind === "bundle" || price.kind === "bundle_redeem" ? price.listPrice : price.finalPrice)
-            : null;
-          return { id: o.id, date: o.date, start: o.start_time.slice(0, 5), fee: base != null ? Math.round(base / 2) : null };
+          return { id: o.id, date: o.date, start: o.start_time.slice(0, 5), fee: price ? lateCancelFee(price) : null };
         }));
       }
     } else {

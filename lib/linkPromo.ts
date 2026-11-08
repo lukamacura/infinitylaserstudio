@@ -3,12 +3,13 @@
 // the form and opens it again from any other button, or moves to another page
 // of the site.
 
-import { isGiftPromoCode, isLinkPromoCode } from "./pricing";
+import { isGiftPromoCode, isLiveLinkPromoCode } from "./pricing";
 
 const KEY = "ils_link_code";
 
+/** Only links that work today - a retired code remembered in the tab is dropped too. */
 const isOfferCode = (code: string | null | undefined) =>
-  isLinkPromoCode(code) || isGiftPromoCode(code);
+  isLiveLinkPromoCode(code) || isGiftPromoCode(code);
 
 /** The offer code in this URL, lowercased - null when there is none. */
 export function urlLinkPromo(): string | null {

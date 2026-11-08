@@ -16,6 +16,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
 import { SITE_URL } from "@/lib/email/layout";
+import type { BookingSheetData } from "@/lib/email/bookingEmail";
+import { loadReservationSheet } from "@/lib/reservationSheet";
 
 export const CANCEL_PATH = "/otkazivanje";
 
@@ -79,14 +81,19 @@ export type CancelResult =
  * The 24 h and every write happen in the database, in one transaction.
  * null = the database could not be reached; the caller says "try again".
  */
-export async function clientCancel(id: string, confirm: boolean): Promise<CancelResult | null> {
+function serviceDb() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = secret();
   if (!url || !key) {
     console.error("[cancel] NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not set");
     return null;
   }
-  const db = createClient<Database>(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  return createClient<Database>(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+}
+
+export async function clientCancel(id: string, confirm: boolean): Promise<CancelResult | null> {
+  const db = serviceDb();
+  if (!db) return null;
   const { data, error } = await db.rpc("client_cancel_reservation", { p_id: id, p_confirm: confirm });
   if (error || !data || typeof data !== "object") {
     console.error("[cancel] client_cancel_reservation failed:", error);
@@ -97,4 +104,36 @@ export async function clientCancel(id: string, confirm: boolean): Promise<Cancel
     result.services = Array.isArray(result.services) ? result.services.filter((s) => typeof s === "string") : [];
   }
   return result;
+}
+
+/** The booking sheet for the page and the email, and what a late cancellation costs. */
+export type CancelSheet = BookingSheetData & {
+  /** 50% of this treatment; null when the price is unknown. */
+  lateFee: number | null;
+  /** The price could not be worked out - the sheet leaves the sum out. */
+  noPrice: boolean;
+};
+
+/**
+ * The same sheet as the confirmation, for this appointment: treatments,
+ * consultation, price and discount (lib/reservationSheet.ts). Never fails: if
+ * the price can't be read, the sheet keeps the treatments and drops the sum.
+ */
+export async function cancelSheet(info: CancelInfo): Promise<CancelSheet> {
+  const db = serviceDb();
+  const sheet = db ? await loadReservationSheet(db, info.id) : null;
+  return {
+    date:             info.date,
+    startTime:        info.start_time,
+    endTime:          info.end_time,
+    durationMinutes:  info.total_duration,
+    services:         sheet?.services ?? info.services.map((name) => ({ name, price: 0 })),
+    withConsultation: sheet?.withConsultation ?? false,
+    listPrice:        sheet?.listPrice ?? 0,
+    finalPrice:       sheet?.finalPrice ?? 0,
+    discount:         sheet?.discount ?? "none",
+    bundleSessions:   sheet?.bundleSessions ?? null,
+    lateFee:          sheet?.lateFee ?? null,
+    noPrice:          !sheet,
+  };
 }
