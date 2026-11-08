@@ -4,6 +4,8 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
 import { DEFAULT_LOCATION, getLocation, isLocationId } from "@/lib/locations";
 import { movedEmailHtml, movedEmailSubject, movedEmailText, type MovedEmailData } from "@/lib/email/movedEmail";
+import { sendClientEmail } from "@/lib/email/send";
+import { cancelUrl } from "@/lib/cancelLink";
 
 /**
  * Moves an appointment to another day / time (admin calendar: drag, or
@@ -24,8 +26,6 @@ import { movedEmailHtml, movedEmailSubject, movedEmailText, type MovedEmailData 
 /** The move plus two tries at Resend must fit, even on a slow day. */
 export const maxDuration = 30;
 
-const REPLY_TO_DEFAULT = "ana.infinitystudio@gmail.com";
-const RESEND_ATTEMPTS = 2;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -61,48 +61,16 @@ function isRealDate(date: string): boolean {
   return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
 }
 
-async function sendMovedEmail(to: string, data: MovedEmailData): Promise<boolean> {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from   = process.env.RESEND_FROM;
-  if (!apiKey || !from) {
-    console.error("[reservation-move] RESEND_API_KEY / RESEND_FROM not set - email NOT sent");
-    return false;
-  }
-  const notify = process.env.BOOKING_NOTIFY_EMAIL;
-  const body = JSON.stringify({
-    from,
-    to: [to],
-    ...(notify ? { bcc: [notify] } : {}),
-    reply_to: process.env.BOOKING_REPLY_TO ?? REPLY_TO_DEFAULT,
+function sendMovedEmail(to: string, data: MovedEmailData): Promise<boolean> {
+  return sendClientEmail({
+    to,
     subject: movedEmailSubject(data),
     html: movedEmailHtml(data),
     text: movedEmailText(data),
+    // Every move is its own email - a second move of the same booking too.
+    idempotencyKey: `reservation-move-${randomUUID()}`,
+    tag: "[reservation-move]",
   });
-  // One key for every attempt: a retry after a lost answer never sends twice.
-  const idempotencyKey = `reservation-move-${randomUUID()}`;
-
-  for (let attempt = 1; attempt <= RESEND_ATTEMPTS; attempt++) {
-    try {
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          "Idempotency-Key": idempotencyKey,
-        },
-        body,
-        signal: AbortSignal.timeout(5000),
-      });
-      if (res.ok) return true;
-      console.error(`[reservation-move] Resend responded with ${res.status} (attempt ${attempt}/${RESEND_ATTEMPTS}):`,
-        await res.text().catch(() => ""));
-      if (res.status < 500 && res.status !== 429) return false; // our request is wrong - retrying won't help
-    } catch (err) {
-      console.error(`[reservation-move] Resend request failed (attempt ${attempt}/${RESEND_ATTEMPTS}):`, err);
-    }
-    if (attempt < RESEND_ATTEMPTS) await new Promise((r) => setTimeout(r, 800));
-  }
-  return false;
 }
 
 export async function POST(req: NextRequest) {
@@ -185,6 +153,7 @@ export async function POST(req: NextRequest) {
       oldStartTime:    result.old_start,
       services:        Array.isArray(result.services) ? result.services.filter((s) => typeof s === "string") : [],
       bookingRef:      result.id.slice(-8).toUpperCase(),
+      cancelUrl:       cancelUrl(result.id),
     });
     email = sent ? "sent" : "failed";
     if (!sent) console.error(`[reservation-move] client NOT emailed about moved booking ${result.id}`);

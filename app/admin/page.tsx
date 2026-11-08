@@ -144,6 +144,14 @@ type ReservationFull = {
 /** A bundle's code and how many of its treatments are still free to book. */
 type BundleUsage = { code: string; total: number; left: number };
 
+/**
+ * A term the client cancelled with the email link less than 24 h before it
+ * (reservations.late_cancel, sql/client_cancel.sql). The policy charges 50% of
+ * that treatment at the next visit, unless the reason was health.
+ * `fee` is null while the price list is missing.
+ */
+type LateCancel = { id: string; date: string; start: string; fee: number | null };
+
 /** Serbian plural: 1 dolazak · 2–4 dolaska · 5+ dolazaka (11–14 take the last form). */
 function srPlural(n: number, one: string, few: string, many: string) {
   const mod10 = n % 10;
@@ -451,6 +459,8 @@ export default function AdminPage() {
   const [selectedPrice, setSelectedPrice] = useState<PriceResult | null>(null);
   const [selectedIsFirst, setSelectedIsFirst] = useState(true);
   const [selectedBundle, setSelectedBundle] = useState<BundleUsage | null>(null);
+  /** Late cancellations to charge at this visit - shown only on the client's next booking after them. */
+  const [selectedLateCancels, setSelectedLateCancels] = useState<LateCancel[]>([]);
   /** Price correction: the typed amount, null while not editing. */
   const [priceDraft, setPriceDraft]       = useState<string | null>(null);
   /** Contact editor: the typed name / phone / email, null while not editing. */
@@ -964,6 +974,7 @@ export default function AdminPage() {
     setSelectedPrice(priceFor(r, true));
     setSelectedIsFirst(true);
     setSelectedBundle(null);
+    setSelectedLateCancels([]);
     setServicesDraft(null);
     setServicesClash(false);
     setPriceDraft(null);
@@ -973,9 +984,9 @@ export default function AdminPage() {
       // One round trip for the client's whole relevant history.
       const { data, error } = await supabase
         .from("reservations")
-        .select("id, date, start_time, status, promo_code, location")
+        .select("id, date, start_time, status, promo_code, location, late_cancel")
         .ilike("customer_email", escapeLike(r.customer_email))
-        .in("status", ["confirmed", "pending", "blacklisted"]);
+        .or("status.in.(confirmed,pending,blacklisted),late_cancel.is.true");
       // Another reservation was opened meanwhile — this answer is not for it.
       if (req !== modalReq.current) return;
       // Without the history, leave the badges out rather than guess.
@@ -983,7 +994,7 @@ export default function AdminPage() {
 
       const history = (data as {
         id: string; date: string; start_time: string; status: ReservationStatus;
-        promo_code: string | null; location: LocationId;
+        promo_code: string | null; location: LocationId; late_cancel: boolean;
       }[] | null) ?? [];
 
       // Bundle: same count as bundle_sessions_left in the database - confirmed
@@ -1012,6 +1023,34 @@ export default function AdminPage() {
       // The blacklist marks a person, not a single booking: flag the client if
       // ANY of their other reservations was blacklisted.
       setSelectedIsBlacklisted(history.some(h => h.status === "blacklisted" && h.id !== r.id));
+
+      // A late cancellation is charged at the next visit: this booking, when it
+      // is the client's first active one after the cancelled term.
+      const at = (h: { date: string; start_time: string }) => `${h.date} ${h.start_time}`;
+      const active = history
+        .filter(h => h.status === "confirmed" || h.status === "pending")
+        .sort((a, b) => at(a).localeCompare(at(b)));
+      const owed = history.filter(h =>
+        h.status === "cancelled" && h.late_cancel &&
+        active.find(a => at(a) > at(h))?.id === r.id);
+      if (owed.length > 0) {
+        // Priced like any booking: its regions at the studio's prices when it was booked.
+        const { data: full } = await supabase
+          .from("reservations")
+          .select(`*, reservation_services(services(id, name, price))`)
+          .in("id", owed.map(o => o.id));
+        if (req !== modalReq.current) return;
+        const rows = (full as ReservationFull[] | null) ?? [];
+        setSelectedLateCancels(owed.map(o => {
+          const row = rows.find(f => f.id === o.id);
+          const price = row ? priceFor(row, false) : null;
+          // A bundle's price is the whole bundle - half of one treatment is meant.
+          const base = price
+            ? (price.kind === "bundle" || price.kind === "bundle_redeem" ? price.listPrice : price.finalPrice)
+            : null;
+          return { id: o.id, date: o.date, start: o.start_time.slice(0, 5), fee: base != null ? Math.round(base / 2) : null };
+        }));
+      }
     } else {
       setSelectedIsReturning(false);
     }
@@ -2874,6 +2913,27 @@ export default function AdminPage() {
                       {saving ? "Čuvam…" : "Nije donela indeks — naplati punu cenu"}
                     </button>
                   )}
+                </div>
+              )}
+
+              {selectedLateCancels.length > 0 && (
+                <div className="rounded-2xl bg-red-400/10 border-2 border-red-400/30 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertTriangle size={16} className="text-red-300 shrink-0" />
+                    <span className="text-[10px] font-bold font-poppins text-red-300 uppercase tracking-widest">
+                      Kasno otkazivanje — naplatiti 50%
+                    </span>
+                  </div>
+                  {selectedLateCancels.map(c => (
+                    <p key={c.id} className="text-sm font-poppins text-red-200 leading-relaxed">
+                      Termin {Number(c.date.slice(8, 10))}.{Number(c.date.slice(5, 7))}. u {c.start} otkazan je preko linka manje od 24 h ranije.
+                      Uz ovaj tretman naplatiti{" "}
+                      <strong className="text-red-100">{c.fee != null ? `${c.fee.toLocaleString("sr-RS")} RSD` : "50% cene tog tretmana"}</strong>.
+                    </p>
+                  ))}
+                  <p className="mt-1.5 text-xs font-poppins text-red-200/70 leading-relaxed">
+                    Ne naplaćuje se ako je razlog bio zdravstveni (bolest, povreda) ili hitan slučaj.
+                  </p>
                 </div>
               )}
 

@@ -138,6 +138,7 @@ export type Database = {
         Row: {
           call_attempted_at: string | null
           call_status: string
+          client_cancelled_at: string | null
           client_id: string | null
           created_at: string | null
           customer_email: string
@@ -147,6 +148,7 @@ export type Database = {
           date: string
           end_time: string
           id: string
+          late_cancel: boolean
           location: string
           notes: string | null
           price_override: number | null
@@ -158,6 +160,7 @@ export type Database = {
         Insert: {
           call_attempted_at?: string | null
           call_status?: string
+          client_cancelled_at?: string | null
           client_id?: string | null
           created_at?: string | null
           customer_email: string
@@ -167,6 +170,7 @@ export type Database = {
           date: string
           end_time: string
           id?: string
+          late_cancel?: boolean
           location?: string
           notes?: string | null
           price_override?: number | null
@@ -178,6 +182,7 @@ export type Database = {
         Update: {
           call_attempted_at?: string | null
           call_status?: string
+          client_cancelled_at?: string | null
           client_id?: string | null
           created_at?: string | null
           customer_email?: string
@@ -187,6 +192,7 @@ export type Database = {
           date?: string
           end_time?: string
           id?: string
+          late_cancel?: boolean
           location?: string
           notes?: string | null
           price_override?: number | null
@@ -504,6 +510,10 @@ export type Database = {
       is_admin: { Args: Record<string, never>; Returns: boolean }
       admin_move_reservation: {
         Args: { p_id: string; p_date: string; p_start_time: string }
+        Returns: Json
+      }
+      client_cancel_reservation: {
+        Args: { p_id: string; p_confirm?: boolean }
         Returns: Json
       }
       karton_search: {

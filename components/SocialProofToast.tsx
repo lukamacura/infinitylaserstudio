@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
-import { isAdminPath } from "@/lib/adminRoutes";
+import { hidesSiteChrome } from "@/lib/adminRoutes";
 
 // framer-motion (~40 KB) is fetched only when the banner is due, 10 s in.
 const SocialProofBanner = dynamic(() => import("@/components/SocialProofBanner"), { ssr: false });
@@ -20,7 +20,7 @@ export default function SocialProofToast() {
 
   useEffect(() => {
     if (sessionStorage.getItem(SESSION_KEY)) return;
-    if (isAdminPath(window.location.pathname)) return;
+    if (hidesSiteChrome(window.location.pathname)) return;
 
     const randomName = NAMES[Math.floor(Math.random() * NAMES.length)];
     // Start the download a little early so the banner appears on time.

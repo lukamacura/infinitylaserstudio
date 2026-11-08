@@ -8,6 +8,7 @@ import {
   bookingEmailHtml, bookingEmailSubject, bookingEmailText, formatEmailDate,
   type BookingDiscount, type BookingEmailData,
 } from "@/lib/email/bookingEmail";
+import { cancelUrl } from "@/lib/cancelLink";
 
 /**
  * Sends the booking confirmation email through Resend.
@@ -222,6 +223,7 @@ export async function POST(req: NextRequest) {
       listPrice,
       ...priceFor(row.promo_code, listPrice, services),
       bookingRef:      row.id.slice(-8).toUpperCase(),
+      cancelUrl:       cancelUrl(row.id),
     };
 
     // Booked in the studio for a client without an email: only the admin group hears of it.

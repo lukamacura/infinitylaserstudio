@@ -1,7 +1,9 @@
 /**
  * What every email to a client shares: the frame, the styles and the small
  * formatting helpers. The emails themselves live next to this file
- * (bookingEmail.ts - booked, movedEmail.ts - moved by the studio).
+ * (bookingEmail.ts - booked, movedEmail.ts - moved by the studio,
+ * cancelledEmail.ts - cancelled by the client), all written on the same
+ * sheet of squared paper (paper.ts).
  *
  * Email programs ignore most modern CSS, so the layout is plain tables with
  * inline styles, on a light background - that is what renders the same in
@@ -54,6 +56,21 @@ export const MUTED = "#7A6B70";
 export const ACCENT = "#9E6F70";
 export const LINE = "#EFE6E6";
 export const LABEL = `${FONT}font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:${MUTED};`;
+
+/**
+ * A link that looks like a button. The border sits on a table cell, so
+ * Outlook keeps the shape. Outlined by default - "Otkaži termin" must never
+ * be the loudest thing in a confirmation; `filled` for the one main action.
+ */
+export function emailButton(href: string, label: string, opts: { filled?: boolean } = {}): string {
+  const text = opts.filled ? "#FFFFFF" : ACCENT;
+  const fill = opts.filled ? `background-color:${ACCENT};` : "";
+  return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:14px;"><tr>
+      <td style="border:1.5px solid ${ACCENT};border-radius:999px;${fill}">
+        <a href="${esc(href)}" style="${FONT}display:inline-block;padding:11px 22px;font-size:14px;line-height:18px;font-weight:700;color:${text};text-decoration:none;border-radius:999px;">${esc(label)}</a>
+      </td>
+    </tr></table>`;
+}
 
 /** A label / value line of a summary table. */
 export function row(label: string, value: string): string {

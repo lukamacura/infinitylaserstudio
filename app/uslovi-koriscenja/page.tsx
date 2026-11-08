@@ -5,7 +5,7 @@ import { OG_BASE, SITE_URL } from "@/lib/seo";
 import { LOCATIONS, fullAddress } from "@/lib/locations";
 
 const PAGE_URL = `${SITE_URL}/uslovi-koriscenja`;
-const LAST_UPDATED = "18. oktobar 2026.";
+const LAST_UPDATED = "8. novembar 2026.";
 const EMAIL = "ana.infinitystudio@gmail.com";
 
 /** Registered business details (APR), required on the site by law. */
@@ -110,12 +110,13 @@ const termsSections: Section[] = [
     body: (
       <>
         <p>
-          Termin možete besplatno otkazati ili pomeriti najkasnije 24 sata pre tretmana,
-          telefonom ili odgovorom na email sa potvrdom.
+          Termin možete besplatno otkazati ili pomeriti najkasnije 24 sata pre tretmana, telefonom
+          ili odgovorom na email sa potvrdom. Otkazati ga možete i sami, dugmetom „Otkaži termin“
+          na dnu email potvrde.
         </p>
         <p>
           Ako termin otkažete u poslednja 24 sata bez opravdanog razloga ili se ne pojavite,
-          naplaćuje se 50% cene tretmana pri sledećem zakazivanju.
+          naplaćuje se 50% cene tretmana pri sledećem dolasku.
         </p>
         <p>
           Bolest, povreda ili hitan slučaj se ne naplaćuju. Dovoljno je da nas obavestite i

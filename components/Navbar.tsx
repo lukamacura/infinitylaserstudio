@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
-import { isAdminPath } from "@/lib/adminRoutes";
+import { hidesSiteChrome } from "@/lib/adminRoutes";
 
 const BookingModal = dynamic(() => import("./BookingModal"), { ssr: false });
 
@@ -41,7 +41,7 @@ export default function Navbar() {
   }, [menuOpen]);
 
   // The admin pages bring their own header.
-  if (isAdminPath(pathname)) return null;
+  if (hidesSiteChrome(pathname)) return null;
 
   return (
     <>
