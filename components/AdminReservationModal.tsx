@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import type { CSSProperties } from "react";
 import Image from "next/image";
 import { motion, useReducedMotion } from "framer-motion";
 import {
-  X, ArrowLeft, Loader2, CheckCircle2, AlertCircle, FileText, ChevronRight,
+  X, ArrowLeft, Loader2, AlertCircle, FileText, ChevronRight, CalendarCheck,
 } from "lucide-react";
 import {
   supabase, calcBookingDuration, calcTotalDuration, getAvailableSlots,
@@ -24,13 +24,15 @@ import { STUDENT_PROMO_CODE, isStudentPromoCode } from "@/lib/pricing";
 import { fetchPriceRows, PriceBook } from "@/lib/prices";
 import { getLocation, fullAddress, type LocationId } from "@/lib/locations";
 import { escapeLike, fetchAll } from "@/lib/fetchAll";
+import { fetchPublicStaffDays, staffPhoto } from "@/lib/staff";
+import BookingSuccess from "@/components/booking/BookingSuccess";
 import {
   type Gender, type DayOption,
   getIcon, getRegionArt, preloadRegionArt, RegionThumb, CARD_IN_MS, THUMB_SIZES, HERO_THUMB_SIZES,
-  SR_DAYS_FULL, SR_MONTHS_SHORT, monIdx, toDateStr, formatDateFull, formatPrice, EMAIL_REGEX,
+  SR_DAYS_FULL, SR_MONTHS, SR_MONTHS_SHORT, monIdx, toDateStr, formatDateFull, formatPrice, EMAIL_REGEX,
   lockBodyScroll, unlockBodyScroll,
-  isFullBody, isAllowedWithFullBody, applyComboRules, orderPickableServices,
-  ACCENTS, GENDER_OPTIONS, COL_W, cascade, Skeleton, PREPARATION_STEPS,
+  isComboService, isFullBody, isAllowedWithFullBody, isFullFace, isCoveredByFullFace, applyComboRules,
+  ACCENTS, GENDER_OPTIONS, COL_W, cascade, Skeleton, PREPARATION_STEPS, StaffAvatars, freeSlotsLabel,
 } from "@/components/booking/shared";
 
 /*
@@ -39,6 +41,9 @@ import {
  * globals.css), the same single-vs-bundle plan step, but with the staff rules:
  * a much longer booking horizon, any time of day, no 2-hour notice, `ils-`
  * promo codes, an internal note and no cancellation-policy consent.
+ *
+ * Saved through `admin_create_booking` (sql/infy.sql): the same day lock and
+ * overlap check as a booking from the site, so two people never get one term.
  */
 
 interface AdminReservationModalProps {
@@ -130,6 +135,25 @@ const STEP_LABELS: Record<Step, string> = {
 /** The flow in order - the progress line fills one share per screen. */
 const STEP_ORDER: Step[] = [1, 2, "plan", 3, 4, 5];
 
+/** The most booked regions get the same "NAJČEŠĆE" mark as on the site - the top 3. */
+const POPULAR_SHOWN = 3;
+let popularRanks: Map<string, number> | null = null;
+function loadPopularRanks(): Promise<Map<string, number>> {
+  if (popularRanks) return Promise.resolve(popularRanks);
+  return Promise.resolve(supabase.rpc("public_popular_services")).then(
+    ({ data }) => (popularRanks = new Map((data ?? []).map((p) => [p.service_id, p.rank]))),
+    () => new Map<string, number>(),
+  );
+}
+
+type BusySlot = { start_time: string; end_time: string; status: string };
+
+/** "Utorak, 7. nov" - the summary line on the client step. */
+function formatDateShort(dateStr: string): string {
+  const d = new Date(`${dateStr}T00:00:00`);
+  return `${SR_DAYS_FULL[monIdx(d)]}, ${d.getDate()}. ${SR_MONTHS_SHORT[d.getMonth()]}`;
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 export default function AdminReservationModal({
   isOpen,
@@ -154,7 +178,7 @@ export default function AdminReservationModal({
   // Step 3 state
   const [selectedDate, setSelectedDate]   = useState("");
   const [selectedTime, setSelectedTime]   = useState("");
-  const [daySlots, setDaySlots]           = useState<{ start_time: string; end_time: string; status: string }[]>([]);
+  const [daySlots, setDaySlots]           = useState<BusySlot[]>([]);
   /** Which request the current `daySlots` answer - loading until it matches the request key. */
   const [slotsFor, setSlotsFor]           = useState<string | null>(null);
   const [slotsError, setSlotsError]       = useState(false);
@@ -164,23 +188,29 @@ export default function AdminReservationModal({
    * with no free slot. null = not loaded (or failed): every open day is shown
    * and the time step re-checks.
    */
-  const [busyByDate, setBusyByDate]       = useState<Map<string, { start_time: string; end_time: string; status: string }[]> | null>(null);
+  const [busyByDate, setBusyByDate]       = useState<Map<string, BusySlot[]> | null>(null);
   const [loadingBusy, setLoadingBusy]     = useState(false);
   /** Synchronous double-submit guard (state updates land a render too late). */
   const submitLockRef = useRef(false);
+  /**
+   * The reservation id, kept while the booking stays the same: a retry after a
+   * lost answer finds the booking already saved instead of making a second one.
+   */
+  const pendingBookingRef = useRef<{ key: string; id: string } | null>(null);
+  /** The picked time was taken (from the site) while the form was open. */
+  const [slotTaken, setSlotTaken]         = useState(false);
+  /** "YYYY-MM-DD" → who works that day (absent = not set in admin). */
+  const [staffByDate, setStaffByDate]     = useState<Record<string, string[]>>({});
+  const [popular, setPopular]             = useState<Map<string, number>>(() => popularRanks ?? new Map());
   const [form, setForm]                   = useState({ name: "", email: "", phone: "", notes: "" });
   const [fieldErrors, setFieldErrors]     = useState({ name: false, email: false });
   const [submitting, setSubmitting]       = useState(false);
   const [submitError, setSubmitError]     = useState<string | null>(null);
-  const [bookingRef, setBookingRef]       = useState<string | null>(null);
   const [promoCode, setPromoCode]               = useState("");
   const [promoStatus, setPromoStatus]           = useState<"idle" | "valid" | "invalid">("idle");
   const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null);
   const [promoKind, setPromoKind]               = useState<"none" | "ils" | "bundle_redeem" | "student">("none");
   const [checkingPromo, setCheckingPromo]       = useState(false);
-  /** Success tile count-down value; null until the first animation frame lands. */
-  const [displayedPrice, setDisplayedPrice]   = useState<number | null>(null);
-  const animFrameRef = useRef<number>(0);
   const emailCheckSeqRef = useRef(0);
   /** Scrollable step body - reset to top on every step change */
   const scrollBodyRef = useRef<HTMLDivElement>(null);
@@ -198,6 +228,8 @@ export default function AdminReservationModal({
   const selectedServices = services.filter((s) => selectedIds.includes(s.id));
   /** Whole body is selected - lock out every region except earrings, chin & whole face. */
   const fullBodySelected = selectedServices.some((s) => isFullBody(s.name));
+  /** Whole face is selected - earrings & chin are already covered by it. */
+  const fullFaceSelected = selectedServices.some((s) => isFullFace(s.name));
   const { effective: effectiveServices, appliedCombos } = applyComboRules(selectedServices, services);
   /** With 10 min consultation — used for day/slot picking so first-time bookings always fit. */
   const slotDuration =
@@ -211,7 +243,22 @@ export default function AdminReservationModal({
         : calcBookingDuration(selectedServices);
   const totalPrice       = effectiveServices.reduce((sum, s) => sum + s.price, 0);
   const accent           = ACCENTS[gender ?? "zene"];
-  const pickableServices = orderPickableServices(services);
+  /** Same order as the site: "Celo telo", then the 3 most booked ("NAJČEŠĆE"), then the rest. */
+  const { pickableServices, popularIds } = useMemo(() => {
+    const visible = services.filter((s) => !isComboService(s.name));
+    const top = visible
+      .filter((s) => !isFullBody(s.name) && popular.has(s.id))
+      .sort((a, b) => popular.get(a.id)! - popular.get(b.id)!)
+      .slice(0, POPULAR_SHOWN);
+    return {
+      pickableServices: [
+        ...visible.filter((s) => isFullBody(s.name)),
+        ...top,
+        ...visible.filter((s) => !isFullBody(s.name) && !top.includes(s)),
+      ],
+      popularIds: new Set(top.map((s) => s.id)),
+    };
+  }, [services, popular]);
   const servicesKey      = gender ? `${gender}:${servicesReloadKey}` : null;
   const loadingServices  = servicesKey !== null && servicesFor !== servicesKey;
   const slotsKey         = selectedDate ? `${selectedDate}:${slotsReloadKey}` : null;
@@ -254,17 +301,24 @@ export default function AdminReservationModal({
           ? Math.round(totalPrice * 0.8)
           : totalPrice;
   const savingsVsList = listTotal - finalPrice;
-  /** Success tile: counts down from list to final price; no discount = nothing to animate. */
-  const priceShown = listTotal === finalPrice ? finalPrice : (displayedPrice ?? listTotal);
 
   // Day options rebuild whenever slot duration (incl. consultation) or schedule changes
-  // and hides days that are fully booked (once the reservations are loaded).
-  const dayOptions = buildAdminDayOptions(slotDuration).filter((day) => {
-    if (!busyByDate) return true;
-    const dayWindows = ADMIN_DAY_WINDOWS;
+  // and hide days that are fully booked (once the reservations are loaded). Like
+  // the site, each day says how many free times it has within working hours.
+  /** The schedule has loaded (a failed load leaves the empty fallback - no counts then). */
+  const hoursKnown = availability !== EMPTY_AVAILABILITY;
+  const dayOptions: DayOption[] = [];
+  for (const day of buildAdminDayOptions(slotDuration)) {
+    if (!busyByDate) { dayOptions.push(day); continue; }
+    const busy = busyByDate.get(day.date) ?? [];
     const minStart = day.isToday ? new Date().getHours() * 60 + new Date().getMinutes() : undefined;
-    return getAvailableSlots(busyByDate.get(day.date) ?? [], slotDuration, minStart, dayWindows).length > 0;
-  });
+    if (getAvailableSlots(busy, slotDuration, minStart, ADMIN_DAY_WINDOWS).length === 0) continue;
+    const windows = resolveWindows(day.date, availability);
+    dayOptions.push({
+      ...day,
+      freeSlots: windows ? getAvailableSlots(busy, slotDuration, minStart, windows).length : undefined,
+    });
+  }
 
   // Read the clock on every render - the modal stays mounted between opens.
   const nowDate = new Date();
@@ -336,27 +390,25 @@ export default function AdminReservationModal({
     return () => { cancelled = true; };
   }, [gender, servicesKey, location]);
 
-  // ── Animated price count-down on success screen ───────────────────────────
+  // The "NAJČEŠĆE" marks - loaded once, kept for every later open.
   useEffect(() => {
-    if (step !== "success") return;
-    const target = finalPrice;
-    const from   = listTotal;
-    if (from === target) return; // nothing to count down - `priceShown` uses the final price
+    if (!isOpen || popularRanks) return;
+    let cancelled = false;
+    void loadPopularRanks().then((ranks) => { if (!cancelled) setPopular(ranks); });
+    return () => { cancelled = true; };
+  }, [isOpen]);
 
-    const DURATION = 900;
-    const startTime = performance.now();
-
-    function animate(now: number) {
-      const elapsed  = now - startTime;
-      const progress = Math.min(elapsed / DURATION, 1);
-      const eased    = 1 - Math.pow(1 - progress, 3); // ease-out cubic
-      setDisplayedPrice(Math.round(from + (target - from) * eased));
-      if (progress < 1) animFrameRef.current = requestAnimationFrame(animate);
-    }
-
-    animFrameRef.current = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(animFrameRef.current);
-  }, [step, finalPrice, listTotal]);
+  // Who works which day - the faces on the day cards, as on the site.
+  useEffect(() => {
+    if (!isOpen || step !== 3) return;
+    let cancelled = false;
+    const from = new Date();
+    const to = new Date(from);
+    to.setDate(to.getDate() + ADMIN_HORIZON_DAYS - 1);
+    void fetchPublicStaffDays(location, toDateStr(from), toDateStr(to))
+      .then((byDate) => { if (!cancelled) setStaffByDate(byDate); });
+    return () => { cancelled = true; };
+  }, [isOpen, step, location]);
 
   // Reservations for the chosen day - refetched every time the time step opens,
   // so coming back to a day never shows slots that were booked in the meantime.
@@ -394,7 +446,7 @@ export default function AdminReservationModal({
     to.setDate(to.getDate() + ADMIN_HORIZON_DAYS - 1);
     setLoadingBusy(true);
     setBusyByDate(null);
-    fetchAll<{ date: string; start_time: string; end_time: string; status: string }>((a, b) =>
+    fetchAll<BusySlot & { date: string }>((a, b) =>
       supabase
         .from("reservations")
         .select("date, start_time, end_time, status")
@@ -407,7 +459,7 @@ export default function AdminReservationModal({
       .then(
         (rows) => {
           if (cancelled) return;
-          const byDate = new Map<string, { start_time: string; end_time: string; status: string }[]>();
+          const byDate = new Map<string, BusySlot[]>();
           for (const r of rows) {
             const list = byDate.get(r.date) ?? [];
             list.push({ start_time: r.start_time, end_time: r.end_time, status: r.status });
@@ -437,7 +489,8 @@ export default function AdminReservationModal({
     setSlotsError(false); setServicesError(false); setServicesFor(null);
     setForm({ name: "", email: "", phone: "", notes: "" });
     setFieldErrors({ name: false, email: false });
-    setSubmitError(null); setBookingRef(null); setDisplayedPrice(null);
+    setSubmitError(null); setSlotTaken(false); setStaffByDate({});
+    pendingBookingRef.current = null;
     setPromoCode(""); setPromoStatus("idle"); setAppliedPromoCode(null);
     setPromoKind("none"); setCheckingPromo(false);
     emailCheckSeqRef.current += 1;
@@ -491,6 +544,21 @@ export default function AdminReservationModal({
     if (fullBodySelected && !isSelected && !isAllowedWithFullBody(svc.name)) {
       return;
     }
+    // Same for earrings & chin once "Celo lice" is selected.
+    if (fullFaceSelected && !isSelected && isCoveredByFullFace(svc.name)) {
+      return;
+    }
+    // Selecting "Celo lice" drops already-selected earrings & chin.
+    if (!isSelected && isFullFace(svc.name)) {
+      setSelectedIds((prev) => [
+        ...prev.filter((pid) => {
+          const s = services.find((x) => x.id === pid);
+          return s ? !isCoveredByFullFace(s.name) : false;
+        }),
+        id,
+      ]);
+      return;
+    }
     // Selecting "Celo telo" itself drops any already-selected regions it now covers.
     if (!isSelected && isFullBody(svc.name)) {
       setSelectedIds((prev) => [
@@ -513,12 +581,14 @@ export default function AdminReservationModal({
     }
     // Always a fresh fetch when the time step opens (see the slots effect).
     setSlotsError(false);
+    setSlotTaken(false);
     setSlotsReloadKey((k) => k + 1);
     setStep(4);
   }
 
   function handleTimeSelect(slot: string) {
     setSelectedTime(slot);
+    setSlotTaken(false);
     setStep(5);
   }
 
@@ -692,72 +762,71 @@ export default function AdminReservationModal({
     const notesForRecord =
       [adminNote || null, notesFromPromo].filter(Boolean).join(" · ") || null;
 
-    const durationForReservation = returningSubmit
-      ? calcTotalDuration(selectedServices)
-      : calcBookingDuration(selectedServices);
-    const endTime = minutesToTime(timeToMinutes(selectedTime) + durationForReservation);
+    // One id per booking: tapping again after a lost answer (bad signal) finds
+    // the booking already saved instead of making a second one.
+    const bookingKey = [
+      location, selectedDate, selectedTime, form.name.trim(), [...selectedIds].sort().join(","),
+    ].join("|");
+    if (pendingBookingRef.current?.key !== bookingKey) {
+      pendingBookingRef.current = { key: bookingKey, id: crypto.randomUUID() };
+    }
+    const reservationId = pendingBookingRef.current.id;
 
-    // The free times on screen were loaded when the time step opened. A client
-    // may have booked the same one from the site since - look again right
-    // before saving, so two people never get the same term.
-    const { data: busy, error: busyError } = await supabase
-      .from("reservations")
-      .select("start_time, end_time, status")
-      .eq("date", selectedDate)
-      .eq("location", location);
-    if (busyError || !busy) {
-      setSubmitError("Provera termina nije uspela. Proveri internet vezu i pokušaj ponovo.");
+    // Checked and saved in one go under the studio's day lock - a client
+    // booking the same time from the site meanwhile can't slip in between.
+    const { data, error } = await supabase.rpc("admin_create_booking", {
+      p_id:                reservationId,
+      p_location:          location,
+      p_name:              form.name.trim(),
+      p_email:             emailTrim,
+      p_phone:             form.phone.trim() || null,
+      p_date:              selectedDate,
+      p_start_time:        `${selectedTime}:00`,
+      p_service_ids:       selectedIds,
+      p_with_consultation: !returningSubmit,
+      p_promo_code:        promoForRecord,
+      p_notes:             notesForRecord,
+    });
+    const result = (error ? null : data) as unknown as
+      | { status: "ok"; id: string; end_time: string; total_duration: number }
+      | { status: "slot_taken"; clash_name: string; clash_start: string; clash_end: string }
+      | { status: "too_late" | "invalid_input" | "invalid_promo" | "forbidden" }
+      | null;
+
+    if (!result) {
+      setSubmitError("Greška pri kreiranju rezervacije. Proveri internet vezu i pokušaj ponovo.");
       return;
     }
-    const startMin = timeToMinutes(selectedTime);
-    const endMin   = startMin + durationForReservation;
-    const clash = busy.some((r) =>
-      r.status !== "cancelled" && r.status !== "blacklisted" &&
-      startMin < timeToMinutes(r.end_time) && endMin > timeToMinutes(r.start_time));
-    if (clash) {
-      setSubmitError("Ovaj termin je upravo zauzet. Vrati se korak nazad i izaberi drugo vreme.");
+    if (result.status === "slot_taken") {
+      // Back to the times, fresh from the database, with a word on why.
+      pendingBookingRef.current = null;
+      setSlotTaken(true);
+      setSelectedTime("");
       setSlotsReloadKey((k) => k + 1);
+      setStep(4);
       return;
     }
-
-    const { data: res, error } = await supabase
-      .from("reservations")
-      .insert({
-        customer_name:  form.name.trim(),
-        customer_email: form.email.trim(),
-        customer_phone: form.phone.trim() || null,
-        date:           selectedDate,
-        start_time:     `${selectedTime}:00`,
-        end_time:       `${endTime}:00`,
-        total_duration: durationForReservation,
-        status:         "confirmed",
-        notes:          notesForRecord,
-        promo_code:     promoForRecord,
-        location,
-      })
-      .select()
-      .single();
-
-    if (error || !res) {
+    if (result.status === "too_late") {
+      pendingBookingRef.current = null;
+      setSubmitError("Ovo vreme je već prošlo. Vrati se korak nazad i izaberi drugo.");
+      return;
+    }
+    if (result.status === "invalid_promo") {
+      setSubmitError("Iz ovog paketa više nema slobodnih tretmana. Ukloni kod paketa i pokušaj ponovo.");
+      return;
+    }
+    if (result.status === "forbidden") {
+      setSubmitError("Prijava je istekla. Osveži stranicu i prijavi se ponovo.");
+      return;
+    }
+    if (result.status !== "ok") {
       setSubmitError("Greška pri kreiranju rezervacije. Pokušajte ponovo.");
       return;
     }
-
-    if (selectedIds.length > 0) {
-      const { error: servicesError } = await supabase.from("reservation_services").insert(
-        selectedIds.map((id) => ({ reservation_id: res.id, service_id: id }))
-      );
-      if (servicesError) {
-        // A reservation without regions would sit in the calendar empty and
-        // count as 0 RSD - take it back and let the admin try again.
-        await supabase.from("reservations").delete().eq("id", res.id);
-        setSubmitError("Regije nisu sačuvane, rezervacija nije napravljena. Pokušajte ponovo.");
-        return;
-      }
-    }
-
-    const bookingRefValue = res.id.slice(-8).toUpperCase();
-    setBookingRef(bookingRefValue);
+    pendingBookingRef.current = null;
+    const durationForReservation = result.total_duration;
+    const endTime = result.end_time;
+    const bookingRefValue = result.id.slice(-8).toUpperCase();
 
     fetch("/api/booking-confirm", {
       method: "POST",
@@ -777,6 +846,7 @@ export default function AdminReservationModal({
         bundle_sessions:  bundleActive ? bundleSize : null,
         bundle_code:      bundleActive ? promoForRecord : null,
         booking_ref:      bookingRefValue,
+        with_consultation: !returningSubmit,
         location,
         location_name:    studio.name,
         location_address: fullAddress(studio),
@@ -850,7 +920,35 @@ export default function AdminReservationModal({
             />
           </div>
           <div className="flex items-baseline justify-between gap-3 mt-4">
-            <p className="text-lg sm:text-xl font-medium leading-snug text-foreground/90 font-poppins">{STEP_LABELS[step]}</p>
+            {step === 4 && selectedDate ? (
+              <div className="min-w-0">
+                <p className="text-lg sm:text-xl font-medium leading-snug text-foreground/90 font-poppins">
+                  Odaberi vreme za {(() => { const d = new Date(`${selectedDate}T00:00:00`); return `${d.getDate()}. ${SR_MONTHS[d.getMonth()]}`; })()}
+                </p>
+                {(staffByDate[selectedDate]?.length ?? 0) > 0 && (
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5 text-sm sm:text-base text-foreground/68 font-poppins">
+                    <span>tretman će raditi</span>
+                    {staffByDate[selectedDate].map((name) => {
+                      const src = staffPhoto(name);
+                      return (
+                        <span key={name} className="inline-flex items-center gap-1.5">
+                          <span className="relative w-7 h-7 sm:w-8 sm:h-8 rounded-full overflow-hidden ring-2 ring-background bg-foreground/15 flex items-center justify-center shrink-0">
+                            {src ? (
+                              <Image src={src} alt="" fill sizes="32px" className="object-cover object-top" />
+                            ) : (
+                              <span className="text-xs font-bold text-foreground/70">{name.charAt(0).toUpperCase()}</span>
+                            )}
+                          </span>
+                          <span className="font-semibold text-foreground">{name}</span>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-lg sm:text-xl font-medium leading-snug text-foreground/90 font-poppins">{STEP_LABELS[step]}</p>
+            )}
             {/* Admin only: which studio this reservation is being created for. */}
             <span
               className="shrink-0 text-[10px] sm:text-xs font-semibold tracking-widest text-foreground/68 font-poppins"
@@ -936,7 +1034,10 @@ export default function AdminReservationModal({
                 const enterDelay = Math.min(index, 9) * 45;
                 const enterStyle = { animationDelay: `${enterDelay}ms` } as CSSProperties;
                 const isSelected = selectedIds.includes(service.id);
-                const isBlocked = fullBodySelected && !isSelected && !isAllowedWithFullBody(service.name);
+                const isBlocked = !isSelected && (
+                  (fullBodySelected && !isAllowedWithFullBody(service.name)) ||
+                  (fullFaceSelected && isCoveredByFullFace(service.name))
+                );
                 const Icon = getIcon(service.name);
                 const art = gender ? getRegionArt(service.name, gender) : null;
 
@@ -1022,7 +1123,17 @@ export default function AdminReservationModal({
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm sm:text-base font-semibold font-poppins">{service.name}</p>
+                      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm sm:text-base font-semibold font-poppins">
+                        {service.name}
+                        {popularIds.has(service.id) && (
+                          <span
+                            className="px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold tracking-widest border"
+                            style={{ color: accent.hex, borderColor: `${accent.hex}66`, backgroundColor: `${accent.hex}14` }}
+                          >
+                            NAJČEŠĆE
+                          </span>
+                        )}
+                      </p>
                       <span className="text-xs sm:text-sm text-foreground/60 font-poppins mt-0.5">
                         {formatPrice(service.price)} RSD
                       </span>
@@ -1176,10 +1287,14 @@ export default function AdminReservationModal({
           {/* ══ STEP 3: Date only ══════════════════════════════════════════════ */}
           {step === 3 && (
             <div className="flex flex-col gap-4">
-              <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/60 font-poppins mb-1">IZABERI DAN</p>
               {loadingBusy ? (
-                <div className="flex items-center justify-center py-8 text-foreground/60">
-                  <Loader2 size={22} className="animate-spin" />
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3" role="status" aria-label="Učitavanje slobodnih dana">
+                  {Array.from({ length: 6 }, (_, i) => (
+                    <div key={i} className="flex flex-col items-start gap-2 p-4 sm:p-5 rounded-2xl sm:rounded-3xl border-2 border-foreground/8">
+                      <Skeleton className="h-4 sm:h-5 w-3/5 rounded" />
+                      <Skeleton className="h-3 sm:h-3.5 w-2/5 rounded" />
+                    </div>
+                  ))}
                 </div>
               ) : dayOptions.length === 0 ? (
                 <div className="flex items-center gap-2 sm:gap-3 p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-foreground/5 text-foreground/68 text-sm sm:text-base font-poppins">
@@ -1216,6 +1331,12 @@ export default function AdminReservationModal({
                           {day.label}
                         </p>
                         <p className="text-xs sm:text-sm text-foreground/68 font-poppins mt-0.5">{day.shortDate}</p>
+                        {busyByDate && hoursKnown && (
+                          <p className="text-[10px] sm:text-xs text-foreground/60 font-poppins mt-1">
+                            {day.freeSlots != null ? freeSlotsLabel(day.freeSlots) : "van radnog vremena"}
+                          </p>
+                        )}
+                        {staffByDate[day.date] && <StaffAvatars names={staffByDate[day.date]} />}
                       </button>
                     );
                   })}
@@ -1227,7 +1348,12 @@ export default function AdminReservationModal({
           {/* ══ STEP 4: Time only ══════════════════════════════════════════════ */}
           {step === 4 && (
             <div className="flex flex-col gap-4">
-              <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/60 font-poppins mb-1">SLOBODNI TERMINI</p>
+              {slotTaken && (
+                <div className="flex items-start gap-2 sm:gap-3 p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-amber-400/10 border border-amber-400/40 text-amber-200 text-sm sm:text-base font-poppins">
+                  <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                  Izabrani termin je upravo zauzet. Izaberi drugo vreme - podaci o klijentu su sačuvani.
+                </div>
+              )}
               {loadingSlots ? (
                 <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-1.5 sm:gap-2.5" role="status" aria-label="Učitavanje termina">
                   {Array.from({ length: 12 }, (_, i) => (
@@ -1284,7 +1410,16 @@ export default function AdminReservationModal({
           {/* ══ STEP 5: Podaci o klijentu ═══════════════════════════════════════════ */}
           {step === 5 && (
             <div className="flex flex-col gap-4 sm:gap-6">
-              <p className="text-xs sm:text-sm font-semibold tracking-widest text-foreground/60 font-poppins mb-1">PODACI O KLIJENTU</p>
+              {/* What is being booked - the same line the site shows on its last screen. */}
+              {selectedDate && selectedTime && (
+                <div className="flex items-center gap-3 px-3.5 sm:px-5 py-2.5 sm:py-3.5 rounded-xl sm:rounded-2xl border" style={{ borderColor: `${accent.hex}33`, backgroundColor: `${accent.hex}0D` }}>
+                  <CalendarCheck size={18} className="shrink-0" style={{ color: accent.hex }} />
+                  <p className="text-xs sm:text-sm font-poppins text-foreground/80 leading-snug">
+                    <span className="font-semibold text-foreground">{formatDateShort(selectedDate)} u {selectedTime}</span>
+                    <span className="text-foreground/60"> · {studio.name}</span>
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label htmlFor="arm-name" className="block text-xs sm:text-sm text-foreground/68 font-poppins mb-1 sm:mb-1.5">Ime i prezime *</label>
@@ -1499,39 +1634,39 @@ export default function AdminReservationModal({
                         {formatPrice(listTotal)} RSD
                       </span>
                     </div>
-                    {bundleActive && (
-                      <div className="flex justify-between items-center mt-1.5">
-                        <span className="text-sm sm:text-base font-poppins text-emerald-300 font-semibold">Cena paketa (−{bundleDeal!.pct}%)</span>
-                        <span className="text-sm sm:text-base font-poppins font-bold text-emerald-300">{formatPrice(finalPrice)} RSD</span>
-                      </div>
-                    )}
                     {studentActive && (
                       <div className="flex justify-between items-center mt-1.5">
-                        <span className="text-sm sm:text-base font-poppins text-emerald-300 font-semibold">Studentski popust (−20%)</span>
-                        <span className="text-sm sm:text-base font-poppins font-bold text-emerald-300">{formatPrice(finalPrice)} RSD</span>
+                        <span className="flex items-center gap-2 text-sm sm:text-base font-poppins text-foreground/85 font-semibold">Studentska cena<span className="text-[10px] sm:text-xs font-poppins font-semibold text-emerald-300 bg-emerald-400/15 rounded-full px-2 py-0.5">−20%</span></span>
+                        <span className="text-base sm:text-lg font-poppins font-bold text-foreground">{formatPrice(finalPrice)} RSD</span>
                       </div>
                     )}
                     {ilsPromoActive && (
                       <div className="flex justify-between items-center mt-1.5">
-                        <span className="text-sm sm:text-base font-poppins text-emerald-300 font-semibold">Sa promo kodom (−10%)</span>
-                        <span className="text-sm sm:text-base font-poppins font-bold text-emerald-300">{formatPrice(finalPrice)} RSD</span>
+                        <span className="flex items-center gap-2 text-sm sm:text-base font-poppins text-foreground/85 font-semibold">Cena sa promo kodom<span className="text-[10px] sm:text-xs font-poppins font-semibold text-emerald-300 bg-emerald-400/15 rounded-full px-2 py-0.5">−10%</span></span>
+                        <span className="text-base sm:text-lg font-poppins font-bold text-foreground">{formatPrice(finalPrice)} RSD</span>
+                      </div>
+                    )}
+                    {bundleActive && (
+                      <div className="flex justify-between items-center mt-1.5">
+                        <span className="flex items-center gap-2 text-sm sm:text-base font-poppins text-foreground/85 font-semibold">Cena paketa<span className="text-[10px] sm:text-xs font-poppins font-semibold text-emerald-300 bg-emerald-400/15 rounded-full px-2 py-0.5">−{bundleDeal!.pct}%</span></span>
+                        <span className="text-base sm:text-lg font-poppins font-bold text-foreground">{formatPrice(finalPrice)} RSD</span>
                       </div>
                     )}
                     {redeemActive && (
                       <div className="flex justify-between items-center mt-1.5">
-                        <span className="text-sm sm:text-base font-poppins text-emerald-300 font-semibold">Plaćeno u paketu</span>
-                        <span className="text-sm sm:text-base font-poppins font-bold text-emerald-300">0 RSD</span>
+                        <span className="flex items-center gap-2 text-sm sm:text-base font-poppins text-foreground/85 font-semibold">Plaćeno u paketu</span>
+                        <span className="text-base sm:text-lg font-poppins font-bold text-foreground">0 RSD</span>
                       </div>
                     )}
                     {savingsVsList > 0 && (
-                      <div className="flex justify-between items-center mt-1 pt-2 border-t border-foreground/8">
-                        <span className="text-xs sm:text-sm font-poppins text-foreground/60">Ušteda</span>
-                        <span className="text-xs sm:text-sm font-poppins font-semibold" style={{ color: accent.hex }}>{formatPrice(savingsVsList)} RSD</span>
+                      <div className="flex justify-between items-center mt-2.5 px-3 py-2 rounded-xl bg-emerald-400/10 border border-emerald-400/20">
+                        <span className="text-xs sm:text-sm font-poppins font-semibold text-emerald-300">Ušteda</span>
+                        <span className="text-sm sm:text-base font-poppins font-bold text-emerald-300">{formatPrice(savingsVsList)} RSD</span>
                       </div>
                     )}
                     {studentActive && (
                       <p className="text-[11px] sm:text-[13px] font-poppins text-amber-300 font-semibold leading-snug mt-2.5 pt-2.5 border-t border-foreground/8">
-                        Ova cena važi uz indeks. Bez njega se naplaćuje {formatPrice(totalPrice)} RSD.
+                        Ova cena važi uz indeks. Bez njega se naplaćuje {formatPrice(listTotal)} RSD.
                       </p>
                     )}
                     {bundleActive && (
@@ -1553,100 +1688,27 @@ export default function AdminReservationModal({
           )}
 
           {/* ══ SUCCESS ════════════════════════════════════════════════════ */}
+          {/* The same paper sheet the client sees after booking on the site. */}
           {step === "success" && (
-            <div className="flex flex-col items-center text-center py-4 sm:py-6">
-              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-emerald-400/10 flex items-center justify-center mb-5 sm:mb-6">
-                <CheckCircle2 size={44} className="text-emerald-400 sm:w-13 sm:h-13" strokeWidth={1.5} />
-              </div>
-              <h3 className="text-2xl sm:text-3xl md:text-4xl font-bold font-playfair mb-2 sm:mb-3">Rezervacija kreirana!</h3>
-              <p className="text-sm sm:text-base text-foreground/68 font-poppins mb-6 sm:mb-8">
-                {form.email.trim() ? `Potvrda je poslata na ${form.email.trim()}` : "Bez emaila - potvrda nije poslata."}
-              </p>
-
-              {/* ── Stats banner: duration + animated price ── */}
-              <div className="grid grid-cols-2 gap-3 sm:gap-4 w-full mb-4 sm:mb-6">
-                <div className="flex flex-col items-center justify-center bg-foreground/5 rounded-2xl sm:rounded-3xl py-4 sm:py-7 px-3">
-                  <p className="text-[10px] sm:text-xs font-semibold tracking-widest text-foreground/60 font-poppins mb-1 sm:mb-2">TRAJANJE</p>
-                  <p className="text-3xl sm:text-5xl font-bold font-poppins leading-none">{reservationDuration}</p>
-                  <p className="text-xs sm:text-sm text-foreground/60 font-poppins mt-1 sm:mt-2">min</p>
-                </div>
-
-                <div
-                  className="flex flex-col items-center justify-center rounded-2xl sm:rounded-3xl py-4 sm:py-7 px-3 relative overflow-hidden"
-                  style={{ backgroundColor: `${accent.hex}12` }}
-                >
-                  <p className="text-[10px] sm:text-xs font-semibold tracking-widest text-foreground/60 font-poppins mb-1 sm:mb-2">CENA</p>
-                  {anyDiscount && (
-                    <p className="text-xs sm:text-sm text-foreground/55 font-poppins line-through leading-none mb-0.5">
-                      {formatPrice(listTotal)} RSD
-                    </p>
-                  )}
-                  <p className="text-3xl sm:text-5xl font-bold font-poppins leading-none tabular-nums" style={{ color: accent.hex }}>
-                    {formatPrice(priceShown)}
-                  </p>
-                  <p className="text-xs sm:text-sm font-semibold font-poppins mt-1 sm:mt-2" style={{ color: accent.hex }}>RSD</p>
-                  {bundleActive ? (
-                    <span className="mt-2 sm:mt-3 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-poppins text-white bg-green-500">
-                      PAKET {bundleSize}× · −{bundleDeal!.pct}%
-                    </span>
-                  ) : redeemActive ? (
-                    <span className="mt-2 sm:mt-3 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-poppins text-white bg-green-500">
-                      PLAĆENO U PAKETU
-                    </span>
-                  ) : ilsPromoActive ? (
-                    <span className="mt-2 sm:mt-3 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-poppins text-white bg-green-500">
-                      PROMO −10%
-                    </span>
-                  ) : studentActive ? (
-                    <span className="mt-2 sm:mt-3 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-poppins text-white bg-amber-500">
-                      STUDENT −20% · UZ INDEKS
-                    </span>
-                  ) : (
-                    <span className="mt-2 sm:mt-3 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-poppins text-foreground/82 bg-foreground/10">
-                      Redovna cena
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* ── Detailed summary card ── */}
-              <div className="w-full bg-foreground/4 rounded-2xl sm:rounded-3xl p-5 sm:p-7 text-left space-y-3 sm:space-y-4">
-                {[
-                  ["Datum", selectedDate ? formatDateFull(selectedDate) : ""],
-                  ["Vreme", `${selectedTime} – ${minutesToTime(timeToMinutes(selectedTime) + reservationDuration)}`],
-                ].map(([label, value]) => (
-                  <div key={label} className="flex justify-between text-sm sm:text-base font-poppins">
-                    <span className="text-foreground/68">{label}</span>
-                    <span className="font-semibold">{value}</span>
-                  </div>
-                ))}
-                {studentActive && (
-                  <div className="flex items-start gap-2.5 p-3 sm:p-3.5 rounded-xl bg-amber-400/10 border-2 border-amber-400/50">
-                    <AlertCircle size={18} className="text-amber-400 shrink-0 mt-px" />
-                    <p className="text-[11px] sm:text-xs font-poppins text-amber-200 font-semibold leading-snug">
-                      Proveri indeks pri dolasku. Bez njega studentski popust ne važi i naplaćuje se puna cena od {formatPrice(totalPrice)} RSD.
-                    </p>
-                  </div>
-                )}
-                <div className="border-t border-foreground/10 pt-3">
-                  <p className="text-xs sm:text-sm text-foreground/60 font-poppins mb-1.5 sm:mb-2">USLUGE</p>
-                  {!isReturningCustomer && (
-                    <p className="text-sm sm:text-base font-poppins font-semibold text-foreground/68">Konsultacija (10 min)</p>
-                  )}
-                  {effectiveServices.map((s) => (
-                    <p key={s.id} className="text-sm sm:text-base font-poppins font-semibold">{s.name}</p>
-                  ))}
-                </div>
-                {bookingRef && (
-                  <div className="border-t border-foreground/10 pt-3">
-                    <p className="text-xs sm:text-sm text-foreground/60 font-poppins mb-1">REF. BROJ</p>
-                    <p className="text-sm sm:text-lg font-mono font-bold tracking-wider" style={{ color: accent.hex }}>
-                      #{bookingRef}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
+            <BookingSuccess
+              headline={`Termin zakazan! ${studio.name}`}
+              email={form.email.trim()}
+              date={selectedDate ? formatDateFull(selectedDate) : ""}
+              timeRange={`${selectedTime} – ${minutesToTime(timeToMinutes(selectedTime) + reservationDuration)}`}
+              duration={reservationDuration}
+              withConsultation={!isReturningCustomer}
+              services={effectiveServices.map((s) => s.name)}
+              listTotal={listTotal}
+              finalPrice={finalPrice}
+              discount={
+                bundleActive ? { kind: "bundle", size: bundleSize!, pct: bundleDeal!.pct }
+                : redeemActive ? { kind: "redeem" }
+                : ilsPromoActive ? { kind: "promo" }
+                : studentActive ? { kind: "student" }
+                : null
+              }
+              accentHex={accent.hex}
+            />
           )}
 
           {/* ══ PREPARATION ═══════════════════════════════════════════════ */}

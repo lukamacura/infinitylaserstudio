@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef, type TouchEvent as ReactTouchEvent } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, type TouchEvent as ReactTouchEvent } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft, ChevronRight, X,
@@ -12,8 +13,7 @@ import { fetchAll, escapeLike } from "@/lib/fetchAll";
 import {
   supabase, timeToMinutes, minutesToTime, calcTotalDuration, calcBookingDuration, SLOT_SIZE, type BusinessWindow,
 } from "@/lib/supabase";
-import AdminReservationModal from "@/components/AdminReservationModal";
-import AdminMoveDialog, { type MoveSubject, type MovedTo, type MoveEmail } from "@/components/AdminMoveDialog";
+import type { MoveSubject, MovedTo, MoveEmail } from "@/components/AdminMoveDialog";
 import { useCalendarDrag, type CalendarDrop } from "@/lib/useCalendarDrag";
 import HoursEditor, { fmtMin } from "@/components/AdminHoursEditor";
 import AdminLogin from "@/components/AdminLogin";
@@ -31,6 +31,7 @@ import {
   type StaffMember, type StaffSchedule,
 } from "@/lib/staff";
 import { kartonForReservation } from "@/lib/kartoni";
+import { DATA_CHANGED_EVENT } from "@/lib/infy/events";
 import { applyComboRules, computeReservationPrice, isGiftPromoCode, isGiftService, lateCancelFee, type PriceResult } from "@/lib/pricing";
 import { parseBundlePromo } from "@/lib/bundles";
 import { isComboService, isFullBody, isAllowedWithFullBody, EMAIL_REGEX } from "@/components/booking/shared";
@@ -48,6 +49,31 @@ const MIN_CARD_PX_MOBILE  = 44;
 /** A background refresh (tab refocus, timer) is skipped if one ran this recently. */
 const REFRESH_THROTTLE_MS = 5_000;
 const REFRESH_EVERY_MS    = 20_000;
+/** Working hours and the staff schedule rarely change - the quiet refresh reads them this often. */
+const SLOW_REFRESH_MS     = 2 * 60_000;
+/** The whole confirmed history (to tell first-time clients) is read again at most this often. */
+const EMAIL_COUNTS_FRESH_MS = 5 * 60_000;
+
+// Opened on demand: their code is fetched once the calendar is up, not before it.
+const AdminReservationModal = dynamic(() => import("@/components/AdminReservationModal"), { ssr: false });
+const AdminMoveDialog       = dynamic(() => import("@/components/AdminMoveDialog"), { ssr: false });
+
+/** Keeps the old value when a refresh brings the same data, so nothing on screen re-renders. */
+function same<T>(prev: T, next: T): T {
+  return prev === next || JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+}
+
+// Tablet / desktop (Tailwind md): the calendar draws only the layout on screen -
+// a phone gets one day column, not the hidden seven of the desktop as well.
+const DESKTOP_QUERY = "(min-width: 768px)";
+function subscribeDesktop(onChange: () => void) {
+  const mq = window.matchMedia(DESKTOP_QUERY);
+  mq.addEventListener("change", onChange);
+  return () => mq.removeEventListener("change", onChange);
+}
+function useIsDesktop() {
+  return useSyncExternalStore(subscribeDesktop, () => window.matchMedia(DESKTOP_QUERY).matches, () => true);
+}
 
 const SR_DAYS_LONG  = ["Ponedeljak", "Utorak", "Sreda", "Četvrtak", "Petak", "Subota", "Nedelja"];
 const SR_DAYS_SHORT = ["Pon", "Uto", "Sre", "Čet", "Pet", "Sub", "Ned"];
@@ -364,6 +390,85 @@ function layoutDay(rs: ReservationFull[]): LaidOut[] {
   });
 }
 
+// ── Calendar skeleton ─────────────────────────────────────────────────────────
+/** Placeholder appointments per day column: [start, length] in hours from the top. */
+const SKELETON_CARDS: [number, number][][] = [
+  [[0.5, 1], [2, 0.75], [4, 1.5]],
+  [[1, 0.75], [3, 1], [5.5, 1]],
+  [[0, 1.25], [2.5, 1], [6, 0.75]],
+];
+const SKELETON_HOURS = 8;
+
+/**
+ * Stands in for the calendar until the week, the working hours and the staff
+ * have all loaded - the same frame as the real one, so it appears in place
+ * instead of jumping (hours from 8-22 to the studio's, "Zatvoreno" to open).
+ */
+function CalendarSkeleton() {
+  const hourPx = toHeight(60);
+  return (
+    <div className="flex-1 min-h-0 overflow-hidden" role="status" aria-label="Kalendar se učitava">
+      <div className="max-w-400 mx-auto">
+        <div className="bg-surface border-b border-foreground/8 shadow-md shadow-black/20">
+          {/* Phone */}
+          <div className="md:hidden">
+            <div className="flex items-center gap-1.5 px-2 pt-2">
+              <span className="w-9 h-9" />
+              <span className="flex-1 flex justify-center"><span className="bm-skeleton h-4 w-32 rounded-md" /></span>
+              <span className="w-9 h-9" />
+              <span className="bm-skeleton h-8 w-16 rounded-lg" />
+            </div>
+            <div className="grid grid-cols-7 gap-1 px-2 pt-1.5">
+              {Array.from({ length: 7 }, (_, i) => <span key={i} className="bm-skeleton h-14 rounded-xl" />)}
+            </div>
+            <div className="flex items-center justify-between gap-2 px-3 py-2">
+              <span className="bm-skeleton h-6 w-40 rounded-lg" />
+              <span className="bm-skeleton h-8 w-20 rounded-lg" />
+            </div>
+          </div>
+          {/* Tablet / desktop */}
+          <div className="hidden md:grid grid-cols-[80px_repeat(7,1fr)]">
+            <span className="border-r border-foreground/5" />
+            {Array.from({ length: 7 }, (_, i) => (
+              <span key={i} className="py-3 px-2 flex flex-col items-center gap-2 border-l border-foreground/5 first:border-l-0">
+                <span className="bm-skeleton h-4 w-14 rounded-md" />
+                <span className="bm-skeleton h-4 w-20 rounded-md" />
+                <span className="bm-skeleton h-2.5 w-16 rounded" />
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-[52px_1fr] md:grid-cols-[80px_repeat(7,1fr)] py-3">
+          <div className="relative border-r border-foreground/5" style={{ height: hourPx * SKELETON_HOURS }}>
+            {Array.from({ length: SKELETON_HOURS + 1 }, (_, h) => (
+              <span key={h} className="absolute right-2 md:right-3 -translate-y-1/2 bm-skeleton h-2.5 w-7 rounded" style={{ top: h * hourPx }} />
+            ))}
+          </div>
+          {Array.from({ length: 7 }, (_, col) => (
+            <div
+              key={col}
+              className={`relative border-l border-foreground/5 first:border-l-0 ${col === 0 ? "" : "hidden md:block"}`}
+              style={{ height: hourPx * SKELETON_HOURS }}
+            >
+              {Array.from({ length: SKELETON_HOURS + 1 }, (_, h) => (
+                <span key={h} className="absolute inset-x-0 border-t border-foreground/8" style={{ top: h * hourPx }} />
+              ))}
+              {SKELETON_CARDS[col % SKELETON_CARDS.length].map(([start, len]) => (
+                <span
+                  key={start}
+                  className="absolute left-2 right-2 md:left-1.5 md:right-1.5 rounded-lg bm-skeleton"
+                  style={{ top: start * hourPx + 1, height: len * hourPx - 2 }}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const TABS = [
   { key: "calendar", label: "Kalendar",    Icon: Calendar },
   { key: "calls",    label: "Pozivi",      Icon: Phone },
@@ -431,6 +536,13 @@ export default function AdminPage() {
   const [allServices, setAllServices]     = useState<ServiceInfo[]>([]);
   const [priceBook, setPriceBook]         = useState<PriceBook | null>(null);
   const [loading, setLoading]             = useState(false);
+  /** What the calendar waits for before it is drawn the first time for a studio (a skeleton until then). */
+  const [firstLoad, setFirstLoad]         = useState({ week: false, hours: false, staff: false });
+  const calendarReady = firstLoad.week && firstLoad.hours && firstLoad.staff;
+  const markLoaded = useCallback((part: keyof typeof firstLoad) => {
+    setFirstLoad((s) => (s[part] ? s : { ...s, [part]: true }));
+  }, []);
+  const isDesktop = useIsDesktop();
   const [callsLoading, setCallsLoading]   = useState(false);
   const [selected, setSelected]           = useState<ReservationFull | null>(null);
   const [selectedIsReturning, setSelectedIsReturning] = useState<boolean | null>(null);
@@ -500,6 +612,9 @@ export default function AdminPage() {
   const callsReq    = useRef(0);
   const modalReq    = useRef(0);
   const lastRefresh = useRef(0);
+  const lastSlowRefresh = useRef(0);
+  /** Confirmed bookings per email, both studios - who is a first-time client (the call list). */
+  const emailCounts = useRef<{ at: number; counts: Map<string, number> } | null>(null);
 
   /** Apply a change to one reservation on screen and in every cached week. */
   const patchReservation = useCallback((id: string, patch: Partial<ReservationFull>) => {
@@ -511,7 +626,10 @@ export default function AdminPage() {
   const fetchRange = useCallback(async (monday: Date, silent = false) => {
     const req    = ++rangeReq.current;
     const cached = weekCache.current.get(`${location}|${toDateStr(monday)}`);
-    if (cached) setReservations(cached);
+    if (cached) {
+      setReservations((prev) => same(prev, cached));
+      markLoaded("week");
+    }
     if (!silent) setLoading(!cached);
 
     // One query covers the previous and the next week too, so stepping through
@@ -528,6 +646,8 @@ export default function AdminPage() {
     if (error) {
       if (req === rangeReq.current) {
         setLoading(false);
+        // The calendar itself still shows (with the notice) rather than a skeleton forever.
+        markLoaded("week");
         setNotice("Termini nisu učitani. Proveri internet vezu.");
       }
       return;
@@ -541,9 +661,12 @@ export default function AdminPage() {
     }
 
     if (req !== rangeReq.current) return;
-    setReservations(weekCache.current.get(`${location}|${toDateStr(monday)}`) ?? []);
+    // The quiet refresh every 20 s usually brings the same rows: then nothing re-renders.
+    const week = weekCache.current.get(`${location}|${toDateStr(monday)}`) ?? [];
+    setReservations((prev) => same(prev, week));
     setLoading(false);
-  }, [location]);
+    markLoaded("week");
+  }, [location, markLoaded]);
 
   // All services (for combo-package pricing in the detail modal) and every
   // studio's price history - a reservation is priced as it was when booked.
@@ -584,43 +707,59 @@ export default function AdminPage() {
     // the client never actually came. Compared case-insensitively because the
     // email column has mixed casing.
     if (queue.length === 0) {
-      setCallReservations([]);
+      setCallReservations((prev) => (prev.length ? [] : prev));
       setCallsLoading(false);
       return;
     }
 
-    // Every page of it: cut off at 1000 rows, a new client could drop out of
-    // the call list, or a regular could be shown as new.
-    let history: { customer_email: string | null }[];
-    try {
-      history = await fetchAll<{ customer_email: string | null }>((from, to) =>
-        supabase
-          .from("reservations")
-          .select("customer_email")
-          .eq("status", "confirmed")
-          .order("id")
-          .range(from, to));
-    } catch {
-      if (req !== callsReq.current) return;
-      setCallsLoading(false);
-      if (!silent) setNotice("Pozivi nisu učitani. Proveri internet vezu.");
-      return;
+    const emailKey = (email: string | null) => (email ?? "").trim().toLowerCase();
+    const inQueue = new Map<string, number>();
+    for (const r of queue) {
+      const key = emailKey(r.customer_email);
+      if (key) inQueue.set(key, (inQueue.get(key) ?? 0) + 1);
+    }
+
+    // The history is every confirmed booking ever (thousands of rows), so the
+    // quiet refresh reuses the last count - unless the queue holds a booking it
+    // cannot know about yet (a new email, or more bookings than counted).
+    const known = emailCounts.current;
+    const stale = !silent || !known || Date.now() - known.at > EMAIL_COUNTS_FRESH_MS
+      || [...inQueue].some(([key, n]) => (known.counts.get(key) ?? 0) < n);
+
+    let counts: Map<string, number>;
+    if (!stale && known) {
+      counts = known.counts;
+    } else {
+      // Every page of it: cut off at 1000 rows, a new client could drop out of
+      // the call list, or a regular could be shown as new.
+      let history: { customer_email: string | null }[];
+      try {
+        history = await fetchAll<{ customer_email: string | null }>((from, to) =>
+          supabase
+            .from("reservations")
+            .select("customer_email")
+            .eq("status", "confirmed")
+            .order("id")
+            .range(from, to));
+      } catch {
+        if (req !== callsReq.current) return;
+        setCallsLoading(false);
+        if (!silent) setNotice("Pozivi nisu učitani. Proveri internet vezu.");
+        return;
+      }
+      counts = new Map<string, number>();
+      for (const row of history) {
+        const key = emailKey(row.customer_email);
+        if (!key) continue;
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+      emailCounts.current = { at: Date.now(), counts };
     }
     if (req !== callsReq.current) return;
 
-    const counts = new Map<string, number>();
-    for (const row of history) {
-      const key = (row.customer_email ?? "").trim().toLowerCase();
-      if (!key) continue;
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
+    const firstTimers = queue.filter((r) => counts.get(emailKey(r.customer_email)) === 1);
 
-    const firstTimers = queue.filter((r) => {
-      const key = (r.customer_email ?? "").trim().toLowerCase();
-      return counts.get(key) === 1;
-    });
-
-    setCallReservations(firstTimers);
+    setCallReservations((prev) => same(prev, firstTimers));
     setCallsLoading(false);
   }, [location]);
 
@@ -679,9 +818,10 @@ export default function AdminPage() {
     // On a failed load keep the schedule already on screen.
     try {
       const data = await fetchAvailability(location);
-      if (req === availReq.current) setAvailability(data);
+      if (req === availReq.current) setAvailability((prev) => same(prev, data));
     } catch { /* keep current */ }
-  }, [location]);
+    if (req === availReq.current) markLoaded("hours");
+  }, [location, markLoaded]);
 
   const staffReq = useRef(0);
   const fetchStaffAll = useCallback(async () => {
@@ -690,10 +830,11 @@ export default function AdminPage() {
     try {
       const [people, schedule] = await Promise.all([fetchStaff(), fetchStaffSchedule(location)]);
       if (req !== staffReq.current) return;
-      setStaff(people);
-      setStaffSchedule(schedule);
+      setStaff((prev) => same(prev, people));
+      setStaffSchedule((prev) => same(prev, schedule));
     } catch { /* keep current */ }
-  }, [location]);
+    if (req === staffReq.current) markLoaded("staff");
+  }, [location, markLoaded]);
 
   function handleLocationChange(next: typeof location) {
     if (next === location) return;
@@ -706,16 +847,28 @@ export default function AdminPage() {
     setStaffSchedule(EMPTY_STAFF_SCHEDULE);
     setSelected(null);
     setOverrideDate(null);
+    // The other studio's calendar is drawn once its own week, hours and staff are in.
+    setFirstLoad({ week: false, hours: false, staff: false });
     setLocation(next);
   }
 
   useEffect(() => {
-    if (authenticated) fetchAvail();
-  }, [authenticated, fetchAvail]);
+    if (!authenticated) return;
+    lastSlowRefresh.current = Date.now();
+    void fetchAvail();
+    void fetchStaffAll();
+  }, [authenticated, fetchAvail, fetchStaffAll]);
 
+  // The calendar is up: fetch the booking and move dialogs' code in the
+  // background, so "Novi termin" and "Pomeri termin" open at once.
   useEffect(() => {
-    if (authenticated) fetchStaffAll();
-  }, [authenticated, fetchStaffAll]);
+    if (!calendarReady) return;
+    const t = setTimeout(() => {
+      void import("@/components/AdminReservationModal");
+      void import("@/components/AdminMoveDialog");
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [calendarReady]);
 
   // Keep the calendar current without a manual reload: new bookings come in
   // from the public site while the panel is open.
@@ -727,16 +880,27 @@ export default function AdminPage() {
       lastRefresh.current = Date.now();
       void fetchRange(weekStart, true);
       void fetchPendingCalls(true);
-      void fetchAvail();
-      void fetchStaffAll();
+      if (Date.now() - lastSlowRefresh.current >= SLOW_REFRESH_MS) {
+        lastSlowRefresh.current = Date.now();
+        void fetchAvail();
+        void fetchStaffAll();
+      }
+    };
+    // Infy booked, moved or cancelled something: show it at once.
+    const changed = () => {
+      lastRefresh.current = Date.now();
+      void fetchRange(weekStart, true);
+      void fetchPendingCalls(true);
     };
     const timer = setInterval(refresh, REFRESH_EVERY_MS);
     document.addEventListener("visibilitychange", refresh);
     window.addEventListener("focus", refresh);
+    window.addEventListener(DATA_CHANGED_EVENT, changed);
     return () => {
       clearInterval(timer);
       document.removeEventListener("visibilitychange", refresh);
       window.removeEventListener("focus", refresh);
+      window.removeEventListener(DATA_CHANGED_EVENT, changed);
     };
   }, [authenticated, weekStart, fetchRange, fetchPendingCalls, fetchAvail, fetchStaffAll]);
 
@@ -1589,14 +1753,22 @@ export default function AdminPage() {
             {openNow && <span className="absolute inset-0 rounded-full bg-green-400/60 animate-ping" />}
             <span className={`relative w-2.5 h-2.5 rounded-full ${openNow ? "bg-green-400" : "bg-foreground/25"}`} />
           </span>
-          <div className="leading-tight">
-            <p className={`text-[11px] font-bold font-poppins uppercase tracking-wider ${openNow ? "text-green-400" : "text-foreground/68"}`}>
-              {openNow ? `Otvoreno do ${fmtMin(openNow.end)}` : opensLater ? `Otvara se u ${fmtMin(opensLater.start)}` : "Zatvoreno"}
-            </p>
-            <p className="text-[10px] font-medium font-poppins text-foreground/55 tabular-nums">
-              Danas: {fmtWindows(todayWindows) ?? "ne radi"}
-            </p>
-          </div>
+          {firstLoad.hours ? (
+            <div className="leading-tight admin-fade-in">
+              <p className={`text-[11px] font-bold font-poppins uppercase tracking-wider ${openNow ? "text-green-400" : "text-foreground/68"}`}>
+                {openNow ? `Otvoreno do ${fmtMin(openNow.end)}` : opensLater ? `Otvara se u ${fmtMin(opensLater.start)}` : "Zatvoreno"}
+              </p>
+              <p className="text-[10px] font-medium font-poppins text-foreground/55 tabular-nums">
+                Danas: {fmtWindows(todayWindows) ?? "ne radi"}
+              </p>
+            </div>
+          ) : (
+            // Not "Zatvoreno" for a moment before the hours arrive.
+            <div className="flex flex-col gap-1.5 py-0.5" aria-hidden>
+              <span className="bm-skeleton h-2.5 w-24 rounded" />
+              <span className="bm-skeleton h-2 w-16 rounded" />
+            </div>
+          )}
         </div>
 
         {/* Legend — what a card's look means */}
@@ -1671,20 +1843,32 @@ export default function AdminPage() {
         </div>
       </div>
 
-      <AdminReservationModal
-        isOpen={reservationModalOpen}
-        location={location}
-        onClose={() => setReservationModalOpen(false)}
-        onSuccess={() => fetchRange(weekStart)}
-      />
+      {/* Mounted only while open: it starts fresh each time and costs nothing while closed */}
+      {reservationModalOpen && (
+        <AdminReservationModal
+          isOpen
+          location={location}
+          onClose={() => setReservationModalOpen(false)}
+          onSuccess={() => fetchRange(weekStart)}
+        />
+      )}
 
       {/* ── Calls Tab ───────────────────────────────────────────────────────── */}
       {activeTab === "calls" && (
         <div className="flex-1 min-h-0 overflow-auto overscroll-y-contain custom-scrollbar">
           <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-3">
             {callsLoading && (
-              <div className="flex justify-center py-12">
-                <div className="w-10 h-10 border-3 border-accent border-t-transparent rounded-full animate-spin shadow-lg" />
+              <div className="space-y-3" role="status" aria-label="Pozivi se učitavaju">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="rounded-2xl border border-foreground/8 bg-surface p-4 flex items-center gap-3">
+                    <span className="bm-skeleton w-11 h-11 rounded-xl shrink-0" />
+                    <span className="flex-1 space-y-2">
+                      <span className="block bm-skeleton h-3.5 w-2/5 rounded" />
+                      <span className="block bm-skeleton h-2.5 w-3/5 rounded" />
+                    </span>
+                    <span className="bm-skeleton w-24 h-9 rounded-xl shrink-0" />
+                  </div>
+                ))}
               </div>
             )}
 
@@ -2110,12 +2294,13 @@ export default function AdminPage() {
             aria-hidden
             className={`absolute top-0 inset-x-0 h-0.5 z-30 overflow-hidden pointer-events-none transition-opacity duration-300 ${loading ? "opacity-100" : "opacity-0"}`}
           >
-            {loading && <div className="admin-loading-bar h-full w-1/3 bg-accent" />}
+            {loading && calendarReady && <div className="admin-loading-bar h-full w-1/3 bg-accent" />}
           </div>
 
+          {!calendarReady ? <CalendarSkeleton /> : (
           <div
             ref={calendarDrag.scrollerRef}
-            className="flex-1 min-h-0 overflow-auto overscroll-y-contain custom-scrollbar"
+            className="flex-1 min-h-0 overflow-auto overscroll-y-contain custom-scrollbar admin-fade-in"
             onTouchStart={onCalendarTouchStart}
             onTouchEnd={onCalendarTouchEnd}
           >
@@ -2285,18 +2470,20 @@ export default function AdminPage() {
                   )}
                 </div>
 
-                {/* Mobile Col */}
-                <div
-                  key={mobileDay.dateStr}
-                  ref={calendarDrag.bindColumn(mobileDay.dateStr, true)}
-                  className="md:hidden relative admin-fade-in"
-                  style={{ height: gridHeight }}
-                >
-                  {renderDayBody(mobileDay, true)}
-                </div>
+                {/* Mobile Col - only on a phone (the classes stay as a guard) */}
+                {!isDesktop && (
+                  <div
+                    key={mobileDay.dateStr}
+                    ref={calendarDrag.bindColumn(mobileDay.dateStr, true)}
+                    className="md:hidden relative admin-fade-in"
+                    style={{ height: gridHeight }}
+                  >
+                    {renderDayBody(mobileDay, true)}
+                  </div>
+                )}
 
-                {/* Desktop Cols */}
-                {days.map((day) => (
+                {/* Desktop Cols - only on a tablet / desktop */}
+                {isDesktop && days.map((day) => (
                   <div
                     key={day.dateStr}
                     ref={calendarDrag.bindColumn(day.dateStr, false)}
@@ -2309,6 +2496,7 @@ export default function AdminPage() {
               </div>
             </div>
           </div>
+          )}
         </div>
       )}
 

@@ -40,6 +40,12 @@ export interface BookingSheetProps {
    * red and a note is written under the sum - drawn when this turns on.
    */
   cancelled?: { late: boolean } | null;
+  /** Instead of "Tvoj termin" - the staff's copy names the client. */
+  title?: string;
+  /** A "Studio" line under the title (staff's copy: which studio). */
+  studio?: string;
+  /** A moved term: the old day and time, struck through, above the new ones. */
+  movedFrom?: { date: string; timeRange: string } | null;
 }
 
 /** Place in the writing order of the notes page (`--w` in globals.css). */
@@ -87,11 +93,18 @@ export default function BookingSheet(p: BookingSheetProps) {
     return () => cancelAnimationFrame(id);
   }, []);
 
-  const rows: [string, string][] = [
-    ["Datum", p.date],
-    ["Vreme", p.timeRange],
-    ["Trajanje", `${p.duration} min`],
+  const cancelled = p.cancelled;
+  const rows: { label: string; value: string; cancels: boolean; moved: boolean }[] = [
+    ...(p.studio ? [{ label: "Studio", value: p.studio, cancels: false, moved: false }] : []),
+    ...(p.movedFrom
+      ? [{ label: "Bilo je", value: `${p.movedFrom.date}, ${p.movedFrom.timeRange}`, cancels: false, moved: true }]
+      : []),
+    { label: "Datum", value: p.date, cancels: true, moved: false },
+    { label: "Vreme", value: p.timeRange, cancels: true, moved: false },
+    { label: "Trajanje", value: `${p.duration} min`, cancels: false, moved: false },
   ];
+  /** Datum is the first of the two lines a cancellation strikes through. */
+  const firstCancelRow = rows.findIndex((r) => r.cancels);
   const items = [
     ...(p.withConsultation ? [{ name: "Konsultacija (10 min)", muted: true }] : []),
     ...p.services.map((name) => ({ name, muted: false })),
@@ -101,7 +114,6 @@ export default function BookingSheet(p: BookingSheetProps) {
   const wLine = wItems + items.length;
   const wList = wLine + 1;
   const wTotal = p.discount ? wList + 3 : wLine + 1;
-  const cancelled = p.cancelled;
   // Cancelled before the page opened: the red marks wait until the sheet is
   // written out. Cancelled just now (the sheet is on screen): they come at once.
   const [cancelledAtMount] = useState(!!p.cancelled);
@@ -115,25 +127,30 @@ export default function BookingSheet(p: BookingSheetProps) {
       <div className="notes-body" data-rv-in={written ? "" : undefined}>
         {/* Title */}
         <p className="notes-write relative inline-block text-[1.75rem] sm:text-[2rem] font-bold leading-none mb-5 sm:mb-6">
-          Tvoj termin
+          {p.title ?? "Tvoj termin"}
           <svg className="absolute -bottom-2 left-0 w-full h-2" viewBox="0 0 200 8" fill="none" preserveAspectRatio="none" aria-hidden>
             <path d="M2 5 Q40 1 90 4 T198 3" stroke="var(--pen)" strokeWidth="2.5" strokeLinecap="round" />
           </svg>
         </p>
 
-        {rows.map(([label, value], i) => (
-          <div
-            key={label}
-            className={`notes-write flex items-baseline justify-between gap-3 ${i > 0 ? "mt-1.5 sm:mt-2" : ""}`}
-            style={write(1 + i)}
-          >
-            <span className="text-lg sm:text-xl opacity-70">{label}</span>
-            <span className={`relative inline-block text-xl sm:text-2xl font-bold text-right leading-tight transition-opacity duration-700 ${cancelled && i < 2 ? "opacity-60" : ""}`}>
-              {value}
-              {cancelled && i < 2 && <Strike delay={marksAt + 0.15 + i * 0.25} />}
-            </span>
-          </div>
-        ))}
+        {rows.map((row, i) => {
+          const struck = (!!cancelled && row.cancels) || row.moved;
+          // A moved term's old line is struck right after it is written.
+          const delay = row.moved ? 0.25 + (1 + i) * 0.3 + 0.5 : marksAt + 0.15 + (i - firstCancelRow) * 0.25;
+          return (
+            <div
+              key={row.label}
+              className={`notes-write flex items-baseline justify-between gap-3 ${i > 0 ? "mt-1.5 sm:mt-2" : ""}`}
+              style={write(1 + i)}
+            >
+              <span className="text-lg sm:text-xl opacity-70">{row.label}</span>
+              <span className={`relative inline-block text-xl sm:text-2xl font-bold text-right leading-tight transition-opacity duration-700 ${struck ? "opacity-60" : ""}`}>
+                {row.value}
+                {struck && <Strike delay={delay} />}
+              </span>
+            </div>
+          );
+        })}
 
         <p className="notes-write text-lg sm:text-xl opacity-70 mt-4 sm:mt-5" style={write(wItems - 1)}>Usluge:</p>
         {items.map((s, i) => (

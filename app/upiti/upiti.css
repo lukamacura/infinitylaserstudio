@@ -1,0 +1,408 @@
+/* ── Upiti: the call list ─────────────────────────────────────────────────────
+   A sheet of notebook paper taped to the desk: a red margin with the day each
+   person was written in, their name in pen, the number to call. A call nobody
+   answered is a tally mark; done is crossed out with a stamp next to it.
+   Tokens, grain and the aged overlay come from ../kartoni/karton.css. */
+
+.spisak {
+  /* The margin column: the day sits in it. */
+  --m: 60px;
+  position: relative;
+  border-radius: 2px 3px 7px 5px / 3px 2px 9px 6px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 22px 44px -18px rgba(0, 0, 0, 0.75);
+  background-image:
+    linear-gradient(
+      to right,
+      transparent calc(var(--m) - 4px),
+      var(--margin) calc(var(--m) - 4px) calc(var(--m) - 2.6px),
+      transparent calc(var(--m) - 2.6px) calc(var(--m) - 1px),
+      var(--margin) calc(var(--m) - 1px) var(--m),
+      transparent var(--m)
+    ),
+    var(--grain);
+}
+
+@media (min-width: 640px) {
+  .spisak { --m: 84px; }
+}
+
+/* A strip of masking tape holding the sheet to the desk. */
+.spisak-tape {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  z-index: 5;
+  width: 118px;
+  height: 27px;
+  margin-left: -59px;
+  transform: rotate(-2.5deg);
+  background-color: rgba(233, 222, 192, 0.8);
+  background-image: var(--grain);
+  clip-path: polygon(
+    0 0, 100% 0, 98% 14%, 100% 28%, 97.5% 42%, 100% 57%, 98% 71%, 100% 86%, 98.5% 100%,
+    0 100%, 2% 86%, 0 71%, 2.5% 57%, 0 42%, 2% 28%, 0 14%
+  );
+}
+
+.spisak-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 30px 14px 8px calc(var(--m) + 12px);
+  border-bottom: 1px solid var(--rule);
+}
+
+.spisak-title {
+  font-family: var(--font-hand), "Segoe Script", cursive;
+  font-weight: 700;
+  font-size: 38px;
+  line-height: 1;
+  color: var(--ink);
+  text-shadow: 0 0 0.7px rgba(43, 38, 33, 0.4);
+}
+
+.spisak-date {
+  flex: none;
+  padding-bottom: 4px;
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+/* ── One line on the list ─────────────────────────────────────────────────── */
+
+.upit {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--m) minmax(0, 1fr) auto;
+  align-items: start;
+  min-height: 66px;
+  border-bottom: 1px solid var(--rule);
+}
+
+/* The whole line opens the person; the number and the card stay their own links. */
+.upit-open {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  cursor: pointer;
+  transition: background-color 0.12s;
+}
+
+.upit-open:hover { background: rgba(62, 98, 148, 0.06); }
+.upit-open:focus-visible { outline: 2px solid var(--pen); outline-offset: -2px; }
+
+.upit-day,
+.upit-body,
+.upit-side {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.upit a,
+.upit button.upit-call {
+  pointer-events: auto;
+}
+
+.upit-day {
+  padding: 15px 9px 0 0;
+  text-align: right;
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--ink-soft);
+}
+
+/* Waiting for two days or more: the day goes red. */
+.upit-day.is-late { color: var(--stamp); }
+
+.upit-body { padding: 9px 6px 11px 12px; min-width: 0; }
+
+.upit-name {
+  font-family: var(--font-hand), "Segoe Script", cursive;
+  font-weight: 700;
+  font-size: 27px;
+  line-height: 1.05;
+  color: var(--pen);
+  overflow-wrap: anywhere;
+  text-shadow: 0 0 0.7px rgba(36, 71, 124, 0.45);
+}
+
+.upit-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  margin-top: 3px;
+}
+
+.upit-phone {
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  text-decoration: underline dotted;
+  text-decoration-color: var(--ink-faint);
+  text-underline-offset: 4px;
+}
+
+.upit-nophone {
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 13px;
+  font-style: italic;
+  color: var(--ink-faint);
+}
+
+.upit-note {
+  min-width: 0;
+  font-family: var(--font-hand), "Segoe Script", cursive;
+  font-weight: 500;
+  font-size: 21px;
+  line-height: 1.1;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.upit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: 6px;
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--ink-soft);
+}
+
+.upit-meta:empty { display: none; }
+
+.upit-karton {
+  font-weight: 700;
+  color: var(--stamp);
+  text-decoration: underline;
+  text-decoration-color: rgba(165, 47, 42, 0.35);
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
+/* Where they came from: a little rubber stamp, each in its own ink. */
+.upit-src {
+  display: inline-block;
+  padding: 2px 5px 1px;
+  border: 1.5px solid currentColor;
+  border-radius: 3px;
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transform: rotate(-3deg);
+  opacity: 0.85;
+  text-shadow: none;
+  -webkit-mask-image: var(--wear);
+  mask-image: var(--wear);
+}
+
+.upit-src[data-src="instagram"] { color: #8C2F63; }
+.upit-src[data-src="facebook"]  { color: #2D4F8E; }
+.upit-src[data-src="tiktok"]    { color: #2B2621; }
+.upit-src[data-src="viber"]     { color: #5C3E8F; }
+.upit-src[data-src="telefon"]   { color: #2D6A3E; }
+.upit-src[data-src="drugo"]     { color: #62574A; }
+
+/* Calls nobody answered, counted the way it's done on paper: |||| and a slash. */
+.tally {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 14px;
+  vertical-align: middle;
+}
+
+.tally-group {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 14px;
+}
+
+.tally-group i {
+  display: block;
+  width: 1.7px;
+  height: 13px;
+  border-radius: 1px;
+  background: var(--pen);
+  transform: rotate(5deg);
+}
+
+.tally-group i:nth-child(even) { height: 12px; transform: rotate(-3deg) translateY(1px); }
+
+.tally-group i.tally-slash {
+  position: absolute;
+  left: -3px;
+  top: 6px;
+  width: 24px;
+  height: 1.7px;
+  transform: rotate(-28deg);
+}
+
+.upit-side { padding: 11px 10px 0 4px; }
+
+.upit-call {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1.5px solid var(--pen);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+  color: var(--pen);
+  transition: background-color 0.12s, color 0.12s;
+}
+
+.upit-call:hover { background: var(--pen); color: var(--paper); }
+
+/* ── Crossed out ──────────────────────────────────────────────────────────── */
+
+.upit.is-done { min-height: 58px; }
+.upit.is-done .upit-day,
+.upit.is-done .upit-line,
+.upit.is-done .upit-meta { opacity: 0.6; }
+
+.upit.is-done .upit-name {
+  color: rgba(36, 71, 124, 0.62);
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+  text-decoration-color: rgba(36, 71, 124, 0.8);
+  text-decoration-skip-ink: none;
+}
+
+.upit-result {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 3px 7px 2px;
+  border: 2px solid currentColor;
+  border-radius: 4px;
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: center;
+  white-space: nowrap;
+  transform: rotate(-7deg);
+  opacity: 0.85;
+  text-shadow: none;
+  -webkit-mask-image: var(--wear);
+  mask-image: var(--wear);
+}
+
+.upit-result small { display: block; font-size: 9.5px; letter-spacing: 0.02em; }
+.upit-result.is-booked { color: #2D6A3E; }
+.upit-result.is-declined { color: var(--stamp); }
+
+/* ── The rest of the sheet ────────────────────────────────────────────────── */
+
+.spisak-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 54px;
+  padding: 0 14px 0 calc(var(--m) + 12px);
+  border-bottom: 1px solid var(--rule);
+  color: var(--pen);
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.spisak-add:hover { background: rgba(62, 98, 148, 0.07); }
+
+.spisak-empty {
+  padding: 16px 14px 14px calc(var(--m) + 12px);
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--font-hand), "Segoe Script", cursive;
+  font-weight: 500;
+  font-size: 25px;
+  line-height: 1.15;
+  color: var(--ink-soft);
+}
+
+.spisak-section {
+  padding: 26px 14px 7px calc(var(--m) + 12px);
+  border-bottom: 1px solid var(--rule);
+}
+
+.spisak-more {
+  display: block;
+  width: 100%;
+  min-height: 50px;
+  padding: 0 14px 0 calc(var(--m) + 12px);
+  color: var(--pen);
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+
+.spisak-foot { height: 40px; }
+
+/* ── The person, opened ───────────────────────────────────────────────────── */
+
+.upit-sheet-note {
+  font-family: var(--font-hand), "Segoe Script", cursive;
+  font-weight: 500;
+  font-size: 24px;
+  line-height: 1.15;
+  color: var(--pen);
+  overflow-wrap: anywhere;
+}
+
+.upit-fact {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 8px 12px;
+  border: 1.5px dashed var(--ink-faint);
+  border-radius: 8px;
+  font-family: var(--font-typewriter), "Courier New", monospace;
+  font-size: 13.5px;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+a.upit-fact { cursor: pointer; }
+a.upit-fact:hover { background: rgba(62, 98, 148, 0.07); }
+.upit-fact b { color: var(--stamp); }
+.upit-fact.is-booked b { color: #2D6A3E; }
+
+.karton-btn.upit-btn-booked { background: #2D6A3E; color: #fff; }
+.karton-btn.upit-btn-small { min-height: 40px; padding: 0 12px; font-size: 13px; }
+
+.upit-src-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .upit-open, .upit-call { transition: none; }
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 
 /**
@@ -27,6 +28,25 @@ function setFinanceUnlocked(on: boolean) {
   } catch { /* storage blocked - the panel just asks again */ }
 }
 
+/**
+ * The account this browser last saw confirmed as admin. With it the panel
+ * opens at once and starts loading, while is_admin is asked again in the
+ * background - one round trip less before the calendar. It only decides what
+ * is drawn: every read and write is still checked by the database (RLS).
+ */
+const ADMIN_OK_KEY = "ils-admin-ok";
+
+function knownAdmin(userId: string): boolean {
+  try { return localStorage.getItem(ADMIN_OK_KEY) === userId; } catch { return false; }
+}
+
+function rememberAdmin(userId: string | null) {
+  try {
+    if (userId) localStorage.setItem(ADMIN_OK_KEY, userId);
+    else localStorage.removeItem(ADMIN_OK_KEY);
+  } catch { /* storage blocked - the check simply waits for the database */ }
+}
+
 export function useAdminAuth(panel: AdminPanel = "admin") {
   /** null = still checking the saved session. */
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
@@ -34,8 +54,8 @@ export function useAdminAuth(panel: AdminPanel = "admin") {
   useEffect(() => {
     let active = true;
 
-    async function check(hasSession: boolean) {
-      if (!hasSession) {
+    async function check(session: Session | null) {
+      if (!session) {
         if (active) setAuthenticated(false);
         return;
       }
@@ -43,14 +63,21 @@ export function useAdminAuth(panel: AdminPanel = "admin") {
         if (active) setAuthenticated(false);
         return;
       }
-      const { data } = await supabase.rpc("is_admin");
-      if (active) setAuthenticated(data === true);
+      const userId = session.user.id;
+      const known = knownAdmin(userId);
+      if (known && active) setAuthenticated(true);
+      const { data, error } = await supabase.rpc("is_admin");
+      if (!active) return;
+      // No answer (connection): a known admin stays in - the data itself reports the failure.
+      if (error && known) return;
+      rememberAdmin(data === true ? userId : null);
+      setAuthenticated(data === true);
     }
 
-    supabase.auth.getSession().then(({ data }) => check(!!data.session));
+    supabase.auth.getSession().then(({ data }) => check(data.session));
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_OUT") { setFinanceUnlocked(false); setAuthenticated(false); }
-      else if (event === "SIGNED_IN") void check(!!session);
+      if (event === "SIGNED_OUT") { setFinanceUnlocked(false); rememberAdmin(null); setAuthenticated(false); }
+      else if (event === "SIGNED_IN") void check(session);
     });
     return () => {
       active = false;
@@ -91,6 +118,8 @@ export function useAdminAuth(panel: AdminPanel = "admin") {
       await supabase.auth.signOut();
       return "Ovaj nalog nema admin pristup.";
     }
+    const { data: who } = await supabase.auth.getSession();
+    rememberAdmin(who.session?.user.id ?? null);
     if (panel === "finances") setFinanceUnlocked(true);
     setAuthenticated(true);
     return null;

@@ -2,13 +2,15 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Calendar, NotebookPen, Wallet, BarChart3, Filter, LogOut, ChevronDown, Check } from "lucide-react";
+import { Calendar, NotebookPen, PhoneCall, Wallet, BarChart3, Filter, LogOut } from "lucide-react";
 import AdminLocationSwitch from "@/components/AdminLocationSwitch";
 import type { LocationId } from "@/lib/locations";
+import { fetchUpitiOpenCount } from "@/lib/upiti";
 
 const PAGES = [
   { key: "admin",    href: "/admin",    label: "Admin",      Icon: Calendar  },
   { key: "kartoni",  href: "/kartoni",  label: "Kartoni",    Icon: NotebookPen },
+  { key: "upiti",    href: "/upiti",    label: "Upiti",      Icon: PhoneCall },
   { key: "finances", href: "/finances", label: "Finansije",  Icon: Wallet    },
   { key: "stats",    href: "/stats",    label: "Statistike", Icon: BarChart3 },
   { key: "fnl",      href: "/fnl",      label: "Funnel",     Icon: Filter    },
@@ -16,16 +18,31 @@ const PAGES = [
 
 export type AdminPageKey = (typeof PAGES)[number]["key"];
 
+/** How many inquiries wait for a call, next to "Upiti" - so nobody is forgotten. */
+function CountBadge({ count, strong }: { count: number; strong?: boolean }) {
+  return (
+    <span
+      className={`min-w-5 h-5 px-1.5 inline-flex items-center justify-center rounded-full text-[11px] font-bold font-poppins leading-none tabular-nums ${
+        strong ? "bg-accent text-on-accent" : "bg-accent/20 text-accent"
+      }`}
+    >
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
 /**
- * Header shared by every admin page. On a phone it is a single row - a page
- * menu and the studio switch - so the screen goes to the content; from `md` up
- * it shows the brand, the page tabs, the studio switch and the page's extras.
+ * Header shared by every admin page. On a phone every page is a tab in one
+ * row (icon + name, logout at the end) with the studio switch under it; from
+ * `md` up it shows the brand, the page tabs, the studio switch and the page's
+ * extras.
  */
 export default function AdminHeader({
   current,
   location,
   onLocationChange,
   onLogout,
+  upitiCount,
   children,
 }: {
   current: AdminPageKey;
@@ -33,77 +50,66 @@ export default function AdminHeader({
   /** Leave out on pages that are not about a single studio. */
   onLocationChange?: (next: LocationId) => void;
   onLogout: () => void;
+  /** The /upiti page passes its own live count; elsewhere the header asks. */
+  upitiCount?: number;
   /** Desktop-only extras next to the studio switch (status, legend...). */
   children?: ReactNode;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const page = PAGES.find((p) => p.key === current) ?? PAGES[0];
+  const [fetchedCount, setFetchedCount] = useState<number | null>(null);
+  const waiting = upitiCount ?? fetchedCount ?? 0;
 
   useEffect(() => {
-    if (!menuOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMenuOpen(false); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [menuOpen]);
+    if (upitiCount !== undefined) return;
+    let active = true;
+    fetchUpitiOpenCount()
+      .then((n) => { if (active) setFetchedCount(n); })
+      .catch(() => { /* no badge, the page still works */ });
+    return () => { active = false; };
+  }, [upitiCount]);
 
   return (
     <header className="sticky top-0 z-30 shrink-0 bg-surface border-b-2 border-accent/40 shadow-sm pt-[env(safe-area-inset-top)]">
-      {/* Phone */}
-      <div className="md:hidden relative h-14 px-3 flex items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={() => setMenuOpen((o) => !o)}
-          aria-expanded={menuOpen}
-          aria-haspopup="menu"
-          className="h-10 pl-2.5 pr-2 flex items-center gap-2 rounded-xl bg-foreground/3 active:bg-foreground/8 transition-colors cursor-pointer min-w-0"
+      {/* Phone: every page in sight, one tap away; the studio switch under them */}
+      <div className="md:hidden">
+        <nav
+          aria-label="Admin stranice"
+          className="h-14 px-1.5 flex items-center justify-between gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
-          <span className="w-7 h-7 rounded-lg bg-accent/15 text-accent flex items-center justify-center shrink-0">
-            <page.Icon size={15} />
-          </span>
-          <span className="text-sm font-bold font-poppins truncate">{page.label}</span>
-          <ChevronDown size={16} className={`shrink-0 text-foreground/50 transition-transform duration-200 ${menuOpen ? "rotate-180" : ""}`} />
-        </button>
-
-        {onLocationChange && <AdminLocationSwitch value={location} onChange={onLocationChange} />}
-
-        {menuOpen && (
-          <>
-            <div className="fixed inset-0 z-40 bg-black/40 admin-fade-in" onClick={() => setMenuOpen(false)} />
-            <div
-              role="menu"
-              className="absolute left-3 top-[calc(100%+6px)] z-50 w-60 p-1.5 rounded-2xl bg-surface border border-foreground/10 shadow-2xl shadow-black/50 admin-sheet-in"
-            >
-              {PAGES.map((p) => {
-                const active = p.key === current;
-                return (
-                  <Link
-                    key={p.key}
-                    href={p.href}
-                    role="menuitem"
-                    onClick={() => setMenuOpen(false)}
-                    aria-current={active ? "page" : undefined}
-                    className={`h-12 px-3 flex items-center gap-3 rounded-xl text-sm font-bold font-poppins transition-colors ${
-                      active ? "bg-accent/12 text-accent" : "text-foreground/80 active:bg-foreground/5"
-                    }`}
-                  >
-                    <p.Icon size={18} className={active ? "" : "text-foreground/50"} />
-                    <span className="flex-1">{p.label}</span>
-                    {active && <Check size={16} />}
-                  </Link>
-                );
-              })}
-              <div className="my-1.5 h-px bg-foreground/8" />
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => { setMenuOpen(false); onLogout(); }}
-                className="w-full h-12 px-3 flex items-center gap-3 rounded-xl text-sm font-bold font-poppins text-red-400 active:bg-red-400/10 transition-colors cursor-pointer"
+          {PAGES.map((p) => {
+            const active = p.key === current;
+            return (
+              <Link
+                key={p.key}
+                href={p.href}
+                aria-current={active ? "page" : undefined}
+                className={`relative shrink-0 h-12 px-1.5 flex flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-semibold font-poppins leading-none whitespace-nowrap transition-colors ${
+                  active ? "bg-accent/15 text-accent" : "text-foreground/60 active:bg-foreground/5"
+                }`}
               >
-                <LogOut size={18} />
-                Odjava
-              </button>
-            </div>
-          </>
+                <p.Icon size={19} />
+                {p.label}
+                {p.key === "upiti" && waiting > 0 && (
+                  <span className="absolute top-0.5 right-0">
+                    <CountBadge count={waiting} strong={!active} />
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+          <button
+            type="button"
+            onClick={onLogout}
+            aria-label="Odjava"
+            className="shrink-0 w-9 h-12 flex items-center justify-center rounded-xl text-red-400 active:bg-red-400/10 transition-colors cursor-pointer"
+          >
+            <LogOut size={18} />
+          </button>
+        </nav>
+
+        {onLocationChange && (
+          <div className="px-3 pb-2 flex justify-center">
+            <AdminLocationSwitch value={location} onChange={onLocationChange} />
+          </div>
         )}
       </div>
 
@@ -118,12 +124,14 @@ export default function AdminHeader({
           <nav className="flex items-center gap-1 bg-foreground/3 rounded-xl p-1 shrink-0">
             {PAGES.map((p) =>
               p.key === current ? (
-                <span key={p.key} aria-current="page" className="px-3 py-1.5 rounded-lg bg-accent/15 text-xs font-bold font-poppins text-accent uppercase tracking-widest">
+                <span key={p.key} aria-current="page" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent/15 text-xs font-bold font-poppins text-accent uppercase tracking-widest">
                   {p.label}
+                  {p.key === "upiti" && waiting > 0 && <CountBadge count={waiting} />}
                 </span>
               ) : (
-                <Link key={p.key} href={p.href} className="px-3 py-1.5 rounded-lg text-xs font-bold font-poppins text-foreground/50 hover:text-foreground/76 uppercase tracking-widest transition-colors">
+                <Link key={p.key} href={p.href} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold font-poppins text-foreground/50 hover:text-foreground/76 uppercase tracking-widest transition-colors">
                   {p.label}
+                  {p.key === "upiti" && waiting > 0 && <CountBadge count={waiting} strong />}
                 </Link>
               ),
             )}

@@ -338,6 +338,55 @@ export type Database = {
           },
         ]
       }
+      upiti: {
+        Row: {
+          id: string
+          name: string
+          phone: string | null
+          source: string
+          note: string
+          location: string | null
+          status: string
+          attempts: number
+          last_call_at: string | null
+          closed_at: string | null
+          remind_on: string | null
+          phone_norm: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          phone?: string | null
+          source?: string
+          note?: string
+          location?: string | null
+          status?: string
+          attempts?: number
+          last_call_at?: string | null
+          closed_at?: string | null
+          remind_on?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          phone?: string | null
+          source?: string
+          note?: string
+          location?: string | null
+          status?: string
+          attempts?: number
+          last_call_at?: string | null
+          closed_at?: string | null
+          remind_on?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       service_prices: {
         Row: {
           location: string
@@ -516,6 +565,27 @@ export type Database = {
         Args: { p_id: string; p_confirm?: boolean }
         Returns: Json
       }
+      admin_create_booking: {
+        Args: {
+          p_id: string
+          p_location: string
+          p_name: string
+          p_email: string
+          p_phone: string | null
+          p_date: string
+          p_start_time: string
+          p_service_ids: string[]
+          p_with_consultation: boolean
+          p_promo_code: string | null
+          p_notes: string | null
+        }
+        Returns: Json
+      }
+      admin_cancel_reservation: {
+        Args: { p_id: string; p_reason?: string | null }
+        Returns: Json
+      }
+      infy_facts: { Args: { p_return_weeks?: number }; Returns: Json }
       karton_search: {
         Args: { p_query?: string; p_limit?: number; p_offset?: number }
         Returns: {
@@ -537,6 +607,19 @@ export type Database = {
       karton_for_reservation: { Args: { p_reservation_id: string }; Returns: string | null }
       karton_delete: { Args: { p_id: string }; Returns: undefined }
       karton_merge: { Args: { p_keep: string; p_drop: string }; Returns: undefined }
+      upiti_list: {
+        Args: { p_open?: boolean; p_limit?: number; p_offset?: number }
+        Returns: {
+          id: string; name: string; phone: string | null; source: string; note: string; location: string | null;
+          status: string; saved_status: string; attempts: number; last_call_at: string | null;
+          created_at: string; done_at: string | null;
+          karton_id: string | null; karton_number: number | null; karton_name: string | null;
+          booked_date: string | null; booked_time: string | null; booked_location: string | null; booked_after: boolean;
+          remind_on: string | null; due_on: string;
+          total: number
+        }[]
+      }
+      upiti_open_count: { Args: Record<string, never>; Returns: number }
       public_busy_slots: {
         Args: { p_from: string; p_to: string; p_location?: string }
         Returns: { date: string; start_time: string; end_time: string; status: string }[]

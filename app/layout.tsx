@@ -6,6 +6,7 @@ import "./globals.css";
 import Navbar from "@/components/Navbar";
 import FloatingBookingButton from "@/components/FloatingBookingButton";
 import SocialProofToast from "@/components/SocialProofToast";
+import InfyGate from "@/components/infy/InfyGate";
 import { OG_BASE } from "@/lib/seo";
 import { GOOGLE_ADS_ID } from "@/lib/googleAds";
 
@@ -137,6 +138,7 @@ export default function RootLayout({
         <SocialProofToast />
 {children}
         <FloatingBookingButton />
+        <InfyGate />
         <Analytics />
       </body>
     </html>

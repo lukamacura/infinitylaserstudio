@@ -1,16 +1,22 @@
 /* ── Kartoni ──────────────────────────────────────────────────────────────────
    The admin stays dark: the dark page is the desk, and the card lying on it is
-   paper. Plain CSS on purpose - the look is its own world, and these pages are
-   the only ones that load it. */
+   paper. Plain CSS on purpose - the look is its own world, and these pages
+   (/kartoni, /upiti) are the only ones that load it.
+
+   Old paper, cheaply: one small noise tile for the tooth of the paper, and a
+   static overlay of soft gradients for the yellowed edges and foxing spots. No
+   images to download, no filters or blend modes on big areas, nothing that
+   moves - it is painted once and scrolls like plain colour. */
 
 .karton-paper,
 .karton-sheet,
 .karton-index,
-.karton-folder {
-  --paper: #F6EEDC;
-  --paper-deep: #ECE0C6;
-  --manila: #DCC292;
-  --manila-deep: #C9AB76;
+.karton-folder,
+.spisak {
+  --paper: #F4E9D2;
+  --paper-deep: #E8D9BA;
+  --manila: #D8BD8B;
+  --manila-deep: #C4A570;
   --ink: #2B2621;
   --ink-soft: #62574A;
   --ink-faint: #8A7D69;
@@ -20,18 +26,59 @@
   --stamp: #A52F2A;
   --mark: #F9E7A0;
   --pen: #24477C;
-  /* A little tooth in the paper. */
-  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .27 0 0 0 0 .16 0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+  --age: 126, 88, 40;
+  /* The tooth of the paper: fine noise in the colour of old pulp. */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .38 0 0 0 0 .28 0 0 0 0 .15 0 0 0 .13 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  /* Speckled alpha for rubber-stamp ink that didn't take everywhere. */
+  --wear: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='w'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.55' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -3 2.35'/%3E%3C/filter%3E%3Crect width='90' height='90' filter='url(%23w)'/%3E%3C/svg%3E");
   /* Date pickers and carets follow the paper, not the dark page around it. */
   color-scheme: light;
   color: var(--ink);
+  /* Typewriter ink sinks into the paper a little. */
+  text-shadow: 0 0 0.6px rgba(43, 38, 33, 0.22);
 }
 
 .karton-paper,
 .karton-sheet,
-.karton-index {
+.karton-index,
+.spisak {
   background-color: var(--paper);
   background-image: var(--grain);
+}
+
+/* The folder and the divider tabs sit outside the paper, so they get their own. */
+.karton-folder,
+.karton-folder-tab,
+.karton-letter {
+  --grain-manila: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.7' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .3 0 0 0 0 .2 0 0 0 0 .08 0 0 0 .16 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Age lies on top of everything on the sheet - the sticky date column and the
+   highlighted row too - so it is one overlay, not part of each background. */
+.karton-paper::after,
+.spisak::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.28),
+    inset 0 0 34px rgba(var(--age), 0.2),
+    inset 0 0 6px rgba(var(--age), 0.18);
+  background:
+    /* foxing: the small brown spots old paper gets */
+    radial-gradient(7px 6px at 9% 31%, rgba(var(--age), 0.16), transparent 75%),
+    radial-gradient(4px 4px at 11% 33.5%, rgba(var(--age), 0.14), transparent 75%),
+    radial-gradient(9px 7px at 88% 63%, rgba(var(--age), 0.12), transparent 75%),
+    radial-gradient(5px 5px at 64% 94%, rgba(var(--age), 0.14), transparent 75%),
+    radial-gradient(12px 9px at 95% 12%, rgba(var(--age), 0.09), transparent 75%),
+    /* water-mottled, unevenly yellowed */
+    radial-gradient(38% 22% at 78% 30%, rgba(var(--age), 0.05), transparent 70%),
+    radial-gradient(45% 26% at 18% 82%, rgba(var(--age), 0.06), transparent 70%),
+    /* light from the top left, a sheet that is not quite flat */
+    linear-gradient(160deg, rgba(255, 255, 255, 0.16), transparent 38%, transparent 72%, rgba(var(--age), 0.06));
 }
 
 .karton-type { font-family: var(--font-typewriter), "Courier New", monospace; }
@@ -49,11 +96,31 @@
 
 .karton-paper {
   position: relative;
-  border-radius: 3px 3px 10px 10px;
+  /* Card stock that has been handled: no two corners alike. */
+  border-radius: 3px 2px 11px 8px / 3px 3px 9px 12px;
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.35),
     0 1px 2px rgba(0, 0, 0, 0.5),
     0 22px 44px -18px rgba(0, 0, 0, 0.75);
+}
+
+/* A dog-eared corner: the desk shows through, the folded flap lies on top. */
+.karton-paper::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 4;
+  width: 22px;
+  height: 22px;
+  border-bottom-left-radius: 3px;
+  pointer-events: none;
+  background: linear-gradient(
+    225deg,
+    var(--background, #1c1619) 50%,
+    rgba(60, 40, 15, 0.35) 50%,
+    #D9C7A2 56%,
+    #EADCBF 100%
+  );
 }
 
 /* The punched hole a card sits on in the drawer. */
@@ -82,6 +149,10 @@
   letter-spacing: 0.04em;
   transform: rotate(-4deg);
   opacity: 0.86;
+  text-shadow: none;
+  /* Rubber-stamp ink: it didn't take everywhere. */
+  -webkit-mask-image: var(--wear);
+  mask-image: var(--wear);
 }
 
 .karton-rule-double {
@@ -133,6 +204,8 @@ a.karton-field-value { text-decoration: underline; text-underline-offset: 3px; t
   line-height: 1.05;
   color: var(--pen);
   overflow-wrap: anywhere;
+  /* Fountain-pen ink spreading into the fibres. */
+  text-shadow: 0 0 0.7px rgba(36, 71, 124, 0.45);
 }
 
 /* ── The table: dates down, regions across ────────────────────────────────── */
@@ -368,11 +441,11 @@ a.karton-field-value { text-decoration: underline; text-underline-offset: 3px; t
 .karton-sheet {
   border-top: 3px double var(--margin);
   border-radius: 14px 14px 0 0;
-  box-shadow: 0 -18px 50px rgba(0, 0, 0, 0.6);
+  box-shadow: inset 0 0 30px rgba(var(--age), 0.16), 0 -18px 50px rgba(0, 0, 0, 0.6);
 }
 
 @media (min-width: 640px) {
-  .karton-sheet { border-radius: 6px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65); }
+  .karton-sheet { border-radius: 6px; box-shadow: inset 0 0 30px rgba(var(--age), 0.16), 0 24px 60px rgba(0, 0, 0, 0.65); }
 }
 
 .karton-sheet-title {
@@ -468,8 +541,11 @@ a.karton-field-value { text-decoration: underline; text-underline-offset: 3px; t
   position: relative;
   padding: 11px 14px 10px 16px;
   border-top: 2px solid var(--margin);
-  border-radius: 2px;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.45), 0 5px 10px -5px rgba(0, 0, 0, 0.55);
+  border-radius: 2px 3px 4px 2px;
+  box-shadow:
+    inset 0 0 16px rgba(var(--age), 0.14),
+    0 1px 1px rgba(0, 0, 0, 0.45),
+    0 5px 10px -5px rgba(0, 0, 0, 0.55);
   transition: transform 0.14s ease-out;
 }
 
@@ -510,7 +586,8 @@ a.karton-field-value { text-decoration: underline; text-underline-offset: 3px; t
   min-width: 42px;
   padding: 4px 12px 3px;
   border-radius: 7px 7px 0 0;
-  background: var(--manila, #DCC292);
+  background-color: #D8BD8B;
+  background-image: var(--grain-manila);
   color: #2B2621;
   font-family: var(--font-typewriter), "Courier New", monospace;
   font-size: 14px;
@@ -522,8 +599,12 @@ a.karton-field-value { text-decoration: underline; text-underline-offset: 3px; t
   position: relative;
   padding: 12px;
   border-radius: 0 10px 10px 10px;
-  background: var(--manila);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 28px -14px rgba(0, 0, 0, 0.7);
+  background-color: var(--manila);
+  background-image: var(--grain-manila);
+  box-shadow:
+    inset 0 0 24px rgba(110, 72, 25, 0.22),
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 14px 28px -14px rgba(0, 0, 0, 0.7);
 }
 
 .karton-folder-tab {
@@ -532,7 +613,8 @@ a.karton-field-value { text-decoration: underline; text-underline-offset: 3px; t
   gap: 8px;
   padding: 6px 14px 4px;
   border-radius: 8px 8px 0 0;
-  background: #DCC292;
+  background-color: #D8BD8B;
+  background-image: var(--grain-manila);
   color: #2B2621;
   font-family: var(--font-typewriter), "Courier New", monospace;
   font-size: 12px;

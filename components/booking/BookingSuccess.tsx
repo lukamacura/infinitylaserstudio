@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { AlertCircle, MailCheck } from "lucide-react";
+import { AlertCircle, MailCheck, MailX } from "lucide-react";
 import { formatPrice } from "@/components/booking/shared";
 import BookingSheet, { type SuccessDiscount } from "@/components/booking/BookingSheet";
 
@@ -34,15 +34,24 @@ export default function BookingSuccess(p: BookingSuccessProps) {
     <div className="flex flex-col items-center text-center pt-2 pb-4 sm:pt-4 sm:pb-6">
       <h3 className="text-2xl sm:text-3xl md:text-4xl font-bold font-playfair mb-3 sm:mb-4">{p.headline}</h3>
 
-      {/* Email sent */}
+      {/* Email sent - a booking made in the studio may have no address */}
       <div
         className="bm-mail-in inline-flex items-center gap-2.5 rounded-full border px-4 py-2 mb-8 sm:mb-10 max-w-full"
         style={{ borderColor: `${p.accentHex}40`, backgroundColor: `${p.accentHex}12` }}
       >
-        <MailCheck size={18} className="shrink-0" style={{ color: p.accentHex }} />
-        <p className="text-xs sm:text-sm font-poppins text-foreground/70 min-w-0 truncate">
-          Potvrda je poslata na <span className="font-semibold text-foreground">{p.email}</span>
-        </p>
+        {p.email.trim() ? (
+          <>
+            <MailCheck size={18} className="shrink-0" style={{ color: p.accentHex }} />
+            <p className="text-xs sm:text-sm font-poppins text-foreground/70 min-w-0 truncate">
+              Potvrda je poslata na <span className="font-semibold text-foreground">{p.email}</span>
+            </p>
+          </>
+        ) : (
+          <>
+            <MailX size={18} className="shrink-0" style={{ color: p.accentHex }} />
+            <p className="text-xs sm:text-sm font-poppins text-foreground/70 min-w-0 truncate">Bez emaila - potvrda nije poslata</p>
+          </>
+        )}
       </div>
 
       {/* The booking, written out on paper */}
