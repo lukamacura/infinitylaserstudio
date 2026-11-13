@@ -13,8 +13,13 @@
  */
 import { randomUUID } from "node:crypto";
 import {
-  SLOT_SIZE, calcBookingDuration, calcTotalDuration, getAvailableSlots, type BusinessWindow,
+  SLOT_SIZE, calcBookingDuration, calcTotalDuration, getAvailableSlots, pickFreeLaser,
+  type BusinessWindow, type LaserDay,
 } from "@/lib/supabase";
+import {
+  buildAvailability, laserDays, resolveWindows, startedLaserDays, type AvailabilityData,
+} from "@/lib/availability";
+import { SINGLE_LASER } from "@/lib/lasers";
 import { escapeLike } from "@/lib/fetchAll";
 import { getLocation, isLocationId } from "@/lib/locations";
 import { PriceBook } from "@/lib/prices";
@@ -87,27 +92,39 @@ function catalog(ctx: ToolContext): Promise<{ services: Svc[]; book: PriceBook }
   });
 }
 
-/** Working windows of a studio on a date (override first, then the weekday). */
-async function windowsOn(ctx: ToolContext, location: string, date: string): Promise<BusinessWindow[]> {
-  const sched = await cached(ctx, "schedule", async () => {
-    const [tpl, ovr] = await Promise.all([
-      ctx.db.from("weekly_schedule").select("weekday, windows, location"),
-      ctx.db.from("availability_overrides").select("date, windows, location").gte("date", ctx.today),
+/**
+ * A studio's lasers and each laser's own working hours (sql/lasers_phase1.sql),
+ * read once per turn. Lasers that cannot be read count as one - fewer free
+ * times, never one the database would refuse.
+ */
+async function studioHours(ctx: ToolContext, location: string): Promise<AvailabilityData> {
+  const all = await cached(ctx, "schedule", async () => {
+    const [tpl, ovr, lasers] = await Promise.all([
+      ctx.db.from("weekly_schedule").select("weekday, windows, location, laser"),
+      ctx.db.from("availability_overrides").select("date, windows, location, laser").gte("date", ctx.today),
+      ctx.db.from("lasers").select("location, laser, name, active_from").order("laser"),
     ]);
     if (tpl.error || ovr.error) throw new Error("schedule");
-    return { tpl: tpl.data ?? [], ovr: ovr.data ?? [] };
+    return { tpl: tpl.data ?? [], ovr: ovr.data ?? [], lasers: (lasers.error ? null : lasers.data) ?? [] };
   });
-  const own = sched.ovr.find((o) => o.location === location && o.date === date);
-  if (own) return (own.windows as BusinessWindow[] | null) ?? [];
-  const day = sched.tpl.find((t) => t.location === location && t.weekday === mondayIndex(date));
-  return (day?.windows as BusinessWindow[] | null) ?? [];
+  const mine = all.lasers.filter((l) => l.location === location);
+  return buildAvailability(
+    mine.length ? mine : SINGLE_LASER,
+    all.tpl.filter((r) => r.location === location),
+    all.ovr.filter((r) => r.location === location),
+  );
 }
 
-type Busy = { id: string; date: string; start_time: string; end_time: string; location: string; customer_name: string };
+/** Working windows of a studio on a date - every laser's hours together. */
+async function windowsOn(ctx: ToolContext, location: string, date: string): Promise<BusinessWindow[]> {
+  return resolveWindows(date, await studioHours(ctx, location)) ?? [];
+}
+
+type Busy = { id: string; date: string; start_time: string; end_time: string; location: string; customer_name: string; laser: number };
 
 async function busyBetween(ctx: ToolContext, location: string, from: string, to: string): Promise<Busy[]> {
   const { data, error } = await ctx.db.from("reservations")
-    .select("id, date, start_time, end_time, location, customer_name")
+    .select("id, date, start_time, end_time, location, customer_name, laser")
     .eq("location", location).gte("date", from).lte("date", to)
     .in("status", ["pending", "confirmed"]);
   if (error) throw new Error("busy");
@@ -118,8 +135,13 @@ function fmtWindows(w: BusinessWindow[]): string {
   return w.length ? w.map((x) => `${fromMinutes(x.start)}–${fromMinutes(x.end)}`).join(", ") : "zatvoreno";
 }
 
-function inWindows(start: number, end: number, windows: BusinessWindow[]): boolean {
-  return windows.some((w) => start >= w.start && end <= w.end);
+/**
+ * A laser works for the whole of [start, end) and is free then - otherwise
+ * the booking falls outside working hours (the admin may still make it).
+ */
+function freeInHours(busy: Busy[], lasers: LaserDay[], date: string, start: number, end: number, except?: string): boolean {
+  const day = busy.filter((b) => b.id !== except && b.date === date).map((b) => ({ ...b, status: "confirmed" }));
+  return pickFreeLaser(day, start, end, lasers) !== null;
 }
 
 function studioName(loc: string): string {
@@ -292,13 +314,18 @@ type FreeDay = { date: string; windows: BusinessWindow[]; slots: string[] };
  */
 async function freeByDay(ctx: ToolContext, loc: string, from: string, to: string, o: FreeOpts): Promise<FreeDay[]> {
   const busy = (await busyBetween(ctx, loc, from, to)).filter((b) => b.id !== o.exceptId);
+  const hours = await studioHours(ctx, loc);
   const days: FreeDay[] = [];
   for (let date = from; date <= to; date = addDays(date, 1)) {
-    const windows = o.anyHour ? ADMIN_WINDOW : await windowsOn(ctx, loc, date);
-    const slots = windows.length
+    const windows = o.anyHour ? ADMIN_WINDOW : resolveWindows(date, hours) ?? [];
+    // Each laser within its own hours - or, for the admin span, any started laser.
+    const lasers = o.anyHour
+      ? startedLaserDays(date, hours).map((d) => ({ laser: d.laser, windows: ADMIN_WINDOW }))
+      : laserDays(date, hours);
+    const slots = lasers.length
       ? getAvailableSlots(
           busy.filter((b) => b.date === date).map((b) => ({ ...b, status: "confirmed" })),
-          o.minutes, date === ctx.today ? ctx.nowMinute : undefined, windows,
+          o.minutes, date === ctx.today ? ctx.nowMinute : undefined, lasers,
         ).filter((s) => {
           const m = toMinutes(s);
           return (o.after == null || m >= o.after) && (o.before == null || m + o.minutes <= o.before);
@@ -537,9 +564,15 @@ async function isReturning(ctx: ToolContext, email: string, phone: string | null
   return false;
 }
 
-function clashWith(busy: Busy[], date: string, start: number, end: number, except?: string): Busy | undefined {
-  return busy.find((b) => b.id !== except && b.date === date &&
-    toMinutes(b.start_time) < end && toMinutes(b.end_time) > start);
+/**
+ * The booking in the way of [start, end): none while some started laser is
+ * free for the whole time, in its hours or not - the admin rule of free_laser
+ * (sql/lasers_phase1.sql). With every laser taken, the first one overlapping.
+ */
+function clashWith(busy: Busy[], lasers: LaserDay[], date: string, start: number, end: number, except?: string): Busy | undefined {
+  const day = busy.filter((b) => b.id !== except && b.date === date);
+  if (pickFreeLaser(day.map((b) => ({ ...b, status: "confirmed" })), start, end, lasers, { anyHour: true }) !== null) return undefined;
+  return day.find((b) => toMinutes(b.start_time) < end && toMinutes(b.end_time) > start);
 }
 
 function pushProposal(ctx: ToolContext, token: string, subject: string, display: ProposalDisplay) {
@@ -564,10 +597,11 @@ async function proposeBooking(ctx: ToolContext, a: {
 
   // The client: from the card when one is named, then what was said.
   const kartonId = typeof a.karton_id === "string" && UUID_RE.test(a.karton_id) ? a.karton_id : null;
-  let card: { name: string; phone: string | null; email: string | null } | null = null;
+  type CardClient = { name: string; phone: string | null; email: string | null };
+  let card: CardClient | null = null;
   if (kartonId) {
     const { data } = await ctx.db.from("kartoni").select("clients(name, phone, email)").eq("id", kartonId).maybeSingle();
-    card = (data as unknown as { clients: typeof card } | null)?.clients ?? null;
+    card = (data as unknown as { clients: CardClient | null } | null)?.clients ?? null;
     if (!card) return fail("Karton nije pronađen.");
   }
   const name = (typeof a.ime === "string" && a.ime.trim() ? a.ime.trim() : card?.name ?? "").slice(0, 120);
@@ -596,7 +630,8 @@ async function proposeBooking(ctx: ToolContext, a: {
     return fail("To vreme je prošlo.", await nearestFree(ctx, loc, date, { minutes }));
   }
   const busy = await busyBetween(ctx, loc, date, date);
-  const clash = clashWith(busy, date, start, end);
+  const hours = await studioHours(ctx, loc);
+  const clash = clashWith(busy, startedLaserDays(date, hours), date, start, end);
   if (clash) {
     return fail(
       `${a.vreme}–${fromMinutes(end)} (${minutes} min) se preklapa sa: ${clash.customer_name} ${hhmm(clash.start_time)}–${hhmm(clash.end_time)}.`,
@@ -632,9 +667,9 @@ async function proposeBooking(ctx: ToolContext, a: {
     }
   }
 
-  const windows = await windowsOn(ctx, loc, date);
+  const windows = resolveWindows(date, hours) ?? [];
   const warnings: string[] = [];
-  if (!inWindows(start, end, windows)) warnings.push(`Van radnog vremena (${fmtWindows(windows)})`);
+  if (!freeInHours(busy, laserDays(date, hours), date, start, end)) warnings.push(`Van radnog vremena (${fmtWindows(windows)})`);
   if (!email && !phone) warnings.push("Nema ni telefona ni emaila");
   else if (!email) warnings.push("Bez emaila - potvrda se ne šalje");
   if (promo === STUDENT_PROMO_CODE && returning) warnings.push("Klijent već postoji - studentski popust je za prvi tretman");
@@ -719,7 +754,8 @@ async function proposeMove(ctx: ToolContext, a: { rezervacija_id?: unknown; datu
     return fail("To vreme je prošlo.", await nearestFree(ctx, r.location, date, freeOpts));
   }
   const busy = await busyBetween(ctx, r.location, date, date);
-  const clash = clashWith(busy, date, start, end, r.id);
+  const hours = await studioHours(ctx, r.location);
+  const clash = clashWith(busy, startedLaserDays(date, hours), date, start, end, r.id);
   if (clash) {
     return fail(
       `${a.vreme}–${fromMinutes(end)} se preklapa sa: ${clash.customer_name} ${hhmm(clash.start_time)}–${hhmm(clash.end_time)}.`,
@@ -727,9 +763,11 @@ async function proposeMove(ctx: ToolContext, a: { rezervacija_id?: unknown; datu
     );
   }
 
-  const windows = await windowsOn(ctx, r.location, date);
+  const windows = resolveWindows(date, hours) ?? [];
   const warnings: string[] = [];
-  if (!inWindows(start, end, windows)) warnings.push(`Van radnog vremena (${fmtWindows(windows)})`);
+  if (!freeInHours(busy, laserDays(date, hours), date, start, end, r.id)) {
+    warnings.push(`Van radnog vremena (${fmtWindows(windows)})`);
+  }
   const email = r.customer_email.trim();
   if (!email) warnings.push("Bez emaila - klijent ne dobija obaveštenje");
 

@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, ArrowRight, ChevronLeft, ChevronRight, Mail, X } from "lucide-react";
-import { supabase, timeToMinutes, minutesToTime, type BusinessWindow } from "@/lib/supabase";
-import { resolveWindows, toDateStr, type AvailabilityData } from "@/lib/availability";
+import { AlertTriangle, ArrowRight, ChevronLeft, ChevronRight, Mail, X, Zap } from "lucide-react";
+import { supabase, timeToMinutes, minutesToTime, pickFreeLaser, type BusinessWindow } from "@/lib/supabase";
+import { resolveWindows, startedLaserDays, toDateStr, type AvailabilityData } from "@/lib/availability";
+import { laserLabel } from "@/lib/lasers";
 import type { LocationId } from "@/lib/locations";
 
 /**
@@ -23,11 +24,13 @@ export interface MoveSubject {
   end_time: string;
   total_duration: number;
   location: LocationId;
+  /** It keeps this laser when that is free at the new time (sql/lasers_phase1.sql). */
+  laser: number;
   services: string[];
 }
 
-/** What the database now holds, times as "HH:MM". */
-export interface MovedTo { date: string; start_time: string; end_time: string }
+/** What the database now holds, times as "HH:MM"; `laser` = the one it is on now. */
+export interface MovedTo { date: string; start_time: string; end_time: string; laser?: number }
 export type MoveEmail = "sent" | "failed" | "skipped";
 
 interface Props {
@@ -50,7 +53,7 @@ const STEP = 10;
 const DAYS_SHORT = ["Ned", "Pon", "Uto", "Sre", "Čet", "Pet", "Sub"];
 const MONTHS     = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "avg", "sep", "okt", "nov", "dec"];
 
-type DayRow = { id: string; start_time: string; end_time: string; status: string };
+type DayRow = { id: string; start_time: string; end_time: string; status: string; laser: number };
 
 /** What /api/reservation-move answers. */
 type MoveReply =
@@ -111,7 +114,7 @@ export default function AdminMoveDialog({ subject, proposed, availability, now, 
     let live = true;
     supabase
       .from("reservations")
-      .select("id, start_time, end_time, status")
+      .select("id, start_time, end_time, status, laser")
       .eq("date", date)
       .eq("location", subject.location)
       .then(
@@ -128,26 +131,38 @@ export default function AdminMoveDialog({ subject, proposed, availability, now, 
     return () => window.removeEventListener("keydown", onKey);
   }, [saving, onClose]);
 
+  /** The studio's hours that day (every laser's together) - the span of times shown. */
   const windows = resolveWindows(date, availability);
+  /** The studio has more than one laser - say which one a new time goes on. */
+  const multiLaser = availability.lasers.length > 1;
 
-  /** Every start time of the day, one row per hour, with what stands in the way of each. */
-  const slots: { time: string; taken: boolean; past: boolean; current: boolean; offHours: boolean }[] = [];
+  /**
+   * Every start time of the day, one row per hour, with what stands in the way
+   * of each. `laser` = where it would go, as the database decides: a free laser
+   * that works then, its own first; otherwise its own / any free one outside
+   * hours (null = every laser taken). `offHours` = outside that laser's hours.
+   */
+  const slots: {
+    time: string; taken: boolean; past: boolean; current: boolean; offHours: boolean; laser: number | null;
+  }[] = [];
   // Past days are not offered; today starts at the current hour.
   if (picking && day?.key === dayKey && day.rows && date >= todayStr) {
-    const busy = day.rows
-      .filter((r) => r.id !== subject.id && r.status !== "cancelled" && r.status !== "blacklisted")
-      .map((r) => ({ start: timeToMinutes(r.start_time), end: timeToMinutes(r.end_time) }));
+    const others = day.rows.filter((r) => r.id !== subject.id);
+    const lasers = startedLaserDays(date, availability);
     const from  = Math.min(ADMIN_DAY.start, ...(windows ?? []).map((w) => w.start));
     const to    = Math.min(24 * 60 - STEP, Math.max(ADMIN_DAY.end, ...(windows ?? []).map((w) => w.end)));
     const first = Math.floor((date === todayStr ? Math.max(from, nowMin) : from) / 60) * 60;
     for (let t = first; t + duration <= to; t += STEP) {
       const end = t + duration;
+      const laser = pickFreeLaser(others, t, end, lasers, { prefer: subject.laser, anyHour: true });
+      const lands = lasers.find((d) => d.laser === laser);
       slots.push({
+        laser,
         time:     minutesToTime(t),
-        taken:    busy.some((b) => t < b.end && end > b.start),
+        taken:    laser === null,
         past:     date === todayStr && t <= nowMin,
         current:  date === subject.date && minutesToTime(t) === oldStart,
-        offHours: !fitsWindows(windows, t, end),
+        offHours: !fitsWindows(lands ? lands.windows : windows, t, end),
       });
     }
   }
@@ -156,9 +171,18 @@ export default function AdminMoveDialog({ subject, proposed, availability, now, 
   const newEnd    = newStart !== null ? newStart + duration : null;
   const unchanged = date === subject.date && time === oldStart;
   const upcoming  = newStart !== null && (date > todayStr || (date === todayStr && newStart > nowMin));
-  const offHours  = newStart !== null && newEnd !== null && !fitsWindows(windows, newStart, newEnd);
+  const chosen    = slots.find((s) => s.time === time);
+  // A dragged-in time (no list) is judged by its own laser's hours.
+  const offHours  = newStart !== null && newEnd !== null && (chosen
+    ? chosen.offHours
+    : !fitsWindows(resolveWindows(date, availability, subject.laser), newStart, newEnd));
   const email     = subject.customer_email.trim();
   const willEmail = notify && !!email && upcoming;
+  /** At the chosen time the database puts it on the other laser (that one works / is free then). */
+  const landsOn   = multiLaser ? chosen?.laser ?? null : null;
+  const otherLaser = landsOn !== null && landsOn !== subject.laser
+    ? availability.lasers.find((l) => l.laser === landsOn)
+    : undefined;
 
   function pickDate(next: string) {
     if (!next || next === date) return;
@@ -282,6 +306,11 @@ export default function AdminMoveDialog({ subject, proposed, availability, now, 
             {offHours && (
               <p className="flex items-center gap-1.5 text-[11px] font-bold font-poppins text-amber-300">
                 <AlertTriangle size={13} className="shrink-0" /> Van radnog vremena tog dana
+              </p>
+            )}
+            {otherLaser && (
+              <p className="flex items-center gap-1.5 text-[11px] font-bold font-poppins text-accent">
+                <Zap size={13} className="shrink-0" /> Termin prelazi na {laserLabel(otherLaser)}
               </p>
             )}
             {!picking && (

@@ -7,6 +7,8 @@
  */
 import type { BusinessWindow } from "@/lib/supabase";
 import { LOCATIONS } from "@/lib/locations";
+import { SINGLE_LASER } from "@/lib/lasers";
+import { buildAvailability, laserDays, resolveWindows } from "@/lib/availability";
 import type { AdminDb } from "@/lib/server/adminDb";
 import { addDays, belgradeMinutes, belgradeToday, fromMinutes, mondayIndex, toMinutes } from "./time";
 import type { DayLoad, Gap, InfyFacts, InfyLocation, StudioLoad } from "./types";
@@ -18,18 +20,7 @@ export const GAP_MINUTES = 60;
 /** Weeks after the last treatment before a client counts as "due back". */
 export const RETURN_WEEKS = 8;
 
-type Busy = { date: string; start_time: string; end_time: string; location: string };
-
-/** Working windows of a date: the date's own (empty = closed) or the weekday's. */
-function windowsFor(
-  date: string,
-  template: Map<number, BusinessWindow[]>,
-  overrides: Map<string, BusinessWindow[]>,
-): BusinessWindow[] {
-  const own = overrides.get(date);
-  if (own !== undefined) return own;
-  return template.get(mondayIndex(date)) ?? [];
-}
+type Busy = { date: string; start_time: string; end_time: string; location: string; laser: number };
 
 /** Union of busy intervals, clipped to [from, to]. */
 function mergeBusy(intervals: [number, number][], from: number, to: number): [number, number][] {
@@ -72,6 +63,34 @@ export function dayLoad(
   return { date, closed: windows.length === 0, open, booked, count, gaps, noStaff: noStaff && windows.length > 0 };
 }
 
+/**
+ * One studio day from each working laser's own load (sql/lasers_phase1.sql):
+ * every laser is its own line of time in its own hours, so open and booked
+ * minutes add up and a free stretch on any of them is worth filling. No laser
+ * working = closed.
+ */
+function mergeLoads(date: string, loads: DayLoad[], count: number, windows: BusinessWindow[], noStaff: boolean): DayLoad {
+  const seen = new Set<string>();
+  const gaps = loads
+    .flatMap((l) => l.gaps)
+    .filter((g) => {
+      const key = `${g.start}-${g.end}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => a.start.localeCompare(b.start));
+  return {
+    date,
+    closed: windows.length === 0 || loads.length === 0,
+    open: loads.reduce((sum, l) => sum + l.open, 0),
+    booked: loads.reduce((sum, l) => sum + l.booked, 0),
+    count,
+    gaps,
+    noStaff: noStaff && windows.length > 0,
+  };
+}
+
 /** The calendar part of the brief, both studios. */
 export async function loadStudioLoads(db: AdminDb, now = new Date()): Promise<StudioLoad[]> {
   const today = belgradeToday(now);
@@ -79,22 +98,27 @@ export async function loadStudioLoads(db: AdminDb, now = new Date()): Promise<St
   // From now on, on the 10-minute grid - the morning that is over is not a gap.
   const nowMinute = Math.ceil(belgradeMinutes(now) / 10) * 10;
 
-  const [tpl, ovr, res, staffTpl, staffOvr] = await Promise.all([
-    db.from("weekly_schedule").select("weekday, windows, location"),
-    db.from("availability_overrides").select("date, windows, location").gte("date", today).lte("date", last),
-    db.from("reservations").select("date, start_time, end_time, location")
+  const [tpl, ovr, res, staffTpl, staffOvr, lasersRes] = await Promise.all([
+    db.from("weekly_schedule").select("weekday, windows, location, laser"),
+    db.from("availability_overrides").select("date, windows, location, laser").gte("date", today).lte("date", last),
+    db.from("reservations").select("date, start_time, end_time, location, laser")
       .gte("date", today).lte("date", last).in("status", ["pending", "confirmed"]),
     db.from("staff_weekly").select("weekday, staff_ids, location"),
     db.from("staff_overrides").select("date, staff_ids, location").gte("date", today).lte("date", last),
+    db.from("lasers").select("location, laser, name, active_from").order("laser"),
   ]);
   if (tpl.error || ovr.error || res.error) throw new Error("calendar load failed");
 
   return LOCATIONS.map((studio): StudioLoad => {
     const loc = studio.id as InfyLocation;
-    const template = new Map<number, BusinessWindow[]>();
-    for (const r of tpl.data ?? []) if (r.location === loc) template.set(r.weekday, (r.windows as BusinessWindow[] | null) ?? []);
-    const overrides = new Map<string, BusinessWindow[]>();
-    for (const r of ovr.data ?? []) if (r.location === loc) overrides.set(r.date, (r.windows as BusinessWindow[] | null) ?? []);
+    // Each laser's own hours. Lasers that cannot be read: one, every booking on it.
+    const studioLasers = (lasersRes.error ? null : lasersRes.data ?? [])?.filter((l) => l.location === loc) ?? [];
+    const hours = buildAvailability(
+      studioLasers.length > 0 ? studioLasers : SINGLE_LASER,
+      (tpl.data ?? []).filter((r) => r.location === loc),
+      (ovr.data ?? []).filter((r) => r.location === loc),
+    );
+    const laserOf = (b: Busy) => (studioLasers.length > 0 ? b.laser ?? 1 : 1);
 
     // The staff schedule only says something once it is used for this studio.
     const staffWeekly = new Map<number, string[]>();
@@ -116,14 +140,20 @@ export async function loadStudioLoads(db: AdminDb, now = new Date()): Promise<St
       const date = addDays(today, i);
       const busy = busyByDate.get(date) ?? [];
       const staff = staffDates.get(date) ?? staffWeekly.get(mondayIndex(date)) ?? [];
-      days.push(dayLoad(
-        date,
-        windowsFor(date, template, overrides),
-        busy.map((b): [number, number] => [toMinutes(b.start_time), toMinutes(b.end_time)]),
-        busy.length,
-        i === 0 ? nowMinute : 0,
-        staffInUse && staff.length === 0,
-      ));
+      const windows = resolveWindows(date, hours) ?? [];
+      const noStaff = staffInUse && staff.length === 0;
+      const perLaser = laserDays(date, hours).map(({ laser, windows: own }) => {
+        const mine = busy.filter((b) => laserOf(b) === laser);
+        return dayLoad(
+          date,
+          own,
+          mine.map((b): [number, number] => [toMinutes(b.start_time), toMinutes(b.end_time)]),
+          mine.length,
+          i === 0 ? nowMinute : 0,
+          noStaff,
+        );
+      });
+      days.push(mergeLoads(date, perLaser, busy.length, windows, noStaff));
     }
     return {
       location: loc,

@@ -7,7 +7,7 @@ import {
   ChevronLeft, ChevronRight, X,
   Clock, User, Mail, Phone, Calendar, CalendarPlus,
   PhoneCall, PhoneOff, AlertTriangle, StickyNote, HeartPulse, Tag, Package,
-  Plus, RotateCcw, Ban, Search, Users, Pencil, NotebookPen, CalendarClock, CheckCircle2,
+  Plus, RotateCcw, Ban, Search, Users, Pencil, NotebookPen, CalendarClock, CheckCircle2, Zap,
 } from "lucide-react";
 import { fetchAll, escapeLike } from "@/lib/fetchAll";
 import {
@@ -18,14 +18,17 @@ import { useCalendarDrag, type CalendarDrop } from "@/lib/useCalendarDrag";
 import HoursEditor, { fmtMin } from "@/components/AdminHoursEditor";
 import AdminLogin from "@/components/AdminLogin";
 import AdminHeader from "@/components/AdminHeader";
+import AdminLaserSwitch from "@/components/AdminLaserSwitch";
 import { useAdminAuth } from "@/lib/adminAuth";
-import { useAdminLocation } from "@/lib/adminLocation";
+import { useAdminLaser, useAdminLocation } from "@/lib/adminLocation";
 import { locationTheme, type LocationId } from "@/lib/locations";
 import { fetchPriceRows, PriceBook } from "@/lib/prices";
 import type { ReservationStatus, Json } from "@/lib/database.types";
 import {
-  fetchAvailability, resolveWindows, weekdayOf, EMPTY_AVAILABILITY, type AvailabilityData,
+  fetchAvailability, resolveWindows, laserHours, weekdayOf, EMPTY_AVAILABILITY,
+  type AvailabilityData, type LaserHours,
 } from "@/lib/availability";
+import { SINGLE_LASER, laserLabel } from "@/lib/lasers";
 import {
   fetchStaff, fetchStaffSchedule, resolveStaff, sameStaff, EMPTY_STAFF_SCHEDULE,
   type StaffMember, type StaffSchedule,
@@ -141,6 +144,8 @@ type ReservationFull = {
   /** Price typed in by hand; null = computed from regions + promo code. */
   price_override: number | null;
   location: LocationId;
+  /** Which of the studio's lasers it is on (sql/lasers_phase1.sql); 1 = Stari. */
+  laser: number;
   call_status: CallStatus;
   call_attempted_at: string | null;
   reservation_services: { services: ServiceRef | null }[];
@@ -492,6 +497,8 @@ export default function AdminPage() {
   const authenticated = authState === true;
   /** Calendar, calls, clients and working hours all show this one studio. */
   const { location, setLocation } = useAdminLocation();
+  /** The laser the calendar shows, in a studio with more than one (see viewLaser). */
+  const { laser: savedLaser, setLaser } = useAdminLaser();
 
   const [activeTab, setActiveTab]         = useState<AdminTab>("calendar");
   const [expandedExpired, setExpandedExpired] = useState<string | null>(null);
@@ -503,7 +510,7 @@ export default function AdminPage() {
   const [clientsSearched, setClientsSearched] = useState(false);
   const [expandedClient, setExpandedClient] = useState<string | null>(null);
 
-  // Working-hours schedule (weekly template + per-date overrides)
+  // Working hours - each laser's weekly template + per-date overrides
   const [availability, setAvailability]   = useState<AvailabilityData>(EMPTY_AVAILABILITY);
   const [overrideDate, setOverrideDate]   = useState<string | null>(null);
   const [overrideDraft, setOverrideDraft] = useState<BusinessWindow[]>([]);
@@ -512,17 +519,33 @@ export default function AdminPage() {
   const [staffSchedule, setStaffSchedule] = useState<StaffSchedule>(EMPTY_STAFF_SCHEDULE);
   const [overrideStaffDraft, setOverrideStaffDraft] = useState<string[]>([]);
   const [newStaffName, setNewStaffName]   = useState("");
-  /** The studio's most common open hours - what a day switched on starts with. */
+  // ── Lasers (sql/lasers_phase1.sql) ──
+  // A studio with more than one laser (Novi Sad: Stari | Novi) shows one at a
+  // time in the calendar and in the working hours, like the studio switch. Each
+  // laser has its own hours. With one laser - or while they are not known -
+  // nothing is filtered, so no appointment can hide.
+  const studioLasers = availability.lasers;
+  const multiLaser   = studioLasers.length > 1;
+  const viewLaser    = multiLaser
+    ? (studioLasers.some(l => l.laser === savedLaser) ? savedLaser : studioLasers[0].laser)
+    : null;
+  const viewLaserInfo = studioLasers.find(l => l.laser === viewLaser);
+  /** The laser whose working hours are shown and edited (Laser 1 in a one-laser studio). */
+  const hoursLaser   = viewLaser ?? studioLasers[0]?.laser ?? 1;
+  const hours        = laserHours(availability, hoursLaser);
+
+  /** This laser's most common open hours - what a day switched on starts with. */
   const usualWindows = useMemo<BusinessWindow[]>(() => {
     const seen = new Map<string, { windows: BusinessWindow[]; n: number }>();
-    for (const w of availability.template) {
+    for (const w of hours.template) {
       if (!w || w.length === 0) continue;
       const key = JSON.stringify(w);
       seen.set(key, { windows: w, n: (seen.get(key)?.n ?? 0) + 1 });
     }
     const top = [...seen.values()].sort((a, b) => b.n - a.n)[0];
     return top?.windows ?? [{ start: 14 * 60, end: 20 * 60 }];
-  }, [availability.template]);
+  }, [hours.template]);
+
 
   const [weekStart, setWeekStart]         = useState<Date>(() => getMonday(new Date()));
   const [selectedDate, setSelectedDate]   = useState<Date>(() => {
@@ -818,7 +841,12 @@ export default function AdminPage() {
     // On a failed load keep the schedule already on screen.
     try {
       const data = await fetchAvailability(location);
-      if (req === availReq.current) setAvailability((prev) => same(prev, data));
+      // Lasers that could not be read this time (SINGLE_LASER fallback): keep
+      // the ones on screen rather than flip the calendar to one laser.
+      if (req === availReq.current) setAvailability((prev) => same(prev,
+        data.lasers === SINGLE_LASER && prev.lasers !== SINGLE_LASER
+          ? { ...data, lasers: prev.lasers }
+          : data));
     } catch { /* keep current */ }
     if (req === availReq.current) markLoaded("hours");
   }, [location, markLoaded]);
@@ -922,19 +950,23 @@ export default function AdminPage() {
     void fetchAvail();
   }
 
+  /** Replaces one laser's hours in the state on screen. */
+  function patchLaserHours(laser: number, change: (h: LaserHours) => LaserHours) {
+    setAvailability((prev) => ({ ...prev, hours: { ...prev.hours, [laser]: change(laserHours(prev, laser)) } }));
+  }
+
+  /** The weekly hours of the laser on screen. */
   async function saveTemplateDay(weekday: number, windows: BusinessWindow[]) {
-    setAvailability((prev) => ({
-      ...prev,
-      template: prev.template.map((w, i) => (i === weekday ? windows : w)),
-    }));
+    const laser = hoursLaser;
+    patchLaserHours(laser, (h) => ({ ...h, template: h.template.map((w, i) => (i === weekday ? windows : w)) }));
     const { error } = await supabase
       .from("weekly_schedule")
-      .upsert({ location, weekday, windows: windows as unknown as Json }, { onConflict: "location,weekday" });
+      .upsert({ location, laser, weekday, windows: windows as unknown as Json }, { onConflict: "location,laser,weekday" });
     if (error) hoursSaveFailed();
   }
 
   function openOverride(dateStr: string) {
-    setOverrideDraft(resolveWindows(dateStr, availability) ?? []);
+    setOverrideDraft(resolveWindows(dateStr, availability, hoursLaser) ?? []);
     setOverrideStaffDraft(resolveStaff(dateStr, staffSchedule));
     setOverrideDate(dateStr);
   }
@@ -951,18 +983,17 @@ export default function AdminPage() {
   async function saveOverride(dateStr: string, windows: BusinessWindow[], staffIds: string[]) {
     setOverrideDate(null);
     const tasks: Promise<void>[] = [];
+    // The hours are the laser's on screen; who works is the studio's.
+    const laser = hoursLaser;
 
-    const hoursOverridden = dateStr in availability.overrides;
-    const templateWindows = availability.template[weekdayOf(dateStr)] ?? [];
+    const hoursOverridden = dateStr in hours.overrides;
+    const templateWindows = hours.template[weekdayOf(dateStr)] ?? [];
     if (hoursOverridden || !sameWindows(windows, templateWindows)) {
-      setAvailability((prev) => ({
-        ...prev,
-        overrides: { ...prev.overrides, [dateStr]: windows },
-      }));
+      patchLaserHours(laser, (h) => ({ ...h, overrides: { ...h.overrides, [dateStr]: windows } }));
       tasks.push((async () => {
         const { error } = await supabase.from("availability_overrides").upsert(
-          { location, date: dateStr, windows: windows as unknown as Json, updated_at: new Date().toISOString() },
-          { onConflict: "location,date" },
+          { location, laser, date: dateStr, windows: windows as unknown as Json, updated_at: new Date().toISOString() },
+          { onConflict: "location,laser,date" },
         );
         if (error) hoursSaveFailed();
       })());
@@ -987,12 +1018,13 @@ export default function AdminPage() {
     await Promise.all(tasks);
   }
 
-  /** Back to the weekly template - both the hours and who works. */
+  /** Back to the weekly template - the hours of the laser on screen, and who works. */
   async function clearOverride(dateStr: string) {
-    setAvailability((prev) => {
-      const overrides = { ...prev.overrides };
+    const laser = hoursLaser;
+    patchLaserHours(laser, (h) => {
+      const overrides = { ...h.overrides };
       delete overrides[dateStr];
-      return { ...prev, overrides };
+      return { ...h, overrides };
     });
     setStaffSchedule((prev) => {
       const overrides = { ...prev.overrides };
@@ -1001,7 +1033,7 @@ export default function AdminPage() {
     });
     setOverrideDate(null);
     const [hoursRes, staffRes] = await Promise.all([
-      supabase.from("availability_overrides").delete().eq("location", location).eq("date", dateStr),
+      supabase.from("availability_overrides").delete().eq("location", location).eq("laser", laser).eq("date", dateStr),
       supabase.from("staff_overrides").delete().eq("location", location).eq("date", dateStr),
     ]);
     if (hoursRes.error) hoursSaveFailed();
@@ -1537,6 +1569,50 @@ export default function AdminPage() {
     setSaving(false);
   }
 
+  /**
+   * Puts the open appointment on another laser at the same day and time
+   * (admin_set_laser, sql/lasers_phase1.sql) - refused when that laser is taken then
+   * or has not started yet. Like any admin booking it may fall outside that
+   * laser's hours. The client is not told: their term is the same.
+   */
+  async function handleLaserChange(laser: number) {
+    if (!selected || selected.laser === laser) return;
+    const target = studioLasers.find(l => l.laser === laser);
+    const name   = target ? laserLabel(target) : "Taj laser";
+    setSaving(true);
+    const { data, error } = await supabase.rpc("admin_set_laser", { p_id: selected.id, p_laser: laser });
+    setSaving(false);
+    const result = (error ? null : data) as unknown as
+      | { status: "ok" | "unchanged"; laser: number }
+      | { status: "slot_taken"; clash_name: string; clash_start: string; clash_end: string }
+      | { status: "laser_off" | "inactive" | "not_found" | "forbidden" | "invalid_input" }
+      | null;
+    if (!result) {
+      setNotice("Laser nije promenjen. Proveri internet vezu.");
+      return;
+    }
+    switch (result.status) {
+      case "ok":
+      case "unchanged":
+        patchReservation(selected.id, { laser });
+        setSelected({ ...selected, laser });
+        setSuccess(`Termin je prebačen na ${name}`);
+        return;
+      case "slot_taken":
+        setNotice(`${name} je tada zauzet: ${result.clash_name}, ${result.clash_start}–${result.clash_end}.`);
+        return;
+      case "laser_off":
+        setNotice(`${name} tog dana još ne prima termine.`);
+        return;
+      case "forbidden":
+        setNotice("Prijava je istekla. Osveži stranicu i prijavi se ponovo.");
+        return;
+      default:
+        setNotice("Laser nije promenjen. Kalendar je osvežen - pokušaj ponovo.");
+        void fetchRange(weekStart, true);
+    }
+  }
+
   // ── Moving an appointment (drag on the calendar, or "Pomeri termin") ──────
   // The move is saved by /api/reservation-move (which also emails the client);
   // the screen follows only once the database accepted it.
@@ -1551,12 +1627,13 @@ export default function AdminPage() {
       end_time: r.end_time,
       total_duration: r.total_duration,
       location: r.location,
+      laser: r.laser ?? 1,
       services: servicesOf(r).map(s => s.name),
     };
   }
 
-  /** Put a moved appointment on its new day and time everywhere it is shown. */
-  function relocateReservation(id: string, patch: Pick<ReservationFull, "date" | "start_time" | "end_time">) {
+  /** Put a moved appointment on its new day, time (and laser) everywhere it is shown. */
+  function relocateReservation(id: string, patch: Pick<ReservationFull, "date" | "start_time" | "end_time" | "laser">) {
     const move   = (r: ReservationFull) => (r.id === id ? { ...r, ...patch } : r);
     const byTime = (a: ReservationFull, b: ReservationFull) =>
       a.date !== b.date ? a.date.localeCompare(b.date) : a.start_time.localeCompare(b.start_time);
@@ -1583,15 +1660,21 @@ export default function AdminPage() {
     setSelected(prev => (prev && prev.id === id ? { ...prev, ...patch } : prev));
   }
 
-  function handleMoved(id: string, moved: MovedTo, email: MoveEmail) {
-    relocateReservation(id, { date: moved.date, start_time: `${moved.start_time}:00`, end_time: `${moved.end_time}:00` });
+  function handleMoved(subject: MoveSubject, moved: MovedTo, email: MoveEmail) {
+    // The database may have put it on the other laser: its own was taken then, or only the other works then.
+    const laser   = moved.laser ?? subject.laser;
+    const onOther = multiLaser && laser !== subject.laser ? studioLasers.find(l => l.laser === laser) : undefined;
+    const where   = onOther ? ` na ${laserLabel(onOther)}` : "";
+    relocateReservation(subject.id, {
+      date: moved.date, start_time: `${moved.start_time}:00`, end_time: `${moved.end_time}:00`, laser,
+    });
     setMoveRequest(null);
     if (email === "failed") {
-      setNotice("Termin je pomeren, ali mejl klijentu nije otišao. Javi mu se telefonom.");
+      setNotice(`Termin je pomeren${where}, ali mejl klijentu nije otišao. Javi mu se telefonom.`);
       return;
     }
     setNotice(null);
-    setSuccess(email === "sent" ? "Termin je pomeren · klijentu je poslat mejl" : "Termin je pomeren");
+    setSuccess(email === "sent" ? `Termin je pomeren${where} · klijentu je poslat mejl` : `Termin je pomeren${where}`);
   }
 
   // ── Call action handlers ───────────────────────────────────────────────────
@@ -1645,22 +1728,23 @@ export default function AdminPage() {
 
   const staffById = useMemo(() => new Map(staff.map((m) => [m.id, m])), [staff]);
 
-  /** Everything the calendar needs to know about each of the seven days. */
+  /** Everything the calendar needs to know about each of the seven days (of the laser on screen). */
   const days = useMemo(() => weekDates.map((date) => {
     const dateStr = toDateStr(date);
-    const rows    = reservations.filter(r => r.date === dateStr);
+    const rows    = reservations.filter(r => r.date === dateStr && (viewLaser === null || r.laser === viewLaser));
     return {
       date,
       dateStr,
-      windows: resolveWindows(dateStr, availability),
-      hasOverride: dateStr in availability.overrides || dateStr in staffSchedule.overrides,
+      // The laser on screen works its own hours (none before it has started).
+      windows: resolveWindows(dateStr, availability, hoursLaser),
+      hasOverride: dateStr in hours.overrides || dateStr in staffSchedule.overrides,
       staffNames: resolveStaff(dateStr, staffSchedule)
         .map((id) => staffById.get(id)?.name)
         .filter((n): n is string => !!n),
       activeCount: rows.filter(isActive).length,
       cards:   layoutDay(rows),
     };
-  }), [weekDates, reservations, availability, staffSchedule, staffById]);
+  }), [weekDates, reservations, availability, hours, hoursLaser, staffSchedule, staffById, viewLaser]);
 
   // The grid spans the week's working hours and appointments (plus a margin),
   // so the screen is not spent on hours when nobody is in the studio.
@@ -1688,7 +1772,7 @@ export default function AdminPage() {
   );
 
   const overrideIsException = !!overrideDate
-    && (overrideDate in availability.overrides || overrideDate in staffSchedule.overrides);
+    && (overrideDate in hours.overrides || overrideDate in staffSchedule.overrides);
 
   /** The day the phone layout shows (it has room for one). */
   const mobileDay = days.find(d => d.dateStr === ds) ?? days[0];
@@ -1702,8 +1786,10 @@ export default function AdminPage() {
     minStart: gridStart,
     // An appointment must end before midnight (the database refuses anything later).
     maxEnd:   Math.min(gridEnd, 24 * 60 - SLOT_SIZE),
+    // Within the laser on screen. The database keeps it there when that laser works then (or none
+    // does); otherwise it goes on the laser that works - the toast says so.
     isFree: (id, date, start, end) => !reservations.some(r =>
-      r.id !== id && r.date === date && isActive(r) &&
+      r.id !== id && r.date === date && isActive(r) && (viewLaser === null || r.laser === viewLaser) &&
       start < timeToMinutes(r.end_time) && end > timeToMinutes(r.start_time)),
     onDrop: (item, date, start) => {
       const r = reservations.find(x => x.id === item.id);
@@ -1746,7 +1832,15 @@ export default function AdminPage() {
     <main className="h-dvh max-h-dvh flex flex-col bg-background overflow-hidden text-foreground admin-theme" style={locationTheme(location)}>
       <style jsx global>{` .animate-promo-in { display: none !important; } `}</style>
 
-      <AdminHeader current="admin" location={location} onLocationChange={handleLocationChange} onLogout={handleLogout}>
+      <AdminHeader
+        current="admin"
+        location={location}
+        onLocationChange={handleLocationChange}
+        onLogout={handleLogout}
+        laserSwitch={(activeTab === "calendar" || activeTab === "hours") && viewLaser !== null
+          ? <AdminLaserSwitch lasers={studioLasers} value={viewLaser} onChange={setLaser} />
+          : undefined}
+      >
         {/* Is the studio working right now */}
         <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-foreground/3 border border-foreground/5">
           <span className="relative flex w-2.5 h-2.5 shrink-0">
@@ -1848,6 +1942,7 @@ export default function AdminPage() {
         <AdminReservationModal
           isOpen
           location={location}
+          laser={viewLaser}
           onClose={() => setReservationModalOpen(false)}
           onSuccess={() => fetchRange(weekStart)}
         />
@@ -2249,16 +2344,30 @@ export default function AdminPage() {
             </div>
 
             <div className="mb-5">
-              <h2 className="text-lg font-bold font-playfair">Nedeljni šablon radnog vremena</h2>
+              <h2 className="text-lg font-bold font-playfair">
+                Nedeljni šablon radnog vremena{viewLaserInfo ? ` · ${laserLabel(viewLaserInfo)}` : ""}
+              </h2>
               <p className="text-xs font-poppins text-foreground/64 mt-1 leading-relaxed">
-                Podrazumevano radno vreme i ko radi po danu. Izmene se čuvaju odmah. Za poseban
-                raspored na pojedinačan datum, klikni na zaglavlje dana u kalendaru (izuzetak).
+                {multiLaser
+                  ? "Svaki laser ima svoje radno vreme - drugi laser biraš gore (Stari | Novi). Ko radi važi za ceo studio. "
+                  : "Podrazumevano radno vreme i ko radi po danu. "}
+                Izmene se čuvaju odmah. Za poseban raspored na pojedinačan datum, klikni na zaglavlje
+                dana u kalendaru (izuzetak).
               </p>
+              {viewLaserInfo?.active_from && viewLaserInfo.active_from > todayStr && (
+                <p className="mt-2 flex items-start gap-1.5 text-[12px] font-semibold font-poppins text-amber-300 leading-snug">
+                  <AlertTriangle size={14} className="shrink-0 mt-px" />
+                  {laserLabel(viewLaserInfo)} prima termine od {fmtFull(new Date(`${viewLaserInfo.active_from}T00:00:00`))} -
+                  radno vreme upisano ovde važi od tog dana.
+                </p>
+              )}
             </div>
             <div className="space-y-3">
               {SR_DAYS_LONG.map((dayName, idx) => {
-                const dayWindows = availability.template[idx] ?? [];
+                const dayWindows = hours.template[idx] ?? [];
                 const dayStaff   = staffSchedule.template[idx] ?? [];
+                // Who works belongs to the studio: shown while any laser works that weekday.
+                const studioOpen = studioLasers.some(l => (laserHours(availability, l.laser).template[idx] ?? []).length > 0);
                 return (
                   <div key={dayName} className="rounded-2xl border border-foreground/8 bg-surface p-4 shadow-sm">
                     <HoursEditor
@@ -2268,7 +2377,7 @@ export default function AdminPage() {
                       onChange={(next) => saveTemplateDay(idx, next)}
                     />
                     {/* A closed day needs no one - unless someone is still on it. */}
-                    {(dayWindows.length > 0 || dayStaff.length > 0) && (
+                    {(studioOpen || dayStaff.length > 0) && (
                       <>
                         <p className="mt-4 mb-2 text-[10px] font-bold font-poppins uppercase tracking-widest text-foreground/55">Ko radi</p>
                         <StaffPicker
@@ -2556,7 +2665,7 @@ export default function AdminPage() {
           availability={availability}
           now={now}
           onClose={() => setMoveRequest(null)}
-          onMoved={(moved, email) => handleMoved(moveRequest.subject.id, moved, email)}
+          onMoved={(moved, email) => handleMoved(moveRequest.subject, moved, email)}
           onStale={() => { void fetchRange(weekStart, true); }}
         />
       )}
@@ -2774,6 +2883,36 @@ export default function AdminPage() {
                 </div>
                 <p className="text-sm font-semibold font-poppins text-foreground/80">{fmtFull(new Date(`${selected.date}T00:00:00`))}</p>
                 <div className="mt-3 text-[11px] font-bold font-poppins text-accent bg-accent/5 inline-flex px-3 py-1.5 rounded-xl border border-accent/10">Trajanje: {selected.total_duration} min</div>
+                {/* Which laser - tap the other one to move it there, same day and time */}
+                {multiLaser && (
+                  <div className="mt-3 flex items-center gap-2.5 flex-wrap">
+                    <span className="flex items-center gap-1.5 text-[10px] font-bold font-poppins text-foreground/50 uppercase tracking-wider">
+                      <Zap size={13} className="text-foreground/38" /> Laser
+                    </span>
+                    <div className="flex items-center gap-1 bg-foreground/3 rounded-xl p-1" role="group" aria-label="Laser termina">
+                      {studioLasers.map(l => {
+                        const on = selected.laser === l.laser;
+                        return (
+                          <button
+                            key={l.laser}
+                            type="button"
+                            aria-pressed={on}
+                            disabled={on || saving || !isActive(selected)}
+                            onClick={() => void handleLaserChange(l.laser)}
+                            title={on ? undefined : `Prebaci na ${laserLabel(l)}`}
+                            className={`h-8 px-3 rounded-lg text-[11px] font-bold font-poppins transition-colors ${
+                              on
+                                ? "bg-accent text-on-accent cursor-default"
+                                : "text-foreground/68 hover:bg-accent/10 hover:text-accent cursor-pointer disabled:opacity-40 disabled:cursor-default"
+                            }`}
+                          >
+                            {laserLabel(l)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-3">
@@ -3183,15 +3322,23 @@ export default function AdminPage() {
               </p>
 
               <HoursEditor
-                title="Radno vreme"
+                title={viewLaserInfo ? `Radno vreme · ${laserLabel(viewLaserInfo)}` : "Radno vreme"}
                 windows={overrideDraft}
-                fallback={availability.template[weekdayOf(overrideDate)]?.length
-                  ? availability.template[weekdayOf(overrideDate)]
+                fallback={hours.template[weekdayOf(overrideDate)]?.length
+                  ? hours.template[weekdayOf(overrideDate)]
                   : usualWindows}
                 onChange={setOverrideDraft}
               />
+              {viewLaserInfo && viewLaserInfo.active_from && viewLaserInfo.active_from > overrideDate && (
+                <p className="flex items-start gap-1.5 text-[11px] font-semibold font-poppins text-amber-300 leading-snug">
+                  <AlertTriangle size={13} className="shrink-0 mt-px" />
+                  {laserLabel(viewLaserInfo)} prima termine tek od {fmtFull(new Date(`${viewLaserInfo.active_from}T00:00:00`))}.
+                </p>
+              )}
 
-              <p className="pt-2 text-[10px] font-bold font-poppins uppercase tracking-widest text-foreground/55">Ko radi</p>
+              <p className="pt-2 text-[10px] font-bold font-poppins uppercase tracking-widest text-foreground/55">
+                {multiLaser ? "Ko radi (ceo studio)" : "Ko radi"}
+              </p>
               <StaffPicker staff={staff} selected={overrideStaffDraft} onChange={setOverrideStaffDraft} />
 
               <div className="flex gap-2 pt-2">

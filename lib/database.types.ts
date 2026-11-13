@@ -23,18 +23,21 @@ export type Database = {
       availability_overrides: {
         Row: {
           date: string
+          laser: number
           location: string
           updated_at: string
           windows: Json
         }
         Insert: {
           date: string
+          laser?: number
           location?: string
           updated_at?: string
           windows?: Json
         }
         Update: {
           date?: string
+          laser?: number
           location?: string
           updated_at?: string
           windows?: Json
@@ -43,16 +46,19 @@ export type Database = {
       }
       weekly_schedule: {
         Row: {
+          laser: number
           location: string
           weekday: number
           windows: Json
         }
         Insert: {
+          laser?: number
           location?: string
           weekday: number
           windows?: Json
         }
         Update: {
+          laser?: number
           location?: string
           weekday?: number
           windows?: Json
@@ -149,6 +155,7 @@ export type Database = {
           end_time: string
           id: string
           late_cancel: boolean
+          laser: number
           location: string
           notes: string | null
           price_override: number | null
@@ -171,6 +178,7 @@ export type Database = {
           end_time: string
           id?: string
           late_cancel?: boolean
+          laser?: number
           location?: string
           notes?: string | null
           price_override?: number | null
@@ -193,6 +201,7 @@ export type Database = {
           end_time?: string
           id?: string
           late_cancel?: boolean
+          laser?: number
           location?: string
           notes?: string | null
           price_override?: number | null
@@ -416,6 +425,27 @@ export type Database = {
           },
         ]
       }
+      lasers: {
+        Row: {
+          location: string
+          laser: number
+          name: string
+          active_from: string | null
+        }
+        Insert: {
+          location: string
+          laser: number
+          name: string
+          active_from?: string | null
+        }
+        Update: {
+          location?: string
+          laser?: number
+          name?: string
+          active_from?: string | null
+        }
+        Relationships: []
+      }
       staff: {
         Row: {
           active: boolean
@@ -578,7 +608,13 @@ export type Database = {
           p_with_consultation: boolean
           p_promo_code: string | null
           p_notes: string | null
+          /** Preferred laser (sql/lasers_phase1.sql); left out = the first free one. */
+          p_laser?: number | null
         }
+        Returns: Json
+      }
+      admin_set_laser: {
+        Args: { p_id: string; p_laser: number }
         Returns: Json
       }
       admin_cancel_reservation: {
@@ -622,7 +658,7 @@ export type Database = {
       upiti_open_count: { Args: Record<string, never>; Returns: number }
       public_busy_slots: {
         Args: { p_from: string; p_to: string; p_location?: string }
-        Returns: { date: string; start_time: string; end_time: string; status: string }[]
+        Returns: { date: string; start_time: string; end_time: string; status: string; laser: number }[]
       }
       public_is_returning: { Args: { p_email: string }; Returns: boolean }
       public_staff_days: {

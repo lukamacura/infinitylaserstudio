@@ -12,9 +12,10 @@ import {
   minutesToTime, timeToMinutes,
 } from "@/lib/supabase";
 import {
-  fetchAvailability, resolveWindows,
+  fetchAvailability, laserDays, startedLaserDays,
   ADMIN_HORIZON_DAYS, EMPTY_AVAILABILITY, type AvailabilityData,
 } from "@/lib/availability";
+import { laserLabel } from "@/lib/lasers";
 import type { Service } from "@/lib/database.types";
 import {
   eligibleBundleSizes, computeBundle, parseBundlePromo,
@@ -50,6 +51,12 @@ interface AdminReservationModalProps {
   isOpen: boolean;
   /** The studio the reservation is created for - the one open in the admin panel. */
   location: LocationId;
+  /**
+   * The laser open in the admin calendar (studios with two): the booking goes
+   * there when it is free at that time, otherwise on the free one. Times are
+   * offered while any laser is free.
+   */
+  laser?: number | null;
   onClose: () => void;
   onSuccess?: () => void;
 }
@@ -74,10 +81,12 @@ const PAYMENT_TERMS =
  */
 const ADMIN_DAY_WINDOWS = [{ start: 7 * 60, end: 22 * 60 }];
 
-/** True when the slot (start..start+duration) lies inside the studio's working hours for that date. */
-function isWithinWorkingHours(dateStr: string, slot: string, duration: number, availability: AvailabilityData): boolean {
-  const start = timeToMinutes(slot);
-  return (resolveWindows(dateStr, availability) ?? []).some((w) => start >= w.start && start + duration <= w.end);
+/**
+ * Every laser that has started by the date, each offered the admin span
+ * instead of its own hours (lasers: sql/lasers_phase1.sql).
+ */
+function adminLaserDays(dateStr: string, availability: AvailabilityData) {
+  return startedLaserDays(dateStr, availability).map((d) => ({ laser: d.laser, windows: ADMIN_DAY_WINDOWS }));
 }
 
 /**
@@ -146,7 +155,7 @@ function loadPopularRanks(): Promise<Map<string, number>> {
   );
 }
 
-type BusySlot = { start_time: string; end_time: string; status: string };
+type BusySlot = { start_time: string; end_time: string; status: string; laser: number };
 
 /** "Utorak, 7. nov" - the summary line on the client step. */
 function formatDateShort(dateStr: string): string {
@@ -158,6 +167,7 @@ function formatDateShort(dateStr: string): string {
 export default function AdminReservationModal({
   isOpen,
   location,
+  laser,
   onClose,
   onSuccess,
 }: AdminReservationModalProps) {
@@ -199,6 +209,8 @@ export default function AdminReservationModal({
   const pendingBookingRef = useRef<{ key: string; id: string } | null>(null);
   /** The picked time was taken (from the site) while the form was open. */
   const [slotTaken, setSlotTaken]         = useState(false);
+  /** The laser the saved booking went on - named on the success screen when the studio has two. */
+  const [bookedLaser, setBookedLaser]     = useState<number | null>(null);
   /** "YYYY-MM-DD" → who works that day (absent = not set in admin). */
   const [staffByDate, setStaffByDate]     = useState<Record<string, string[]>>({});
   const [popular, setPopular]             = useState<Map<string, number>>(() => popularRanks ?? new Map());
@@ -312,11 +324,12 @@ export default function AdminReservationModal({
     if (!busyByDate) { dayOptions.push(day); continue; }
     const busy = busyByDate.get(day.date) ?? [];
     const minStart = day.isToday ? new Date().getHours() * 60 + new Date().getMinutes() : undefined;
-    if (getAvailableSlots(busy, slotDuration, minStart, ADMIN_DAY_WINDOWS).length === 0) continue;
-    const windows = resolveWindows(day.date, availability);
+    if (getAvailableSlots(busy, slotDuration, minStart, adminLaserDays(day.date, availability)).length === 0) continue;
+    // Free times within working hours: each laser in its own.
+    const working = laserDays(day.date, availability);
     dayOptions.push({
       ...day,
-      freeSlots: windows ? getAvailableSlots(busy, slotDuration, minStart, windows).length : undefined,
+      freeSlots: working.length ? getAvailableSlots(busy, slotDuration, minStart, working).length : undefined,
     });
   }
 
@@ -328,8 +341,16 @@ export default function AdminReservationModal({
   const minStart = isToday ? nowMinutes : undefined;
 
   const availableSlots = selectedDate
-    ? getAvailableSlots(daySlots, slotDuration, minStart, ADMIN_DAY_WINDOWS)
+    ? getAvailableSlots(daySlots, slotDuration, minStart, adminLaserDays(selectedDate, availability))
     : [];
+  /**
+   * The offered times a laser is free for within its own hours - the rest are
+   * outside working hours (still bookable). The database puts the booking on
+   * such a laser first, so the mark matches where it lands.
+   */
+  const inHoursSlots = new Set(selectedDate
+    ? getAvailableSlots(daySlots, slotDuration, minStart, laserDays(selectedDate, availability))
+    : []);
 
   // ── Side-effects ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -417,7 +438,7 @@ export default function AdminReservationModal({
     let cancelled = false;
     supabase
       .from("reservations")
-      .select("start_time, end_time, status")
+      .select("start_time, end_time, status, laser")
       .eq("date", selectedDate)
       .eq("location", location)
       .then(
@@ -449,7 +470,7 @@ export default function AdminReservationModal({
     fetchAll<BusySlot & { date: string }>((a, b) =>
       supabase
         .from("reservations")
-        .select("date, start_time, end_time, status")
+        .select("date, start_time, end_time, status, laser")
         .eq("location", location)
         .gte("date", toDateStr(from))
         .lte("date", toDateStr(to))
@@ -462,7 +483,7 @@ export default function AdminReservationModal({
           const byDate = new Map<string, BusySlot[]>();
           for (const r of rows) {
             const list = byDate.get(r.date) ?? [];
-            list.push({ start_time: r.start_time, end_time: r.end_time, status: r.status });
+            list.push({ start_time: r.start_time, end_time: r.end_time, status: r.status, laser: r.laser });
             byDate.set(r.date, list);
           }
           setBusyByDate(byDate);
@@ -786,9 +807,11 @@ export default function AdminReservationModal({
       p_with_consultation: !returningSubmit,
       p_promo_code:        promoForRecord,
       p_notes:             notesForRecord,
+      // Only a studio with more than one laser has one to prefer.
+      ...(laser != null ? { p_laser: laser } : {}),
     });
     const result = (error ? null : data) as unknown as
-      | { status: "ok"; id: string; end_time: string; total_duration: number }
+      | { status: "ok"; id: string; end_time: string; total_duration: number; laser?: number }
       | { status: "slot_taken"; clash_name: string; clash_start: string; clash_end: string }
       | { status: "too_late" | "invalid_input" | "invalid_promo" | "forbidden" }
       | null;
@@ -824,6 +847,7 @@ export default function AdminReservationModal({
       return;
     }
     pendingBookingRef.current = null;
+    setBookedLaser(result.laser ?? null);
     const durationForReservation = result.total_duration;
     const endTime = result.end_time;
     const bookingRefValue = result.id.slice(-8).toUpperCase();
@@ -859,6 +883,11 @@ export default function AdminReservationModal({
   }
 
   if (!isOpen) return null;
+
+  const bookedLaserInfo = availability.lasers.length > 1
+    ? availability.lasers.find((l) => l.laser === bookedLaser)
+    : undefined;
+  const bookedLaserName = bookedLaserInfo ? laserLabel(bookedLaserInfo) : null;
 
   const flowIdx = STEP_ORDER.indexOf(step);
   const progress = flowIdx === -1 ? 1 : (flowIdx + 1) / (STEP_ORDER.length + 1);
@@ -1381,7 +1410,7 @@ export default function AdminReservationModal({
                 <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-1.5 sm:gap-2.5">
                   {availableSlots.map((slot, index) => {
                     // Outside working hours: still bookable, just shown dimmer.
-                    const offHours = !isWithinWorkingHours(selectedDate, slot, slotDuration, availability);
+                    const offHours = !inHoursSlots.has(slot);
                     return (
                     <button
                       key={slot}
@@ -1691,7 +1720,7 @@ export default function AdminReservationModal({
           {/* The same paper sheet the client sees after booking on the site. */}
           {step === "success" && (
             <BookingSuccess
-              headline={`Termin zakazan! ${studio.name}`}
+              headline={`Termin zakazan! ${studio.name}${bookedLaserName ? ` · ${bookedLaserName}` : ""}`}
               email={form.email.trim()}
               date={selectedDate ? formatDateFull(selectedDate) : ""}
               timeRange={`${selectedTime} – ${minutesToTime(timeToMinutes(selectedTime) + reservationDuration)}`}

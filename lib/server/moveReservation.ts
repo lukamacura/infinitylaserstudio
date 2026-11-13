@@ -34,6 +34,9 @@ type MoveResult =
       date: string;
       start_time: string;
       end_time: string;
+      /** The laser it is on now (sql/lasers_phase1.sql): a free one that works then, its own first. */
+      laser?: number;
+      old_laser?: number;
       upcoming: boolean;
       services: string[];
     }
@@ -41,7 +44,7 @@ type MoveResult =
   | { status: "forbidden" | "invalid_input" | "not_found" | "inactive" | "unchanged" };
 
 export type MoveOutcome =
-  | { ok: true; moved: { date: string; start_time: string; end_time: string }; email: EmailResult }
+  | { ok: true; moved: { date: string; start_time: string; end_time: string; laser?: number }; email: EmailResult }
   | { ok: false; error: "slot_taken"; clash: { name: string; start: string; end: string } }
   /** expired: the session's token was refused before the database was asked. */
   | { ok: false; error: "expired" | "forbidden" | "invalid_input" | "not_found" | "inactive" | "unchanged" | "db" };
@@ -79,7 +82,7 @@ export async function moveReservation(
   }
   if (result.status !== "ok") return { ok: false, error: result.status };
 
-  const moved = { date: result.date, start_time: result.start_time, end_time: result.end_time };
+  const moved = { date: result.date, start_time: result.start_time, end_time: result.end_time, laser: result.laser };
 
   // No email for a past term (a record being corrected) or a client without an address.
   let email: EmailResult = "skipped";

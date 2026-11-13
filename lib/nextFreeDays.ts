@@ -1,6 +1,6 @@
 import { supabase, calcBookingDuration, getAvailableSlots } from "@/lib/supabase";
 import {
-  fetchAvailability, resolveWindows, buildCandidateDates, toDateStr, PUBLIC_HORIZON_DAYS,
+  fetchAvailability, laserDays, buildCandidateDates, toDateStr, PUBLIC_HORIZON_DAYS,
 } from "@/lib/availability";
 import { fetchPublicStaffDays } from "@/lib/staff";
 import type { LocationId } from "@/lib/locations";
@@ -38,11 +38,14 @@ export async function loadNextFreeDays(location: LocationId, count: number): Pro
   const minStartToday = now.getHours() * 60 + now.getMinutes() + 120;
   const days: FreeDay[] = [];
   for (const date of buildCandidateDates(PUBLIC_HORIZON_DAYS, availability, now)) {
-    const windows = resolveWindows(date, availability);
-    if (!windows) continue;
+    // Each laser within its own hours (sql/lasers_phase1.sql).
+    const lasers = laserDays(date, availability);
+    if (lasers.length === 0) continue;
     const isToday = date === todayStr;
     const reservations = busy.filter((r) => r.date === date);
-    const freeSlots = getAvailableSlots(reservations, TEASER_DURATION, isToday ? minStartToday : undefined, windows).length;
+    const freeSlots = getAvailableSlots(
+      reservations, TEASER_DURATION, isToday ? minStartToday : undefined, lasers,
+    ).length;
     if (freeSlots === 0) continue;
     days.push({ date, isToday, freeSlots, staff: staff[date] ?? [] });
     if (days.length === count) break;

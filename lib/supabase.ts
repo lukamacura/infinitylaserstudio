@@ -77,35 +77,79 @@ export function minutesToTime(minutes: number): string {
 }
 
 /**
+ * A booking as the slot check sees it. `laser` missing = Laser 1 (a row read
+ * without it, or from before sql/lasers_phase1.sql).
+ */
+export type BusyRow = { start_time: string; end_time: string; status: string; laser?: number | null };
+
+/** A laser and its own working hours on one date (lib/availability.ts: laserDays). */
+export type LaserDay = { laser: number; windows: BusinessWindow[] };
+
+type ActiveBusy = { start: number; end: number; laser: number };
+
+/** Bookings that take up a laser's time (not cancelled, not blacklisted), in minutes. */
+function activeBusy(reservations: BusyRow[]): ActiveBusy[] {
+  return reservations
+    .filter((r) => r.status !== "cancelled" && r.status !== "blacklisted")
+    .map((r) => ({ start: timeToMinutes(r.start_time), end: timeToMinutes(r.end_time), laser: r.laser ?? 1 }));
+}
+
+function isFree(active: ActiveBusy[], laser: number, start: number, end: number): boolean {
+  return !active.some((r) => r.laser === laser && start < r.end && end > r.start);
+}
+
+function inHours(windows: BusinessWindow[], start: number, end: number): boolean {
+  return windows.some((w) => start >= w.start && end <= w.end);
+}
+
+/**
+ * The laser a booking of [start, end) minutes would get; null when none.
+ * Same rule as free_laser() in sql/lasers_phase1.sql:
+ *   - only a laser with nothing booked then (back-to-back is fine);
+ *   - the site (`anyHour` off): only one whose own hours cover the time;
+ *   - the admin (`anyHour` on): any free one, but one that works then first;
+ *   - among equals `prefer`, then the lowest number (Stari before Novi).
+ */
+export function pickFreeLaser(
+  reservations: BusyRow[],
+  start: number,
+  end: number,
+  lasers: LaserDay[],
+  opts: { prefer?: number | null; anyHour?: boolean } = {},
+): number | null {
+  const active = activeBusy(reservations);
+  const rank = (d: LaserDay) =>
+    (inHours(d.windows, start, end) ? 0 : 2) + (d.laser === opts.prefer ? 0 : 1);
+  const fits = lasers
+    .filter((d) => isFree(active, d.laser, start, end) && (opts.anyHour || inHours(d.windows, start, end)))
+    .sort((a, b) => rank(a) - rank(b) || a.laser - b.laser);
+  return fits[0]?.laser ?? null;
+}
+
+/**
  * Return available start times (as "HH:MM") for a date given existing reservations.
+ * Each laser is checked within its own hours: a time is available while at
+ * least one laser works for the whole duration then and has nothing booked.
+ * The client sees it once, however many lasers are free.
  * Pass `minStartMinutes` to enforce a minimum start time (e.g. now+120 for same-day bookings).
  */
 export function getAvailableSlots(
-  reservations: { start_time: string; end_time: string; status: string }[],
+  reservations: BusyRow[],
   durationMinutes: number,
   minStartMinutes: number | undefined,
-  businessWindows: BusinessWindow[],
+  lasers: LaserDay[],
 ): string[] {
-  const active = reservations
-    .filter((r) => r.status !== "cancelled" && r.status !== "blacklisted")
-    .map((r) => ({
-      start: timeToMinutes(r.start_time),
-      end:   timeToMinutes(r.end_time),
-    }));
+  const active = activeBusy(reservations);
+  const earliest = minStartMinutes !== undefined
+    ? Math.ceil(minStartMinutes / SLOT_SIZE) * SLOT_SIZE
+    : -Infinity;
 
   const slotSet = new Set<string>();
-
-  for (const { start: businessStart, end: businessEnd } of businessWindows) {
-    const earliest = minStartMinutes !== undefined
-      ? Math.ceil(minStartMinutes / SLOT_SIZE) * SLOT_SIZE
-      : businessStart;
-
-    const fromMinute = Math.max(businessStart, earliest);
-
-    for (let t = fromMinute; t + durationMinutes <= businessEnd; t += SLOT_SIZE) {
-      const slotEnd = t + durationMinutes;
-      const hasConflict = active.some((r) => t < r.end && slotEnd > r.start);
-      if (!hasConflict) slotSet.add(minutesToTime(t));
+  for (const { laser, windows } of lasers) {
+    for (const { start: businessStart, end: businessEnd } of windows) {
+      for (let t = Math.max(businessStart, earliest); t + durationMinutes <= businessEnd; t += SLOT_SIZE) {
+        if (isFree(active, laser, t, t + durationMinutes)) slotSet.add(minutesToTime(t));
+      }
     }
   }
 

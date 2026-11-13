@@ -27,3 +27,29 @@ export function useAdminLocation() {
 
   return { location, setLocation };
 }
+
+const LASER_KEY = "ils_admin_laser";
+
+/**
+ * The laser the admin calendar shows, in a studio with more than one (Novi Sad:
+ * 1 = Stari, 2 = Novi). Remembered like the studio. A studio that does not have
+ * the saved laser shows its first one - see the admin page.
+ */
+export function useAdminLaser() {
+  const [laser, setLaserState] = useState(1);
+
+  useEffect(() => {
+    try {
+      const saved = Number(window.localStorage.getItem(LASER_KEY));
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (Number.isInteger(saved) && saved >= 1) setLaserState(saved);
+    } catch { /* storage unavailable - stay on the first laser */ }
+  }, []);
+
+  function setLaser(next: number) {
+    setLaserState(next);
+    try { window.localStorage.setItem(LASER_KEY, String(next)); } catch { /* ignore */ }
+  }
+
+  return { laser, setLaser };
+}

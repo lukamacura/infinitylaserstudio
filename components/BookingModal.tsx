@@ -13,7 +13,7 @@ import {
   minutesToTime, timeToMinutes,
 } from "@/lib/supabase";
 import {
-  fetchAvailability, resolveWindows, buildCandidateDates,
+  fetchAvailability, laserDays, buildCandidateDates,
   PUBLIC_HORIZON_DAYS, EMPTY_AVAILABILITY, type AvailabilityData,
 } from "@/lib/availability";
 import type { Service } from "@/lib/database.types";
@@ -85,12 +85,13 @@ function buildDayOptions(totalDuration: number, availability: AvailabilityData):
   const days: DayOption[] = [];
 
   for (const dateStr of buildCandidateDates(PUBLIC_HORIZON_DAYS, availability, now)) {
-    const windows = resolveWindows(dateStr, availability);
-    if (!windows) continue;
+    // Each laser within its own hours (sql/lasers_phase1.sql).
+    const lasers = laserDays(dateStr, availability);
+    if (lasers.length === 0) continue;
 
     const isToday = dateStr === todayStr;
     const minStart = isToday ? minStartToday : undefined;
-    if (getAvailableSlots([], totalDuration, minStart, windows).length === 0) {
+    if (getAvailableSlots([], totalDuration, minStart, lasers).length === 0) {
       continue;
     }
 
@@ -166,7 +167,8 @@ function trackEvent(eventName: string, extra: Record<string, unknown> = {}, pixe
   });
 }
 
-type SlotRow = { start_time: string; end_time: string; status: string };
+/** A booking in the way; `laser` decides whether another laser is still free then (sql/lasers_phase1.sql). */
+type SlotRow = { start_time: string; end_time: string; status: string; laser?: number | null };
 
 // ── Services cache ────────────────────────────────────────────────────────────
 // The treatment list barely changes and every price is re-checked by the
@@ -247,7 +249,7 @@ function loadBusyHorizon(location: LocationId): Promise<BusyByDate | null> {
       const byDate: BusyByDate = new Map();
       for (const row of data ?? []) {
         const list = byDate.get(row.date) ?? [];
-        list.push({ start_time: row.start_time, end_time: row.end_time, status: row.status });
+        list.push({ start_time: row.start_time, end_time: row.end_time, status: row.status, laser: row.laser });
         byDate.set(row.date, list);
       }
       busySnapshot = { at, location, byDate };
@@ -716,9 +718,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
   const slotsKey = studioId && selectedDate ? `${studioId}:${selectedDate}` : null;
   const slotsReady = slotsKey !== null && daySlotsFor === slotsKey;
-  const windows = selectedDate && availability ? resolveWindows(selectedDate, availability) : null;
-  const availableSlots = slotsReady && windows?.length
-    ? getAvailableSlots(daySlots, slotDuration, minStart, windows)
+  const dayLasers = selectedDate && availability ? laserDays(selectedDate, availability) : [];
+  const availableSlots = slotsReady && dayLasers.length
+    ? getAvailableSlots(daySlots, slotDuration, minStart, dayLasers)
     : [];
 
   // ── Side-effects ──────────────────────────────────────────────────────────
@@ -870,11 +872,11 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       const filtered = !byDate
         ? candidates
         : candidates.flatMap((day) => {
-            const windows = resolveWindows(day.date, availability);
-            if (!windows) return [];
+            const lasers = laserDays(day.date, availability);
+            if (lasers.length === 0) return [];
             const minStart = day.date === todayStr ? minStartToday : undefined;
             const res = byDate.get(day.date) ?? [];
-            const freeSlots = getAvailableSlots(res, slotDuration, minStart, windows).length;
+            const freeSlots = getAvailableSlots(res, slotDuration, minStart, lasers).length;
             return freeSlots > 0 ? [{ ...day, freeSlots }] : [];
           });
 

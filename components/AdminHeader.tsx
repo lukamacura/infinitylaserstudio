@@ -43,6 +43,7 @@ export default function AdminHeader({
   onLocationChange,
   onLogout,
   upitiCount,
+  laserSwitch,
   children,
 }: {
   current: AdminPageKey;
@@ -52,6 +53,8 @@ export default function AdminHeader({
   onLogout: () => void;
   /** The /upiti page passes its own live count; elsewhere the header asks. */
   upitiCount?: number;
+  /** Next to the studio switch, on the phone too: the admin calendar's laser switch. */
+  laserSwitch?: ReactNode;
   /** Desktop-only extras next to the studio switch (status, legend...). */
   children?: ReactNode;
 }) {
@@ -106,9 +109,10 @@ export default function AdminHeader({
           </button>
         </nav>
 
-        {onLocationChange && (
-          <div className="px-3 pb-2 flex justify-center">
-            <AdminLocationSwitch value={location} onChange={onLocationChange} />
+        {(onLocationChange || laserSwitch) && (
+          <div className="px-3 pb-2 flex justify-center gap-2">
+            {onLocationChange && <AdminLocationSwitch value={location} onChange={onLocationChange} />}
+            {laserSwitch}
           </div>
         )}
       </div>
@@ -138,6 +142,7 @@ export default function AdminHeader({
           </nav>
 
           {onLocationChange && <AdminLocationSwitch value={location} onChange={onLocationChange} />}
+          {laserSwitch}
           {children}
         </div>
 
