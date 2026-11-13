@@ -47,7 +47,7 @@ function factsForAi(f: InfyFacts, loads: StudioLoad[]) {
     popunjenost_7_dana: loads.map((s) => ({
       studio: studio(s.location),
       ukupno: pct(s.booked, s.open),
-      rupe: s.days.flatMap((d) => d.gaps.map((g) => `${shortDay(d.date)} ${g.start}–${g.end}`)).slice(0, 6),
+      rupe: s.days.flatMap((d) => d.gaps.map((g) => `${shortDay(d.date)} ${g.start}–${g.end}${g.laser ? ` (${g.laser} laser)` : ""}`)).slice(0, 6),
       dani_bez_osoblja: s.days.filter((d) => d.noStaff).map((d) => shortDay(d.date)),
     })),
   };
@@ -62,7 +62,8 @@ async function aiHeadline(f: InfyFacts, loads: StudioLoad[]): Promise<string | n
           "Ti si Infy, asistent osoblja Infinity Laser Studija. Iz datih činjenica napiši jutarnji pregled za osoblje: " +
           "2-3 kratke rečenice, srpski latinicom, toplo i konkretno, \"ti\" forma; o sebi u ženskom rodu. " +
           "Prvo najvažnije što treba uraditi (koga pozvati / kome pisati), pa kakav je dan, pa jedna rupa ili upozorenje ako postoji. " +
-          "Koristi samo date brojeve i imena - ništa ne izmišljaj, ne ponavljaj sve. Bez pozdrava na kraju, bez emodžija osim najviše jednog.",
+          "Koristi samo date brojeve i imena - ništa ne izmišljaj, ne ponavljaj sve. Bez pozdrava na kraju, bez emodžija osim najviše jednog. " +
+          "Novi Sad ima dva lasera (Stari i Novi), svaki sa svojim terminima: rupa sa imenom lasera je slobodna samo na tom laseru.",
       },
       { role: "user", content: JSON.stringify(factsForAi(f, loads)) },
     ],

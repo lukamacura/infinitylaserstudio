@@ -55,6 +55,7 @@ const CONFIRM_ERRORS: Record<string, string> = {
   inactive: "Termin je otkazan ili je na crnoj listi.",
   unchanged: "Termin je već u to vreme.",
   invalid_promo: "Iz tog paketa više nema slobodnih tretmana.",
+  laser_off: "Taj laser tog dana još ne prima termine.",
   forbidden: "Prijava je istekla - osveži stranicu i prijavi se.",
   invalid: "Predlog nije ispravan. Traži novi.",
 };
@@ -324,10 +325,14 @@ export default function Infy() {
       patchCard(msgId, index, { status: "error", error });
       return;
     }
-    patchCard(msgId, index, { status: "done", email: body.email });
+    patchCard(msgId, index, { status: "done", email: body.email, laserMissed: body.laserMissed });
     const d = card.display;
-    const what = d.kind === "book" ? "zakazan termin" : d.kind === "move" ? "termin pomeren na" : "otkazan termin";
-    note(`(Osoblje je potvrdilo papir: ${d.title} - ${what} ${d.date} ${d.timeRange}, ${d.studio}. Mejl: ${body.email === "sent" ? "poslat" : "nije poslat"}.)`);
+    const what = d.kind === "book" ? "zakazan termin"
+      : d.kind === "move" ? "termin pomeren na"
+      : d.kind === "laser" ? "termin prebačen na drugi laser,"
+      : "otkazan termin";
+    const missed = body.laserMissed ? " Traženi laser je bio zauzet - termin je ostao na drugom laseru." : "";
+    note(`(Osoblje je potvrdilo papir: ${d.title} - ${what} ${d.date} ${d.timeRange}, ${d.studio}. Mejl: ${body.email === "sent" ? "poslat" : "nije poslat"}.${missed})`);
     announceDataChanged();
     void loadBrief(false);
   }

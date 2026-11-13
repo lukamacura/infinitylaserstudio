@@ -66,20 +66,14 @@ export function dayLoad(
 /**
  * One studio day from each working laser's own load (sql/lasers_phase1.sql):
  * every laser is its own line of time in its own hours, so open and booked
- * minutes add up and a free stretch on any of them is worth filling. No laser
- * working = closed.
+ * minutes add up and a free stretch on any of them is worth filling - one
+ * per laser (the same stretch free on both is room for two clients), each
+ * named by its laser where there is more than one. No laser working = closed.
  */
 function mergeLoads(date: string, loads: DayLoad[], count: number, windows: BusinessWindow[], noStaff: boolean): DayLoad {
-  const seen = new Set<string>();
   const gaps = loads
     .flatMap((l) => l.gaps)
-    .filter((g) => {
-      const key = `${g.start}-${g.end}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .sort((a, b) => a.start.localeCompare(b.start));
+    .sort((a, b) => a.start.localeCompare(b.start) || (a.laser ?? "").localeCompare(b.laser ?? ""));
   return {
     date,
     closed: windows.length === 0 || loads.length === 0,
@@ -144,7 +138,7 @@ export async function loadStudioLoads(db: AdminDb, now = new Date()): Promise<St
       const noStaff = staffInUse && staff.length === 0;
       const perLaser = laserDays(date, hours).map(({ laser, windows: own }) => {
         const mine = busy.filter((b) => laserOf(b) === laser);
-        return dayLoad(
+        const load = dayLoad(
           date,
           own,
           mine.map((b): [number, number] => [toMinutes(b.start_time), toMinutes(b.end_time)]),
@@ -152,6 +146,8 @@ export async function loadStudioLoads(db: AdminDb, now = new Date()): Promise<St
           i === 0 ? nowMinute : 0,
           noStaff,
         );
+        const name = studioLasers.length > 1 ? studioLasers.find((l) => l.laser === laser)?.name : undefined;
+        return name ? { ...load, gaps: load.gaps.map((g) => ({ ...g, laser: name })) } : load;
       });
       days.push(mergeLoads(date, perLaser, busy.length, windows, noStaff));
     }

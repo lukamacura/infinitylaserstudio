@@ -59,8 +59,11 @@ export type InfyFacts = {
   week_upiti_added: number;
 };
 
-/** A free stretch of working hours with nothing booked. */
-export type Gap = { start: string; end: string; minutes: number };
+/**
+ * A free stretch of working hours with nothing booked. `laser`: whose stretch
+ * it is ("Novi"), in a studio with more than one laser (sql/lasers_phase1.sql).
+ */
+export type Gap = { start: string; end: string; minutes: number; laser?: string };
 
 /** One day of one studio, from now on (today) or whole (later days). */
 export type DayLoad = {
@@ -101,9 +104,11 @@ export type ChatMessage =
 
 /** What the paper sheet of a proposal shows. */
 export type ProposalDisplay = {
-  kind: "book" | "move" | "cancel";
+  /** laser: the same day and time on another laser (no email). */
+  kind: "book" | "move" | "cancel" | "laser";
   /** The client's name - the sheet's title. */
   title: string;
+  /** "Novi Sad", or "Novi Sad · Novi laser (bio Stari)" in a studio with more than one laser. */
   studio: string;
   /** "Utorak, 17. novembar" */
   date: string;
@@ -152,11 +157,15 @@ export type ChatResponse =
   | { ok: false; error: "forbidden" | "config" | "ai" | "invalid_input" };
 
 export type ConfirmResponse =
-  | { ok: true; kind: "book" | "move" | "cancel"; email: "sent" | "failed" | "skipped"; already?: boolean }
+  | {
+      ok: true; kind: "book" | "move" | "cancel" | "laser"; email: "sent" | "failed" | "skipped"; already?: boolean;
+      /** Done, but the laser staff asked for was taken by then - it stayed on the other one. */
+      laserMissed?: boolean;
+    }
   | {
       ok: false;
       error:
         | "forbidden" | "expired" | "invalid" | "slot_taken" | "too_late" | "not_found"
-        | "inactive" | "unchanged" | "invalid_promo" | "db" | "config";
+        | "inactive" | "unchanged" | "invalid_promo" | "laser_off" | "db" | "config";
       clash?: { name: string; start: string; end: string };
     };

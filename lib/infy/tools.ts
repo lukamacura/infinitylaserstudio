@@ -19,7 +19,7 @@ import {
 import {
   buildAvailability, laserDays, resolveWindows, startedLaserDays, type AvailabilityData,
 } from "@/lib/availability";
-import { SINGLE_LASER } from "@/lib/lasers";
+import { SINGLE_LASER, isLaserActive, laserLabel, type Laser } from "@/lib/lasers";
 import { escapeLike } from "@/lib/fetchAll";
 import { getLocation, isLocationId } from "@/lib/locations";
 import { PriceBook } from "@/lib/prices";
@@ -30,7 +30,7 @@ import type { AdminDb } from "@/lib/server/adminDb";
 import type { SuccessDiscount } from "@/components/booking/BookingSheet";
 import { loadFacts, loadStudioLoads, pct } from "./brief";
 import type { ToolSpec } from "./openai";
-import { PROPOSAL_TTL_MS, signProposal, type BookPayload } from "./proposals";
+import { PROPOSAL_TTL_MS, signProposal, type BookPayload, type MovePayload } from "./proposals";
 import {
   addDays, belgradeToday, daysBetween, fromMinutes, isIsoDate, longDay, mondayIndex, shortDay, toMinutes,
 } from "./time";
@@ -93,12 +93,11 @@ function catalog(ctx: ToolContext): Promise<{ services: Svc[]; book: PriceBook }
 }
 
 /**
- * A studio's lasers and each laser's own working hours (sql/lasers_phase1.sql),
- * read once per turn. Lasers that cannot be read count as one - fewer free
- * times, never one the database would refuse.
+ * Every laser and each laser's own working hours (sql/lasers_phase1.sql),
+ * read once per turn.
  */
-async function studioHours(ctx: ToolContext, location: string): Promise<AvailabilityData> {
-  const all = await cached(ctx, "schedule", async () => {
+function schedule(ctx: ToolContext) {
+  return cached(ctx, "schedule", async () => {
     const [tpl, ovr, lasers] = await Promise.all([
       ctx.db.from("weekly_schedule").select("weekday, windows, location, laser"),
       ctx.db.from("availability_overrides").select("date, windows, location, laser").gte("date", ctx.today),
@@ -107,20 +106,89 @@ async function studioHours(ctx: ToolContext, location: string): Promise<Availabi
     if (tpl.error || ovr.error) throw new Error("schedule");
     return { tpl: tpl.data ?? [], ovr: ovr.data ?? [], lasers: (lasers.error ? null : lasers.data) ?? [] };
   });
-  const mine = all.lasers.filter((l) => l.location === location);
+}
+
+/**
+ * A studio's lasers, lowest number first (Novi Sad: Stari, Novi). Lasers that
+ * cannot be read count as one - fewer free times, never one the database
+ * would refuse.
+ */
+async function lasersOf(ctx: ToolContext, location: string): Promise<Laser[]> {
+  const mine = (await schedule(ctx)).lasers.filter((l) => l.location === location);
+  return mine.length ? mine : SINGLE_LASER;
+}
+
+async function studioHours(ctx: ToolContext, location: string): Promise<AvailabilityData> {
+  const all = await schedule(ctx);
   return buildAvailability(
-    mine.length ? mine : SINGLE_LASER,
+    await lasersOf(ctx, location),
     all.tpl.filter((r) => r.location === location),
     all.ovr.filter((r) => r.location === location),
   );
 }
 
-/** Working windows of a studio on a date - every laser's hours together. */
-async function windowsOn(ctx: ToolContext, location: string, date: string): Promise<BusinessWindow[]> {
-  return resolveWindows(date, await studioHours(ctx, location)) ?? [];
+/** "Stari" / "Novi" - only where a studio has more than one laser; elsewhere there is nothing to tell apart. */
+function laserName(lasers: Laser[], laser: number | null | undefined): string | null {
+  return lasers.length > 1 ? lasers.find((l) => l.laser === (laser ?? 1))?.name ?? null : null;
 }
 
-type Busy = { id: string; date: string; start_time: string; end_time: string; location: string; customer_name: string; laser: number };
+type LaserNames = (location: string, laser: number | null | undefined) => string | null;
+
+/** Names for the bookings a tool lists; none when the hours cannot be read (the list still goes out). */
+async function laserNames(ctx: ToolContext): Promise<LaserNames> {
+  try {
+    const all = (await schedule(ctx)).lasers;
+    return (loc, laser) => laserName(all.filter((l) => l.location === loc), laser);
+  } catch {
+    return () => null;
+  }
+}
+
+/**
+ * The laser the staff asked for - its number or its name ("Novi"). undefined:
+ * none asked, or the studio has one laser (nothing to choose); a Fail for a
+ * laser the studio does not have.
+ */
+function askedLaser(raw: unknown, lasers: Laser[], loc: string): number | undefined | Fail {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const text = typeof raw === "string" ? raw.trim().toLowerCase() : null;
+  const found = lasers.find((l) =>
+    l.laser === raw || String(l.laser) === text || l.name.toLowerCase() === text || laserLabel(l).toLowerCase() === text);
+  if (!found) {
+    return fail(lasers.length > 1
+      ? `Nepoznat laser. ${studioName(loc)}: ${lasers.map((l) => `${l.laser} = ${l.name}`).join(", ")}.`
+      : `${studioName(loc)} ima jedan laser - izostavi laser.`);
+  }
+  return lasers.length > 1 ? found.laser : undefined;
+}
+
+/** A laser that has not started by `date`: why it can't be booked. */
+function notStarted(l: Laser, date: string): Fail | null {
+  return isLaserActive(l, date) ? null : fail(`${laserLabel(l)} prima termine od ${shortDay(l.active_from as string)}.`);
+}
+
+/** "Stari 09:00–20:00 · Novi 12:00–18:00" - each laser's own hours on a date. */
+function hoursByLaser(date: string, hours: AvailabilityData): string {
+  return hours.lasers.map((l) => {
+    if (!isLaserActive(l, date)) return `${l.name} počinje ${shortDay(l.active_from as string)}`;
+    const own = resolveWindows(date, hours, l.laser);
+    return `${l.name} ${own ? fmtWindows(own) : "ne radi"}`;
+  }).join(" · ");
+}
+
+/** "Novi Sad · Novi laser (bio Stari)" - the laser only where there is more than one; `from`: the one it leaves. */
+function studioLine(loc: string, lasers: Laser[], laser: number, from?: number | null): string {
+  const to = lasers.length > 1 ? lasers.find((l) => l.laser === laser) : undefined;
+  if (!to) return studioName(loc);
+  const was = from != null && from !== laser ? lasers.find((l) => l.laser === from) : undefined;
+  return `${studioName(loc)} · ${laserLabel(to)}${was ? ` (bio ${was.name})` : ""}`;
+}
+
+function within(windows: BusinessWindow[], start: number, end: number): boolean {
+  return windows.some((w) => start >= w.start && end <= w.end);
+}
+
+type Busy = { id: string; date: string; start_time: string; end_time: string; location: string; customer_name: string; laser: number | null };
 
 async function busyBetween(ctx: ToolContext, location: string, from: string, to: string): Promise<Busy[]> {
   const { data, error } = await ctx.db.from("reservations")
@@ -155,13 +223,15 @@ function hhmm(t: string): string {
 type ResRow = {
   id: string; customer_name: string; customer_phone: string | null; customer_email: string;
   date: string; start_time: string; end_time: string; total_duration: number; status: string;
-  location: string; call_status: string; notes: string | null;
+  location: string; laser: number | null; call_status: string; notes: string | null;
   reservation_services: { services: { name: string } | null }[];
 };
 const RES_COLUMNS =
-  "id, customer_name, customer_phone, customer_email, date, start_time, end_time, total_duration, status, location, call_status, notes, reservation_services(services(name))";
+  "id, customer_name, customer_phone, customer_email, date, start_time, end_time, total_duration, status, location, laser, call_status, notes, reservation_services(services(name))";
 
-function resForModel(r: ResRow) {
+/** `names`: the laser it is on, in a studio with more than one. */
+function resForModel(r: ResRow, names?: LaserNames) {
+  const laser = names?.(r.location, r.laser) ?? null;
   return {
     id: r.id,
     ime: r.customer_name,
@@ -171,6 +241,7 @@ function resForModel(r: ResRow) {
     datum: r.date,
     dan: shortDay(r.date),
     vreme: `${hhmm(r.start_time)}–${hhmm(r.end_time)}`,
+    ...(laser ? { laser } : {}),
     usluge: r.reservation_services.map((x) => x.services?.name).filter(Boolean),
     status: r.status,
     potvrdni_poziv: r.call_status,
@@ -199,19 +270,20 @@ async function findPeople(ctx: ToolContext, a: { upit?: unknown }) {
   const byName = phone
     ? ctx.db.from("reservations").select(RES_COLUMNS).ilike("customer_phone", `%${digits.slice(-8)}%`)
     : ctx.db.from("reservations").select(RES_COLUMNS).ilike("customer_name", `%${escapeLike(q)}%`);
-  const [named, carded] = await Promise.all([
+  const [named, carded, names] = await Promise.all([
     byName.gte("date", ctx.today).in("status", ["pending", "confirmed"]).order("date").limit(10),
     clientIds.length
       ? ctx.db.from("reservations").select(RES_COLUMNS).in("client_id", clientIds)
           .gte("date", ctx.today).in("status", ["pending", "confirmed"]).order("date").limit(10)
       : Promise.resolve({ data: [], error: null }),
+    laserNames(ctx),
   ]);
   const seen = new Set<string>();
   const upcoming = [...((named.data ?? []) as unknown as ResRow[]), ...((carded.data ?? []) as unknown as ResRow[])]
     .filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)))
     .sort((x, y) => (x.date + x.start_time).localeCompare(y.date + y.start_time))
     .slice(0, 10)
-    .map(resForModel);
+    .map((r) => resForModel(r, names));
 
   return {
     kartoni: (cards.data ?? []).map((k) => ({
@@ -238,8 +310,11 @@ async function kartonDetails(ctx: ToolContext, a: { karton_id?: unknown }) {
     id: string; number: number; note: string; client_id: string;
     clients: { name: string; phone: string | null; email: string | null; gender: string | null } | null;
   };
-  const upcoming = await ctx.db.from("reservations").select(RES_COLUMNS).eq("client_id", card.client_id)
-    .gte("date", ctx.today).in("status", ["pending", "confirmed"]).order("date").limit(5);
+  const [upcoming, names] = await Promise.all([
+    ctx.db.from("reservations").select(RES_COLUMNS).eq("client_id", card.client_id)
+      .gte("date", ctx.today).in("status", ["pending", "confirmed"]).order("date").limit(5),
+    laserNames(ctx),
+  ]);
   return {
     karton_id: card.id,
     broj: card.number,
@@ -254,7 +329,7 @@ async function kartonDetails(ctx: ToolContext, a: { karton_id?: unknown }) {
         studio: r.location,
         regije: r.karton_entries.map((e) => (e.energy_j != null ? `${e.region} ${e.energy_j}J` : e.region)),
       })),
-    zakazani_termini: ((upcoming.data ?? []) as unknown as ResRow[]).map(resForModel),
+    zakazani_termini: ((upcoming.data ?? []) as unknown as ResRow[]).map((r) => resForModel(r, names)),
   };
 }
 
@@ -270,17 +345,21 @@ async function daySchedule(ctx: ToolContext, a: { datum?: unknown; studio?: unkn
   ]);
   if (res.error) return fail("Raspored nije učitan.");
   const names = new Map((staff.data ?? []).map((s) => [s.id, s.name]));
+  const lasers = await laserNames(ctx);
   const rows = (res.data ?? []) as unknown as ResRow[];
   const out = [];
   for (const loc of locs) {
     const ids = staffOvr.data?.find((o) => o.location === loc)?.staff_ids
       ?? staffTpl.data?.find((t) => t.location === loc)?.staff_ids ?? [];
     const mine = rows.filter((r) => r.location === loc);
+    const hours = await studioHours(ctx, loc);
     out.push({
       studio: loc,
-      radno_vreme: fmtWindows(await windowsOn(ctx, loc, date)),
+      radno_vreme: fmtWindows(resolveWindows(date, hours) ?? []),
+      // Each laser's own hours, where there is more than one.
+      ...(hours.lasers.length > 1 ? { laseri: hoursByLaser(date, hours) } : {}),
       radi: ids.map((id) => names.get(id)).filter(Boolean),
-      termini: mine.filter((r) => r.status === "pending" || r.status === "confirmed").map(resForModel),
+      termini: mine.filter((r) => r.status === "pending" || r.status === "confirmed").map((r) => resForModel(r, lasers)),
       otkazano: mine.filter((r) => r.status === "cancelled").map((r) => `${r.customer_name} ${hhmm(r.start_time)}`),
     });
   }
@@ -305,6 +384,8 @@ type FreeOpts = {
   before?: number | null;
   /** A booking being moved does not stand in its own way. */
   exceptId?: string;
+  /** Only this laser - the staff asked for it. */
+  laser?: number;
 };
 type FreeDay = { date: string; windows: BusinessWindow[]; slots: string[] };
 
@@ -317,11 +398,12 @@ async function freeByDay(ctx: ToolContext, loc: string, from: string, to: string
   const hours = await studioHours(ctx, loc);
   const days: FreeDay[] = [];
   for (let date = from; date <= to; date = addDays(date, 1)) {
-    const windows = o.anyHour ? ADMIN_WINDOW : resolveWindows(date, hours) ?? [];
+    const windows = o.anyHour ? ADMIN_WINDOW : resolveWindows(date, hours, o.laser) ?? [];
     // Each laser within its own hours - or, for the admin span, any started laser.
-    const lasers = o.anyHour
+    const lasers = (o.anyHour
       ? startedLaserDays(date, hours).map((d) => ({ laser: d.laser, windows: ADMIN_WINDOW }))
-      : laserDays(date, hours);
+      : laserDays(date, hours)
+    ).filter((d) => o.laser === undefined || d.laser === o.laser);
     const slots = lasers.length
       ? getAvailableSlots(
           busy.filter((b) => b.date === date).map((b) => ({ ...b, status: "confirmed" })),
@@ -361,10 +443,13 @@ async function nearestFree(ctx: ToolContext, loc: string, date: string, o: FreeO
 
 async function freeSlots(ctx: ToolContext, a: {
   studio?: unknown; od?: unknown; do?: unknown; usluge_ids?: unknown; trajanje_min?: unknown;
-  novi_klijent?: unknown; posle?: unknown; pre?: unknown; van_radnog_vremena?: unknown;
+  novi_klijent?: unknown; posle?: unknown; pre?: unknown; van_radnog_vremena?: unknown; laser?: unknown;
 }) {
   const loc = isLocationId(a.studio) ? a.studio : ctx.location;
   if (!isIsoDate(a.od)) return fail("Neispravan datum 'od' (YYYY-MM-DD).");
+  const hours = await studioHours(ctx, loc);
+  const laser = askedLaser(a.laser, hours.lasers, loc);
+  if (typeof laser === "object") return laser;
   const from = a.od < ctx.today ? ctx.today : a.od;
   let to = isIsoDate(a.do) && a.do >= from ? a.do : from;
   if (daysBetween(from, to) > FREE_LIST_DAYS - 1) to = addDays(from, FREE_LIST_DAYS - 1);
@@ -386,7 +471,10 @@ async function freeSlots(ctx: ToolContext, a: {
     anyHour: a.van_radnog_vremena === true,
     after: typeof a.posle === "string" && /^\d{1,2}:\d{2}$/.test(a.posle) ? toMinutes(a.posle) : null,
     before: typeof a.pre === "string" && /^\d{1,2}:\d{2}$/.test(a.pre) ? toMinutes(a.pre) : null,
+    laser,
   };
+  // Without a laser asked, each day's hours are told per laser (where there is more than one).
+  const perLaser = laser === undefined && !opts.anyHour && hours.lasers.length > 1;
 
   const found = await freeByDay(ctx, loc, from, to, opts);
   // "Najbliži slobodan": the first free time, looked for past 'do' too.
@@ -396,6 +484,7 @@ async function freeSlots(ctx: ToolContext, a: {
 
   return {
     studio: loc,
+    ...(laser !== undefined ? { laser: laserName(hours.lasers, laser) } : {}),
     trajanje_min: minutes,
     novi_klijent: newClient,
     ...(guessed ? { upozorenje: "Trajanje nije zadato - računato je 30 min. Za zakazivanje pozovi ponovo sa usluge_ids." } : {}),
@@ -404,7 +493,7 @@ async function freeSlots(ctx: ToolContext, a: {
       ? {
           datum: d.date,
           dan: shortDay(d.date),
-          radno_vreme: fmtWindows(d.windows),
+          radno_vreme: perLaser ? hoursByLaser(d.date, hours) : fmtWindows(d.windows),
           termini: d.slots.slice(0, 18),
           ...(d.slots.length > 18 ? { jos: d.slots.length - 18 } : {}),
         }
@@ -444,7 +533,7 @@ async function briefTool(ctx: ToolContext) {
       popunjenost: pct(s.booked, s.open),
       dani: s.days.map((d) => ({
         datum: d.date, dan: shortDay(d.date), zatvoreno: d.closed, popunjenost: pct(d.booked, d.open),
-        termina: d.count, rupe: d.gaps.map((g) => `${g.start}–${g.end}`), bez_osoblja: d.noStaff,
+        termina: d.count, rupe: d.gaps.map((g) => `${g.start}–${g.end}${g.laser ? ` ${g.laser}` : ""}`), bez_osoblja: d.noStaff,
       })),
     })),
     prosla_nedelja: facts.week,
@@ -565,14 +654,47 @@ async function isReturning(ctx: ToolContext, email: string, phone: string | null
 }
 
 /**
- * The booking in the way of [start, end): none while some started laser is
- * free for the whole time, in its hours or not - the admin rule of free_laser
- * (sql/lasers_phase1.sql). With every laser taken, the first one overlapping.
+ * The booking in the way of [start, end): none while one of `lasers` (started
+ * ones, or just the one asked for) is free for the whole time, in its hours or
+ * not - the admin rule of free_laser (sql/lasers_phase1.sql). With every one
+ * taken, the first booking overlapping on them.
  */
 function clashWith(busy: Busy[], lasers: LaserDay[], date: string, start: number, end: number, except?: string): Busy | undefined {
   const day = busy.filter((b) => b.id !== except && b.date === date);
   if (pickFreeLaser(day.map((b) => ({ ...b, status: "confirmed" })), start, end, lasers, { anyHour: true }) !== null) return undefined;
-  return day.find((b) => toMinutes(b.start_time) < end && toMinutes(b.end_time) > start);
+  return day.find((b) =>
+    lasers.some((l) => l.laser === (b.laser ?? 1)) && toMinutes(b.start_time) < end && toMinutes(b.end_time) > start);
+}
+
+/**
+ * The laser a booking of [start, end) gets in the database: the one asked
+ * for, else free_laser's admin rule - a free one that works then first,
+ * `prefer` (its own, for a move) before the other, Stari before Novi.
+ */
+function landingLaser(
+  busy: Busy[], lasers: LaserDay[], date: string, start: number, end: number,
+  o: { asked?: number; prefer?: number; except?: string },
+): number {
+  if (o.asked !== undefined) return o.asked;
+  const day = busy.filter((b) => b.id !== o.except && b.date === date).map((b) => ({ ...b, status: "confirmed" }));
+  return pickFreeLaser(day, start, end, lasers, { prefer: o.prefer, anyHour: true }) ?? o.prefer ?? lasers[0]?.laser ?? 1;
+}
+
+/**
+ * "Van radnog vremena" for [start, end): outside the asked laser's own hours,
+ * or - none asked - with no laser that works then and is free.
+ */
+function hoursWarning(
+  busy: Busy[], hours: AvailabilityData, date: string, start: number, end: number, asked: number | undefined, except?: string,
+): string | null {
+  if (asked !== undefined) {
+    const own = resolveWindows(date, hours, asked) ?? [];
+    if (within(own, start, end)) return null;
+    const l = hours.lasers.find((x) => x.laser === asked);
+    return `Van radnog vremena - ${l ? laserLabel(l) : "laser"}: ${own.length ? fmtWindows(own) : "ne radi tog dana"}`;
+  }
+  if (freeInHours(busy, laserDays(date, hours), date, start, end, except)) return null;
+  return `Van radnog vremena (${hours.lasers.length > 1 ? hoursByLaser(date, hours) : fmtWindows(resolveWindows(date, hours) ?? [])})`;
 }
 
 function pushProposal(ctx: ToolContext, token: string, subject: string, display: ProposalDisplay) {
@@ -585,13 +707,19 @@ function pushProposal(ctx: ToolContext, token: string, subject: string, display:
 async function proposeBooking(ctx: ToolContext, a: {
   studio?: unknown; datum?: unknown; vreme?: unknown; usluge_ids?: unknown; ime?: unknown;
   telefon?: unknown; email?: unknown; karton_id?: unknown; novi_klijent?: unknown;
-  promo_kod?: unknown; napomena?: unknown;
+  promo_kod?: unknown; napomena?: unknown; laser?: unknown;
 }) {
   const loc = isLocationId(a.studio) ? a.studio : ctx.location;
   if (!isIsoDate(a.datum)) return fail("Neispravan datum (YYYY-MM-DD).");
   if (typeof a.vreme !== "string" || !TIME_RE.test(a.vreme)) return fail("Vreme mora biti HH:MM, na 10 minuta.");
   const date = a.datum;
   const start = toMinutes(a.vreme);
+  const hours = await studioHours(ctx, loc);
+  const asked = askedLaser(a.laser, hours.lasers, loc);
+  if (typeof asked === "object") return asked;
+  const askedRow = hours.lasers.find((l) => l.laser === asked);
+  const off = askedRow ? notStarted(askedRow, date) : null;
+  if (off) return off;
   const ids = Array.isArray(a.usluge_ids) ? [...new Set(a.usluge_ids.filter((x): x is string => typeof x === "string" && UUID_RE.test(x)))] : [];
   if (!ids.length || ids.length > 20) return fail("Fale usluge (id-jevi iz alata 'usluge').");
 
@@ -627,17 +755,19 @@ async function proposeBooking(ctx: ToolContext, a: {
   // refusal, so the next try is never a guess (the end of the booking in the
   // way is often not free - the next one starts right there).
   if (date < ctx.today || (date === ctx.today && start < ctx.nowMinute - 5)) {
-    return fail("To vreme je prošlo.", await nearestFree(ctx, loc, date, { minutes }));
+    return fail("To vreme je prošlo.", await nearestFree(ctx, loc, date, { minutes, laser: asked }));
   }
   const busy = await busyBetween(ctx, loc, date, date);
-  const hours = await studioHours(ctx, loc);
-  const clash = clashWith(busy, startedLaserDays(date, hours), date, start, end);
+  // The laser asked for, or any started one.
+  const started = startedLaserDays(date, hours).filter((d) => asked === undefined || d.laser === asked);
+  const clash = clashWith(busy, started, date, start, end);
   if (clash) {
     return fail(
-      `${a.vreme}–${fromMinutes(end)} (${minutes} min) se preklapa sa: ${clash.customer_name} ${hhmm(clash.start_time)}–${hhmm(clash.end_time)}.`,
-      await nearestFree(ctx, loc, date, { minutes }),
+      `${a.vreme}–${fromMinutes(end)} (${minutes} min) se preklapa sa: ${clash.customer_name} ${hhmm(clash.start_time)}–${hhmm(clash.end_time)}${askedRow ? ` (${laserLabel(askedRow)})` : ""}.`,
+      await nearestFree(ctx, loc, date, { minutes, laser: asked }),
     );
   }
+  const laser = landingLaser(busy, started, date, start, end, { asked });
 
   // Price: this studio's list today, combos applied, then the code.
   const gender = svcs[0].gender;
@@ -667,9 +797,9 @@ async function proposeBooking(ctx: ToolContext, a: {
     }
   }
 
-  const windows = resolveWindows(date, hours) ?? [];
   const warnings: string[] = [];
-  if (!freeInHours(busy, laserDays(date, hours), date, start, end)) warnings.push(`Van radnog vremena (${fmtWindows(windows)})`);
+  const outside = hoursWarning(busy, hours, date, start, end, asked);
+  if (outside) warnings.push(outside);
   if (!email && !phone) warnings.push("Nema ni telefona ni emaila");
   else if (!email) warnings.push("Bez emaila - potvrda se ne šalje");
   if (promo === STUDENT_PROMO_CODE && returning) warnings.push("Klijent već postoji - studentski popust je za prvi tretman");
@@ -678,6 +808,7 @@ async function proposeBooking(ctx: ToolContext, a: {
     k: "book", id: randomUUID(), loc, date, start: a.vreme, svc: ids, name, email, phone,
     cons: !returning, promo, notes: notes.join(" · ") || null,
     lines: effective.map((s) => ({ name: s.name, price: s.price })), list,
+    laser, ...(asked !== undefined ? { force: true } : {}),
     exp: Date.now() + PROPOSAL_TTL_MS,
   };
   const token = signProposal(payload);
@@ -685,7 +816,7 @@ async function proposeBooking(ctx: ToolContext, a: {
   pushProposal(ctx, token, `book:${name.toLowerCase()}`, {
     kind: "book",
     title: name,
-    studio: studioName(loc),
+    studio: studioLine(loc, hours.lasers, laser),
     date: longDay(date),
     timeRange: `${a.vreme} – ${fromMinutes(end)}`,
     duration: minutes,
@@ -703,6 +834,7 @@ async function proposeBooking(ctx: ToolContext, a: {
   return {
     ok: true,
     poruka: "Papir sa predlogom je prikazan. Ništa nije zakazano dok osoblje ne pritisne Potvrdi.",
+    ...(laserName(hours.lasers, laser) ? { laser: laserName(hours.lasers, laser) } : {}),
     trajanje_min: minutes, sa_konsultacijom: !returning, cena_rsd: finalPrice, upozorenja: warnings,
   };
 }
@@ -737,7 +869,7 @@ async function sheetPrice(ctx: ToolContext, id: string) {
   };
 }
 
-async function proposeMove(ctx: ToolContext, a: { rezervacija_id?: unknown; datum?: unknown; vreme?: unknown }) {
+async function proposeMove(ctx: ToolContext, a: { rezervacija_id?: unknown; datum?: unknown; vreme?: unknown; laser?: unknown }) {
   const r = await loadReservation(ctx, a.rezervacija_id);
   if ("greska" in r) return r;
   if (r.status !== "pending" && r.status !== "confirmed") return fail("Termin je otkazan ili na crnoj listi - ne može se pomeriti.");
@@ -745,39 +877,53 @@ async function proposeMove(ctx: ToolContext, a: { rezervacija_id?: unknown; datu
   if (typeof a.vreme !== "string" || !TIME_RE.test(a.vreme)) return fail("Vreme mora biti HH:MM, na 10 minuta.");
   const date = a.datum;
   const start = toMinutes(a.vreme);
-  if (date === r.date && a.vreme === hhmm(r.start_time)) return fail("Termin je već tada.");
+  const hours = await studioHours(ctx, r.location);
+  const asked = askedLaser(a.laser, hours.lasers, r.location);
+  if (typeof asked === "object") return asked;
+  const current = r.laser ?? 1;
+  if (date === r.date && a.vreme === hhmm(r.start_time)) {
+    // Same day and time, another laser: only the laser changes.
+    if (asked !== undefined && asked !== current) return proposeLaserSwitch(ctx, r, hours, asked);
+    return fail(asked !== undefined ? "Termin je već tada i na tom laseru." : "Termin je već tada.");
+  }
+  const askedRow = hours.lasers.find((l) => l.laser === asked);
+  const off = askedRow ? notStarted(askedRow, date) : null;
+  if (off) return off;
   const end = start + r.total_duration;
   if (end >= 24 * 60) return fail("Termin bi trajao posle ponoći.");
 
-  const freeOpts: FreeOpts = { minutes: r.total_duration, exceptId: r.id };
+  const freeOpts: FreeOpts = { minutes: r.total_duration, exceptId: r.id, laser: asked };
   if (date < ctx.today || (date === ctx.today && start < ctx.nowMinute - 5)) {
     return fail("To vreme je prošlo.", await nearestFree(ctx, r.location, date, freeOpts));
   }
   const busy = await busyBetween(ctx, r.location, date, date);
-  const hours = await studioHours(ctx, r.location);
-  const clash = clashWith(busy, startedLaserDays(date, hours), date, start, end, r.id);
+  const started = startedLaserDays(date, hours).filter((d) => asked === undefined || d.laser === asked);
+  const clash = clashWith(busy, started, date, start, end, r.id);
   if (clash) {
     return fail(
-      `${a.vreme}–${fromMinutes(end)} se preklapa sa: ${clash.customer_name} ${hhmm(clash.start_time)}–${hhmm(clash.end_time)}.`,
+      `${a.vreme}–${fromMinutes(end)} se preklapa sa: ${clash.customer_name} ${hhmm(clash.start_time)}–${hhmm(clash.end_time)}${askedRow ? ` (${laserLabel(askedRow)})` : ""}.`,
       await nearestFree(ctx, r.location, date, freeOpts),
     );
   }
+  // admin_move_reservation keeps its own laser when that one is as good as the other.
+  const laser = landingLaser(busy, started, date, start, end, { asked, prefer: current, except: r.id });
 
-  const windows = resolveWindows(date, hours) ?? [];
   const warnings: string[] = [];
-  if (!freeInHours(busy, laserDays(date, hours), date, start, end, r.id)) {
-    warnings.push(`Van radnog vremena (${fmtWindows(windows)})`);
-  }
+  const outside = hoursWarning(busy, hours, date, start, end, asked, r.id);
+  if (outside) warnings.push(outside);
   const email = r.customer_email.trim();
   if (!email) warnings.push("Bez emaila - klijent ne dobija obaveštenje");
 
   const price = await sheetPrice(ctx, r.id);
-  const token = signProposal({ k: "move", id: r.id, date, start: a.vreme, exp: Date.now() + PROPOSAL_TTL_MS });
+  const payload: MovePayload = {
+    k: "move", id: r.id, date, start: a.vreme, ...(asked !== undefined ? { laser: asked } : {}), exp: Date.now() + PROPOSAL_TTL_MS,
+  };
+  const token = signProposal(payload);
   if (!token) return fail("Server nije podešen za potvrde.");
   pushProposal(ctx, token, `move:${r.id}`, {
     kind: "move",
     title: r.customer_name,
-    studio: studioName(r.location),
+    studio: studioLine(r.location, hours.lasers, laser, current),
     date: longDay(date),
     timeRange: `${a.vreme} – ${fromMinutes(end)}`,
     duration: r.total_duration,
@@ -792,7 +938,62 @@ async function proposeMove(ctx: ToolContext, a: { rezervacija_id?: unknown; datu
     phone: r.customer_phone,
     warnings,
   });
-  return { ok: true, poruka: "Papir sa predlogom pomeranja je prikazan. Čeka se Potvrdi.", upozorenja: warnings };
+  return {
+    ok: true,
+    poruka: "Papir sa predlogom pomeranja je prikazan. Čeka se Potvrdi.",
+    ...(laserName(hours.lasers, laser) ? { laser: laserName(hours.lasers, laser) } : {}),
+    upozorenja: warnings,
+  };
+}
+
+/**
+ * The same day and time on another laser (admin_set_laser): refused when that
+ * laser is taken then. The client's term does not change - no email.
+ */
+async function proposeLaserSwitch(ctx: ToolContext, r: ResRow, hours: AvailabilityData, laser: number) {
+  const row = hours.lasers.find((l) => l.laser === laser);
+  if (!row) return fail("Nepoznat laser.");
+  const off = notStarted(row, r.date);
+  if (off) return off;
+  const start = toMinutes(r.start_time);
+  const end = toMinutes(r.end_time);
+  const busy = await busyBetween(ctx, r.location, r.date, r.date);
+  const clash = busy.find((b) =>
+    b.id !== r.id && (b.laser ?? 1) === laser && toMinutes(b.start_time) < end && toMinutes(b.end_time) > start);
+  if (clash) {
+    return fail(`${laserLabel(row)} je tada zauzet: ${clash.customer_name} ${hhmm(clash.start_time)}–${hhmm(clash.end_time)}.`);
+  }
+
+  const warnings: string[] = [];
+  const outside = hoursWarning(busy, hours, r.date, start, end, laser, r.id);
+  if (outside) warnings.push(outside);
+
+  const price = await sheetPrice(ctx, r.id);
+  const token = signProposal({ k: "laser", id: r.id, laser, exp: Date.now() + PROPOSAL_TTL_MS });
+  if (!token) return fail("Server nije podešen za potvrde.");
+  pushProposal(ctx, token, `move:${r.id}`, {
+    kind: "laser",
+    title: r.customer_name,
+    studio: studioLine(r.location, hours.lasers, laser, r.laser ?? 1),
+    date: longDay(r.date),
+    timeRange: `${hhmm(r.start_time)} – ${hhmm(r.end_time)}`,
+    duration: r.total_duration,
+    withConsultation: price.withConsultation,
+    services: price.services ?? r.reservation_services.map((x) => x.services?.name ?? "").filter(Boolean),
+    listTotal: price.listTotal,
+    finalPrice: price.finalPrice,
+    discount: price.discount,
+    movedFrom: null,
+    email: null,
+    emailDefault: false,
+    phone: r.customer_phone,
+    warnings,
+  });
+  return {
+    ok: true,
+    poruka: `Papir sa predlogom prebacivanja na ${laserLabel(row)} je prikazan. Vreme ostaje isto, klijent ne dobija mejl. Čeka se Potvrdi.`,
+    upozorenja: warnings,
+  };
 }
 
 async function proposeCancel(ctx: ToolContext, a: { rezervacija_id?: unknown; razlog?: unknown }) {
@@ -807,13 +1008,16 @@ async function proposeCancel(ctx: ToolContext, a: { rezervacija_id?: unknown; ra
   if (!upcoming) warnings.push("Termin je već prošao");
   if (!email) warnings.push("Bez emaila - klijent ne dobija obaveštenje");
 
-  const price = await sheetPrice(ctx, r.id);
+  const [price, lasers] = await Promise.all([
+    sheetPrice(ctx, r.id),
+    lasersOf(ctx, r.location).catch(() => SINGLE_LASER),
+  ]);
   const token = signProposal({ k: "cancel", id: r.id, reason, exp: Date.now() + PROPOSAL_TTL_MS });
   if (!token) return fail("Server nije podešen za potvrde.");
   pushProposal(ctx, token, `cancel:${r.id}`, {
     kind: "cancel",
     title: r.customer_name,
-    studio: studioName(r.location),
+    studio: studioLine(r.location, lasers, r.laser ?? 1),
     date: longDay(r.date),
     timeRange: `${hhmm(r.start_time)} – ${hhmm(r.end_time)}`,
     duration: r.total_duration,
@@ -836,6 +1040,10 @@ async function proposeCancel(ctx: ToolContext, a: { rezervacija_id?: unknown; ra
 const str = (description: string) => ({ type: "string", description });
 const day = (description: string) => ({ type: "string", description: `${description} (YYYY-MM-DD)` });
 const studio = { type: "string", enum: ["novi_sad", "sombor"], description: "Studio; bez njega važi studio otvoren u adminu." };
+const laserArg = {
+  type: "integer",
+  description: "Samo kad osoblje traži određeni laser (Novi Sad: 1 = Stari, 2 = Novi). Inače izostavi - bira se slobodan laser.",
+};
 
 function tool(name: string, description: string, properties: Record<string, unknown> = {}, required: string[] = []): ToolSpec {
   return { type: "function", function: { name, description, parameters: { type: "object", properties, required, additionalProperties: false } } };
@@ -846,12 +1054,12 @@ export const TOOL_SPECS: ToolSpec[] = [
     { upit: str("Ime, prezime ili broj telefona") }, ["upit"]),
   tool("karton", "Karton klijenta: kontakt, beleška, tretmani sa regijama i energijom, zakazani termini.",
     { karton_id: str("id kartona iz pronadji_osobu") }, ["karton_id"]),
-  tool("raspored_dana", "Svi termini jednog dana (oba studija ili jedan), radno vreme i ko radi.",
+  tool("raspored_dana", "Svi termini jednog dana (oba studija ili jedan), radno vreme (u studiju sa dva lasera i po laseru), ko radi i na kom laseru je koji termin.",
     { datum: day("Dan"), studio }, ["datum"]),
   tool("slobodni_termini",
-    "Slobodna vremena za zakazivanje u periodu (najviše 14 dana), u radnom vremenu. prvi_slobodan je najbliže slobodno vreme od 'od' (traži i posle 'do', do 30 dana).",
+    "Slobodna vremena za zakazivanje u periodu (najviše 14 dana), u radnom vremenu. Vreme je slobodno kad bar jedan laser tada radi i nema termin; sa 'laser' samo na tom laseru. prvi_slobodan je najbliže slobodno vreme od 'od' (traži i posle 'do', do 30 dana).",
     {
-      studio, od: day("Prvi dan"), do: day("Poslednji dan, može isti kao od"),
+      studio, laser: laserArg, od: day("Prvi dan"), do: day("Poslednji dan, može isti kao od"),
       usluge_ids: { type: "array", items: { type: "string" }, description: "id-jevi iz alata usluge - trajanje se računa kao pri zakazivanju. Bez njih je trajanje samo 30 min." },
       trajanje_min: { type: "number", description: "Ako usluge nisu poznate" },
       novi_klijent: { type: "boolean", description: "Novi klijent ima +10 min konsultacije (podrazumevano true)" },
@@ -878,9 +1086,9 @@ export const TOOL_SPECS: ToolSpec[] = [
   tool("oznaci_poziv", "Potvrdni poziv novom klijentu pred prvi termin: javio_se ili ne_javlja_se.",
     { rezervacija_id: str("id termina"), ishod: { type: "string", enum: ["javio_se", "ne_javlja_se"] } }, ["rezervacija_id", "ishod"]),
   tool("predlog_zakazivanja",
-    "Pravi PREDLOG novog termina na papiru. Ništa ne zakazuje: osoblje mora da pritisne Potvrdi. Server računa trajanje, konsultaciju i cenu. Ako vrati greska, papir NIJE napravljen; najbliza_slobodna su prava slobodna vremena za ovo trajanje.",
+    "Pravi PREDLOG novog termina na papiru. Ništa ne zakazuje: osoblje mora da pritisne Potvrdi. Server računa trajanje, konsultaciju, cenu i laser. Ako vrati greska, papir NIJE napravljen; najbliza_slobodna su prava slobodna vremena za ovo trajanje.",
     {
-      studio, datum: day("Dan termina"), vreme: str("Početak HH:MM - iz slobodni_termini ili najbliza_slobodna"),
+      studio, laser: laserArg, datum: day("Dan termina"), vreme: str("Početak HH:MM - iz slobodni_termini ili najbliza_slobodna"),
       usluge_ids: { type: "array", items: { type: "string" }, description: "id-jevi iz alata usluge" },
       ime: str("Ime i prezime"), telefon: str("Telefon"), email: str("Email"),
       karton_id: str("Ako klijent ima karton - kontakt se uzima iz njega"),
@@ -888,8 +1096,9 @@ export const TOOL_SPECS: ToolSpec[] = [
       promo_kod: str("student20 ili ils-... kod, samo ako ga je osoblje navelo"),
       napomena: str("Interna napomena uz termin"),
     }, ["datum", "vreme", "usluge_ids", "ime"]),
-  tool("predlog_pomeranja", "Pravi PREDLOG pomeranja postojećeg termina na papiru. Ništa ne menja dok osoblje ne pritisne Potvrdi.",
-    { rezervacija_id: str("id termina"), datum: day("Novi dan"), vreme: str("Novi početak HH:MM") }, ["rezervacija_id", "datum", "vreme"]),
+  tool("predlog_pomeranja",
+    "Pravi PREDLOG pomeranja postojećeg termina na papiru. Ništa ne menja dok osoblje ne pritisne Potvrdi. Isti datum i vreme sa drugim laserom = prebacivanje na taj laser (klijent ne dobija mejl).",
+    { rezervacija_id: str("id termina"), datum: day("Novi dan"), vreme: str("Novi početak HH:MM"), laser: laserArg }, ["rezervacija_id", "datum", "vreme"]),
   tool("predlog_otkazivanja", "Pravi PREDLOG otkazivanja termina na papiru. Ništa ne otkazuje dok osoblje ne pritisne Potvrdi.",
     { rezervacija_id: str("id termina"), razlog: str("Razlog, kratko") }, ["rezervacija_id"]),
 ];

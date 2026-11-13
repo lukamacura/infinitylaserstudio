@@ -42,7 +42,7 @@ Ništa nije obrisano. Zaključavanje po danu ostaje, pa dve osobe i dalje ne mog
   Ekran uspeha kaže na koji laser je termin upisan.
 - **Detalji termina → Laser**: dugme za prebacivanje na drugi laser (isti dan i vreme, klijent ne dobija mejl).
 - **Pomeri termin**: piše ako termin prelazi na drugi laser.
-- Infy (asistent) računa slobodne termine i popunjenost po laserima, svaki u svom radnom vremenu.
+- Infy (asistent) računa slobodne termine i popunjenost po laserima, svaki u svom radnom vremenu. Zna da Novi Sad ima Stari i Novi: kaže na kom je laseru termin i radno vreme svakog lasera, rupe u pregledu su po laseru, a papir piše laser („Novi Sad · Novi laser“). Na traženi laser zakazuje i pomera („na Novom“), a „prebaci Anu na Novi“ prebacuje termin na drugi laser u isto vreme, bez mejla klijentu. Bez traženog lasera bira server: laser koji tada radi, Stari pre Novog.
 - Pozivi, Klijenti, Finansije, Statistike i Kartoni rade kao i do sada, za ceo studio.
 
 ## Redosled puštanja (live se ne dira do tvog „može")

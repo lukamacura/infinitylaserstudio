@@ -7,6 +7,7 @@ import {
   MessageCircle, NotebookPen, Phone, PhoneMissed, Sparkles, UserRoundCheck, Users,
 } from "lucide-react";
 import { getLocation, type LocationId } from "@/lib/locations";
+import { laserLabel } from "@/lib/lasers";
 import { telHref } from "@/lib/upiti";
 import { followUpText } from "@/lib/infy/client";
 import { addDays, daysBetween, relativeDay, shortDay, SR_WEEKDAYS_SHORT, mondayIndex } from "@/lib/infy/time";
@@ -308,14 +309,14 @@ export default function BriefView({
         <Section icon={<Clock4 size={14} />} title="Rupe u kalendaru">
           <ul className="space-y-1.5">
             {gaps.map((g) => (
-              <li key={`${g.location}${g.date}${g.start}`} className="flex items-center justify-between gap-2 text-xs font-poppins">
+              <li key={`${g.location}${g.date}${g.start}${g.laser ?? ""}`} className="flex items-center justify-between gap-2 text-xs font-poppins">
                 <span>
                   <b>{relativeDay(g.date, today)}</b> {g.start}–{g.end}
-                  <span className="text-foreground/55"> · {g.minutes} min · {SHORT[g.location]}</span>
+                  <span className="text-foreground/55"> · {g.minutes} min · {SHORT[g.location]}{g.laser ? ` · ${g.laser}` : ""}</span>
                 </span>
                 <button
                   type="button"
-                  onClick={() => onAsk(`Kako da popunimo rupu ${relativeDay(g.date, today)} ${g.start}–${g.end} u ${studioName(g.location)}? Pogledaj upite i klijente za vraćanje.`)}
+                  onClick={() => onAsk(`Kako da popunimo rupu ${relativeDay(g.date, today)} ${g.start}–${g.end} u ${studioName(g.location)}${g.laser ? ` (${laserLabel({ name: g.laser })})` : ""}? Pogledaj upite i klijente za vraćanje.`)}
                   className="shrink-0 text-accent font-semibold hover:underline cursor-pointer"
                 >
                   Popuni

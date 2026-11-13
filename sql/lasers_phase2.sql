@@ -35,7 +35,7 @@ begin
 end $$;
 
 insert into public.lasers (location, laser, name, active_from)
-values ('novi_sad', 2, 'Novi', date '2026-11-20')   -- ← the first day it works
+values ('novi_sad', 2, 'Novi', date '2026-11-13')   -- ← the first day it works
 on conflict (location, laser) do update
   set name = excluded.name, active_from = excluded.active_from;
 

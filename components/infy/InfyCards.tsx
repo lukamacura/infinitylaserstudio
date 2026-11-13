@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import {
-  BellRing, CalendarClock, CalendarPlus, CalendarX, Loader2, Mail, MailX, TriangleAlert, Undo2,
+  ArrowLeftRight, BellRing, CalendarClock, CalendarPlus, CalendarX, Loader2, Mail, MailX, TriangleAlert, Undo2,
 } from "lucide-react";
 import BookingSheet from "@/components/booking/BookingSheet";
 import { shortDay } from "@/lib/infy/time";
@@ -14,6 +14,8 @@ export type UiCard = InfyCard & {
   status: CardStatus;
   error?: string;
   email?: "sent" | "failed" | "skipped";
+  /** Done, but on the other laser - the one asked for was taken meanwhile. */
+  laserMissed?: boolean;
 };
 
 type ProposalUiCard = Extract<UiCard, { type: "proposal" }>;
@@ -23,6 +25,7 @@ const KIND = {
   book:   { label: "Novi termin", Icon: CalendarPlus,  confirm: "Potvrdi zakazivanje", stamp: "Zakazano" },
   move:   { label: "Pomeranje",   Icon: CalendarClock, confirm: "Potvrdi pomeranje",   stamp: "Pomereno" },
   cancel: { label: "Otkazivanje", Icon: CalendarX,     confirm: "Potvrdi otkazivanje", stamp: "Otkazano" },
+  laser:  { label: "Drugi laser", Icon: ArrowLeftRight, confirm: "Potvrdi prebacivanje", stamp: "Prebačeno" },
 } as const;
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -94,16 +97,21 @@ export function ProposalCard({
 
       {actionable && (
         <>
-          <label className={`mt-3 flex items-center gap-2.5 text-sm font-poppins ${d.email ? "cursor-pointer" : "opacity-50"}`}>
-            <input
-              type="checkbox"
-              checked={notify && !!d.email}
-              disabled={!d.email}
-              onChange={(e) => setNotify(e.target.checked)}
-              className="w-4 h-4 accent-accent"
-            />
-            {d.email ? `Pošalji mejl klijentu` : "Klijent nema email - bez mejla"}
-          </label>
+          {d.kind === "laser" ? (
+            // Same day and time - the client has nothing to be told.
+            <p className="mt-3 text-sm font-poppins text-foreground/60">Vreme ostaje isto - klijent ne dobija mejl</p>
+          ) : (
+            <label className={`mt-3 flex items-center gap-2.5 text-sm font-poppins ${d.email ? "cursor-pointer" : "opacity-50"}`}>
+              <input
+                type="checkbox"
+                checked={notify && !!d.email}
+                disabled={!d.email}
+                onChange={(e) => setNotify(e.target.checked)}
+                className="w-4 h-4 accent-accent"
+              />
+              {d.email ? `Pošalji mejl klijentu` : "Klijent nema email - bez mejla"}
+            </label>
+          )}
           {card.status === "error" && card.error && (
             <p className="mt-2 text-xs font-poppins text-red-300" role="alert">{card.error}</p>
           )}
@@ -139,6 +147,11 @@ export function ProposalCard({
           {card.email === "sent" ? "Gotovo · klijent je dobio mejl"
             : card.email === "failed" ? "Gotovo · mejl NIJE otišao, javi se klijentu"
             : "Gotovo · bez mejla"}
+        </p>
+      )}
+      {done && card.laserMissed && (
+        <p className="mt-1 flex items-start gap-1.5 text-xs font-poppins text-amber-300">
+          <TriangleAlert size={13} className="shrink-0 mt-px" /> Traženi laser je u međuvremenu zauzet - termin je na drugom laseru.
         </p>
       )}
       {card.status === "replaced" && <p className="mt-2 text-xs font-poppins text-foreground/55">Zamenjeno novim predlogom.</p>}

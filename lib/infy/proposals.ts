@@ -29,11 +29,21 @@ export type BookPayload = {
   /** As priced on the sheet - for the confirmation email. */
   lines: { name: string; price: number }[];
   list: number;
+  /**
+   * The laser on the sheet (sql/lasers_phase1.sql), sent as the preferred one.
+   * `force`: the staff asked for it - it is put there even where the database
+   * would pick another (the other one works then, this one does not).
+   */
+  laser?: number;
+  force?: boolean;
   exp: number;
 };
-export type MovePayload = { k: "move"; id: string; date: string; start: string; exp: number };
+/** `laser`: the staff asked for it - the move ends on it. */
+export type MovePayload = { k: "move"; id: string; date: string; start: string; laser?: number; exp: number };
+/** The same day and time on another laser (admin_set_laser). */
+export type LaserPayload = { k: "laser"; id: string; laser: number; exp: number };
 export type CancelPayload = { k: "cancel"; id: string; reason: string | null; exp: number };
-export type ProposalPayload = BookPayload | MovePayload | CancelPayload;
+export type ProposalPayload = BookPayload | MovePayload | LaserPayload | CancelPayload;
 
 function key(): string | null {
   const k = process.env.INFY_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
