@@ -679,6 +679,8 @@ export type Database = {
         Returns: { stage: string; sessions: number }[]
       }
       bundle_sessions_left: { Args: { p_email: string; p_code: string; p_location?: string }; Returns: number }
+      /** Months ("YYYY-MM") in the booking window whose packages are full (sql/bundle_capacity.sql). */
+      public_bundle_closed_months: { Args: { p_location: string }; Returns: string[] }
       public_create_booking: {
         Args: {
           p_id: string

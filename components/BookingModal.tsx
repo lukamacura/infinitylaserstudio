@@ -109,6 +109,17 @@ function buildDayOptions(totalDuration: number, availability: AvailabilityData):
   return days;
 }
 
+/** Every calendar day of the public booking window, today first. */
+function windowDates(): string[] {
+  const out: string[] = [];
+  const d = new Date();
+  for (let i = 0; i < PUBLIC_HORIZON_DAYS; i++) {
+    out.push(toDateStr(d));
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+}
+
 /* `ils-` promo codes (−10%) are deliberately NOT honoured here. They are an
    admin-only discount, applied from the admin panel when creating/editing a
    reservation - see AdminReservationModal. The public form accepts bundle
@@ -275,6 +286,15 @@ function busySeed(location: LocationId, date: string): SlotRow[] | null {
 function invalidateBusy() {
   busyRequest = null;
   busySnapshot = null;
+}
+
+/** A day still has a free time for this duration (2-hour notice today). */
+function dayHasFreeSlot(date: string, busy: SlotRow[], duration: number, availability: AvailabilityData): boolean {
+  const lasers = laserDays(date, availability);
+  if (lasers.length === 0) return false;
+  const now = new Date();
+  const minStart = date === toDateStr(now) ? now.getHours() * 60 + now.getMinutes() + 120 : undefined;
+  return getAvailableSlots(busy, duration, minStart, lasers).length > 0;
 }
 
 /** Per-gender social proof - shown on the services step and the date step. */
@@ -559,7 +579,18 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   // Step "plan" state
   const [bookingMode, setBookingMode] = useState<BookingMode>("single");
   const [bundleSize, setBundleSize]   = useState<number | null>(null);
+  /**
+   * Months ("YYYY-MM") at the chosen studio where packages already take over
+   * 30% of the working time, so no new package is sold for a day in them
+   * (sql/bundle_capacity.sql). null = not loaded yet.
+   */
+  const [closedBundleMonths, setClosedBundleMonths] = useState<string[] | null>(null);
+  const [bundleMonthsReloadKey, setBundleMonthsReloadKey] = useState(0);
+  /** The window's reservations, read while some month is full (byDate null = could not be read). */
+  const [bundleBusy, setBundleBusy] = useState<{ location: LocationId; byDate: BusyByDate | null } | null>(null);
   const appliedPreselect = useRef(false);
+  /** A landing-page package example waits here until we know packages are open. */
+  const pendingBundleRef = useRef<number | null>(null);
   /** Scrollable step body - reset to top on every step change */
   const scrollBodyRef = useRef<HTMLDivElement>(null);
   /** The dialog sheet - receives focus on open so keyboard handling works. */
@@ -664,6 +695,28 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     bundleSize != null && eligibleSizes.includes(bundleSize) && paidServices.length > 0
       ? computeBundle(paidServices, bundleSize)
       : null;
+
+  // Package capacity: a new package starts only on a day whose month is not
+  // full of packages (sql/bundle_capacity.sql - the database decides again on booking).
+  /** Days in the window a package could start on; null = no month is full, every day can. */
+  const bundleStartDays = useMemo(() => {
+    if (!closedBundleMonths || closedBundleMonths.length === 0) return null;
+    const inOpenMonth = (date: string) => !closedBundleMonths.includes(date.slice(0, 7));
+    // Until the hours load, every day of the window.
+    if (!availability || availabilityError || slotDuration <= 0) return windowDates().filter(inOpenMonth);
+    // The days the treatment fits in the hours…
+    const days = buildDayOptions(slotDuration, availability).map((d) => d.date).filter(inOpenMonth);
+    // …and, once the reservations are read, that still have a free time.
+    const busy = bundleBusy?.location === studioId ? bundleBusy.byDate : null;
+    if (!busy) return days;
+    return days.filter((date) => dayHasFreeSlot(date, busy.get(date) ?? [], slotDuration, availability));
+  }, [closedBundleMonths, availability, availabilityError, slotDuration, bundleBusy, studioId]);
+  /** No day left to start a package on: the packages are hidden and the plan step skipped - no message. */
+  const bundlesOffered = bundleStartDays === null || bundleStartDays.length > 0;
+  /** Everything that decides `bundlesOffered` has loaded. */
+  const bundleCheckReady =
+    closedBundleMonths !== null &&
+    (closedBundleMonths.length === 0 || (availability !== null && bundleBusy?.location === studioId));
   const bundleActive = bookingMode === "bundle" && bundleResult != null;
   /** Only the plain popust20 rides on a bundle; local offers are for single sessions. */
   const linkOnBundle = linkDiscount && !isLocalOfferCode(linkPromo);
@@ -760,6 +813,40 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     return () => { cancelled = true; };
   }, [isOpen, studioId, availabilityReloadKey]);
 
+  // Months whose packages are full at the chosen studio. A failed read (or the
+  // SQL not applied yet) counts as none full - the database still refuses a
+  // package in a full month, so nothing wrong can be booked.
+  useEffect(() => {
+    if (!isOpen || !studioId) return;
+    let cancelled = false;
+    Promise.resolve(supabase.rpc("public_bundle_closed_months", { p_location: studioId })).then(
+      ({ data, error }) => { if (!cancelled) setClosedBundleMonths(error ? [] : data ?? []); },
+      () => { if (!cancelled) setClosedBundleMonths([]); },
+    );
+    return () => { cancelled = true; };
+  }, [isOpen, studioId, bundleMonthsReloadKey]);
+
+  // While some month is full, the window's reservations decide whether a
+  // package can still start on a free day - read from step 2, so the plan
+  // step knows on arrival. Not on the date step: a choice made stays made.
+  useEffect(() => {
+    if (!isOpen || !studioId || !closedBundleMonths?.length) return;
+    if (step !== 2 && step !== "plan") return;
+    let cancelled = false;
+    void loadBusyHorizon(studioId).then((byDate) => {
+      if (!cancelled) setBundleBusy({ location: studioId, byDate });
+    });
+    return () => { cancelled = true; };
+  }, [isOpen, studioId, closedBundleMonths, step]);
+
+  // Packages ran out while on the plan step: nothing left to choose, on to the date.
+  useEffect(() => {
+    if (step !== "plan" || bundlesOffered) return;
+    setBookingMode("single");
+    setBundleSize(null);
+    setStep(3);
+  }, [step, bundlesOffered]);
+
   // Who works which day at the chosen studio - purely decorative, so failures show nothing.
   useEffect(() => {
     if (!isOpen || !studioId) return;
@@ -849,7 +936,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     }
 
     const fetchId = ++bookableDaysFetchIdRef.current;
-    const candidates = buildDayOptions(slotDuration, availability);
+    // A package starts only in a month that is not full of packages.
+    const candidates = buildDayOptions(slotDuration, availability)
+      .filter((day) => !bundleActive || !(closedBundleMonths ?? []).includes(day.date.slice(0, 7)));
     setLoadingBookableDays(true);
     setBookableDayOptions([]);
 
@@ -887,7 +976,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     return () => {
       bookableDaysFetchIdRef.current += 1;
     };
-  }, [isOpen, studioId, step, slotDuration, availability]);
+  }, [isOpen, studioId, step, slotDuration, availability, bundleActive, closedBundleMonths]);
 
   // Reservations are requested while the plan is being chosen, so the date
   // step usually has them on arrival.
@@ -929,6 +1018,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
   useEffect(() => {
     if (!isOpen) {
       appliedPreselect.current = false;
+      pendingBundleRef.current = null;
       return;
     }
     if (appliedPreselect.current) return;
@@ -949,16 +1039,26 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     if (matchedIds.length > 0) {
       setSelectedIds(matchedIds);
       setPinnedIds(matchedIds);
-      // Landing-page examples jump straight into the bundle on the plan step.
-      if (preselectedBundle != null) {
-        setBookingMode("bundle");
-        setBundleSize(preselectedBundle);
-        setStep("plan");
-      }
+      // Landing-page examples jump straight into the bundle on the plan step -
+      // once we know packages are open (the effect below).
+      if (preselectedBundle != null) pendingBundleRef.current = preselectedBundle;
     }
     appliedPreselect.current = true;
 
   }, [isOpen, studioId, gender, preselectedNames, preselectedBundle, services]);
+
+  // The landing-page package, when packages are open. Full: the regions stay
+  // picked on step 2 and the visit goes on as a single session.
+  useEffect(() => {
+    const size = pendingBundleRef.current;
+    if (size == null || !bundleCheckReady || selectedIds.length === 0) return;
+    pendingBundleRef.current = null;
+    // Already moved on (or back) by hand meanwhile - no jump.
+    if (!bundlesOffered || step !== 2) return;
+    setBookingMode("bundle");
+    setBundleSize(size);
+    setStep("plan");
+  }, [bundleCheckReady, bundlesOffered, selectedIds, step]);
 
   // ── Funnel (/fnl): reaching a step means the one before it was done ───────
   useEffect(() => {
@@ -968,7 +1068,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       1: ["studio"],
       2: ["studio", "gender"],
       plan: ["services"],
-      3: ["plan"],
+      // "services" again: with packages full the plan step is skipped. Each stage
+      // is sent once per tab, so the usual way through counts nothing twice.
+      3: ["services", "plan"],
       4: ["day"],
       5: ["time"],
       success: ["booked"],
@@ -1040,7 +1142,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     setSubmitError(null);
     setPromoCode(""); setPromoStatus("idle"); setAppliedPromoCode(null);
     setPromoKind("none"); setCheckingPromo(false); setPromoErrorMsg(null);
-    setBookingMode("single"); setBundleSize(null);
+    setBookingMode("single"); setBundleSize(null); setClosedBundleMonths(null); setBundleBusy(null);
     emailCheckSeqRef.current += 1;
     setIsReturningCustomer(null);
     setCheckingReturningEmail(false);
@@ -1060,7 +1162,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
     else if (step === 1) { setStep("location"); }
     else if (step === 2) { setStep(presetGender ? "location" : 1); setGender(null); setSelectedIds([]); }
     else if (step === "plan") { setStep(2); }
-    else if (step === 3) { setStep("plan"); setSelectedDate(""); setSelectedTime(""); }
+    else if (step === 3) { setStep(bundlesOffered ? "plan" : 2); setSelectedDate(""); setSelectedTime(""); }
     else if (step === 4) { setStep(3); setSelectedTime(""); }
     else if (step === 5) { setStep(4); }
     else if (step === "preparation") { setStep("success"); }
@@ -1071,6 +1173,7 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       // Another studio, another calendar - nothing picked so far carries over.
       setStudioId(id);
       setAvailability(null);
+      setClosedBundleMonths(null);
       setSelectedDate(""); setSelectedTime(""); setDaySlots([]); setDaySlotsFor(null);
       setBookableDayOptions([]);
     }
@@ -1367,6 +1470,21 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
       sendBackToTimes();
       return;
     }
+    if (result.status === "invalid_promo" && result.reason === "bundles_full") {
+      // That month's packages filled up while the form was open. Nothing was
+      // saved: the same day and time stay, now as a single session, and the
+      // client sees the new price and confirms once more.
+      const month = selectedDate.slice(0, 7);
+      setClosedBundleMonths((prev) => (prev?.includes(month) ? prev : [...(prev ?? []), month]));
+      setBundleMonthsReloadKey((k) => k + 1);
+      setBookingMode("single");
+      setBundleSize(null);
+      setSubmitError(
+        `Paketi za ${SR_MONTHS[Number(month.slice(5, 7)) - 1]} su se upravo popunili. ` +
+        "Termin je sada pojedinačan tretman - proveri cenu i potvrdi ponovo.",
+      );
+      return;
+    }
     if (result.status === "invalid_promo") {
       rejectPromo(
         result.reason === "student_not_first"
@@ -1464,6 +1582,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
   function handleAddToCart() {
     trackEvent("AddToCart", { fbclid: fbclidRef.current || undefined });
+    // Packages full for every day in the window: nothing to choose, straight to the date.
+    if (!bundlesOffered) { handleSelectSingle(); return; }
     setStep("plan");
   }
 
@@ -1496,8 +1616,9 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
 
   if (!isOpen) return null;
 
-  // The gender screen is skipped when the gender is preset, so it takes no share.
-  const flow = presetGender ? STEP_ORDER.filter((s) => s !== 1) : STEP_ORDER;
+  // The gender screen is skipped when the gender is preset, and the plan screen
+  // when packages are full, so a skipped screen takes no share.
+  const flow = STEP_ORDER.filter((s) => !(s === 1 && presetGender) && !(s === "plan" && !bundlesOffered));
   const flowIdx = flow.indexOf(step);
   const progress = flowIdx === -1 ? 1 : (flowIdx + 1) / (flow.length + 1);
 
@@ -2064,8 +2185,8 @@ export default function BookingModal({ isOpen, onClose, preselectedNames, presel
                 </div>
               </button>
 
-              {/* Bundle options */}
-              {eligibleSizes.map((size, idx) => {
+              {/* Bundle options - none while packages are full for the whole window */}
+              {bundlesOffered && eligibleSizes.map((size, idx) => {
                 const b = computeBundle(paidServices, size);
                 const deal = bundleOffer(b);
                 const isSelected = bundleActive && bundleSize === size;
