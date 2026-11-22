@@ -33,7 +33,7 @@ export default function LandingCta({ catalog, initialStock }: { catalog: GiftCat
   const soldOut = remaining === 0;
 
   return (
-    <div className="flex flex-col items-center lg:items-start">
+    <div className="flex w-full flex-col items-center">
       {soldOut ? (
         <a
           href="tel:+381653738991"

@@ -25,6 +25,16 @@
   min-height: 560px;
 }
 
+/* The video's height budget: the screen minus the logo, headline, subheadline
+   and button around it (~360px on phones, ~420px with the larger desktop
+   type). VslFrame turns it into a max width for its 16:9 frame, so a short
+   screen gets a smaller video instead of a scroll. */
+.pk-vsl { --vsl-h: max(170px, calc(100svh - 360px)); }
+
+@media (min-width: 64rem) {
+  .pk-vsl { --vsl-h: max(240px, calc(100svh - 420px)); }
+}
+
 /* ── Snow ─────────────────────────────────────────────────────────────────────
    Soft dots over the landing (Snow.tsx places them). Negative delays put
    flakes mid-fall on the first frame - no empty sky at load. */

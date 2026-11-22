@@ -46,8 +46,8 @@ export const GIFT_LOCATION = "novi_sad" as const;
  * null until it is recorded - the page then shows a poster without a player.
  */
 export const VSL_WISTIA_ID: string | null = null;
-/** Width ÷ height of that video: 9/16 vertical (phone), 16/9 if it is shot wide. */
-export const VSL_ASPECT = 9 / 16;
+/** Width ÷ height of that video: 16/9 (wide, podcast format). */
+export const VSL_ASPECT = 16 / 9;
 
 /** Online card payment shows up only once a provider is connected. */
 export const CARD_PAYMENTS_ON = process.env.NEXT_PUBLIC_PAKETICI_KARTICA === "1";

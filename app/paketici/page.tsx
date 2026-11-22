@@ -44,10 +44,9 @@ export const metadata: Metadata = {
 };
 
 /**
- * One screen: headline, Branka's video, one button. The button opens the
- * order as steps (GiftFlow). On a phone the text and the button keep their
- * size and the video takes whatever height is left, so everything is in view
- * without scrolling; from lg up the video stands beside the text.
+ * One screen: headline, Branka's video (16:9), one button. The button opens
+ * the order as steps (GiftFlow). The video is as wide as the column but never
+ * taller than the screen leaves it, so everything is in view without scrolling.
  */
 export default async function PaketiciPage({ searchParams }: { searchParams: Promise<{ greska?: string }> }) {
   if (!(await hasPaketiciAccess())) {
@@ -79,27 +78,19 @@ export default async function PaketiciPage({ searchParams }: { searchParams: Pro
           </span>
         </header>
 
-        <div className="relative mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col lg:flex-row lg:items-center lg:gap-16">
-          {/* Phones: this wrapper dissolves (`contents`) so the text, the video
-              and the button stack in that order; lg: text + button side by side
-              with the video. */}
-          <div className="contents lg:flex lg:flex-1 lg:flex-col lg:justify-center">
-            <div className="order-1 shrink-0 pt-4 text-center lg:pt-0 lg:text-left">
-              <h1 className="font-playfair text-[2rem] leading-[1.08] text-foreground sm:text-[2.6rem] lg:text-[3.6rem]">
-                Ne znaš šta da <span className="metal-text">joj kupiš?</span>
-              </h1>
-              <p className="mx-auto mt-2 max-w-sm font-poppins text-[14px] leading-snug text-foreground/70 sm:max-w-md sm:text-base lg:mx-0 lg:mt-5 lg:max-w-lg lg:text-lg">
-                Ako ne znaš šta tvoja devojka želi, pogledaj ovo - pa joj pokloni premium kutiju sa voucherom za lasersku epilaciju, spremnu za ispod jelke.
-              </p>
-            </div>
-            <div className="order-3 shrink-0 pt-4 lg:pt-8">
-              <LandingCta catalog={catalog} initialStock={initialStock} />
-            </div>
+        {/* One centred column on every screen - headline, the wide video,
+            the button - spread over the height that is left. */}
+        <div className="relative mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center gap-5 py-4 text-center lg:gap-7">
+          <div>
+            <h1 className="font-playfair text-[2rem] leading-[1.08] text-foreground sm:text-[2.6rem] lg:text-[3.4rem]">
+              Ne znaš šta da <span className="metal-text">joj kupiš?</span>
+            </h1>
+            <p className="mx-auto mt-2 max-w-sm font-poppins text-[14px] leading-snug text-foreground/70 sm:max-w-lg sm:text-base lg:mt-3 lg:text-lg">
+              Ako ne znaš šta tvoja devojka želi, pogledaj ovo - pa joj pokloni premium kutiju sa voucherom za lasersku epilaciju, spremnu za ispod jelke.
+            </p>
           </div>
-
-          <div className="order-2 flex min-h-0 flex-1 items-center justify-center pt-4 lg:h-[80svh] lg:flex-none lg:pt-0">
-            <VslFrame />
-          </div>
+          <VslFrame />
+          <LandingCta catalog={catalog} initialStock={initialStock} />
         </div>
       </section>
     </main>
