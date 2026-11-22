@@ -1,0 +1,271 @@
+/* ── Infinity paketići (/paketici) ─────────────────────────────────────────────
+   One screen (headline, VSL, button) that opens the order as steps in a
+   full-screen sheet, like the booking modal. The page keeps the site's
+   midnight plum but trades rose gold for champagne gold - the box's own
+   colours (beige + gold). Everything that reads `--accent` (.metal, .cta-halo,
+   text-accent…) turns gold inside `.pk`. Animations move opacity / transform
+   only, so they stay on the compositor, and all of them stop under
+   prefers-reduced-motion. */
+
+.pk {
+  --accent: #D9B46F;
+  --accent-soft: #F1DCAE;
+  --accent-deep: #9C7535;
+  --on-accent: #22150C;
+  --pk-blue: #86A8DC;
+  --pk-rose: #DCA8A6;
+}
+
+/* The landing is exactly one screen tall: `svh` is the height with the
+   browser's bars showing, so nothing ever hides under them. Below 560px
+   (a phone on its side) it may scroll. */
+.pk-screen {
+  height: 100vh;
+  height: 100svh;
+  min-height: 560px;
+}
+
+/* ── Snow ─────────────────────────────────────────────────────────────────────
+   Soft dots over the landing (Snow.tsx places them). Negative delays put
+   flakes mid-fall on the first frame - no empty sky at load. */
+.pk-snow {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.pk-flake {
+  position: absolute;
+  top: 0;
+  left: var(--x);
+  width: var(--s);
+  height: var(--s);
+  border-radius: 9999px;
+  background: #fff;
+  opacity: var(--o);
+  filter: blur(var(--b));
+  animation: pkFall var(--d) linear var(--delay) infinite;
+  will-change: transform;
+}
+
+@keyframes pkFall {
+  from { transform: translate3d(0, -8vh, 0); }
+  50%  { transform: translate3d(var(--dx), 50vh, 0); }
+  to   { transform: translate3d(0, 108vh, 0); }
+}
+
+/* ── Sparkles and out-of-focus lights ─────────────────────────────────────── */
+@keyframes pkTwinkle {
+  0%, 100% { opacity: 0.15; transform: scale(0.6) rotate(0deg); }
+  50%      { opacity: 1;    transform: scale(1) rotate(45deg); }
+}
+
+.pk-twinkle {
+  animation: pkTwinkle var(--t, 2.6s) ease-in-out var(--delay, 0s) infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
+@keyframes pkGlow {
+  0%, 100% { opacity: 0.25; }
+  50%      { opacity: 0.7; }
+}
+
+.pk-bokeh {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(18px);
+  animation: pkGlow var(--t, 5s) ease-in-out var(--delay, 0s) infinite;
+  pointer-events: none;
+}
+
+/* ── The box ──────────────────────────────────────────────────────────────────
+   The lid floats a little above the box and light spills out of the gap. */
+@keyframes pkLid {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50%      { transform: translateY(-9px) rotate(-2deg); }
+}
+
+@keyframes pkSpill {
+  0%, 100% { opacity: 0.25; }
+  50%      { opacity: 0.95; }
+}
+
+@keyframes pkFloat {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-5px); }
+}
+
+.pk-box-lid {
+  animation: pkLid 4.2s ease-in-out infinite;
+  transform-origin: 50% 100%;
+  transform-box: fill-box;
+}
+
+.pk-box-spill { animation: pkSpill 4.2s ease-in-out infinite; }
+.pk-box-float { animation: pkFloat 6s ease-in-out infinite; }
+
+/* A still box (cards, summary). */
+.pk-box-still .pk-box-lid,
+.pk-box-still .pk-box-spill,
+.pk-box-still .pk-twinkle { animation: none; }
+.pk-box-still .pk-box-spill { opacity: 0.45; }
+
+/* ── The order sheet ──────────────────────────────────────────────────────────
+   Full screen, opens like the booking modal's `.bm-sheet` (fade + scale +
+   rise). Unlayered, so the transition outranks Tailwind's utilities; Tailwind
+   v4 moves `scale-*` / `translate-*` through the individual properties. */
+.pk-sheet {
+  background-color: #120A0E;
+  background-image:
+    radial-gradient(110% 55% at 50% -12%, rgba(217, 180, 111, 0.16), transparent 65%),
+    radial-gradient(70% 45% at 0% 100%, rgba(158, 103, 105, 0.12), transparent 70%),
+    linear-gradient(180deg, #1E1017 0%, #120A0E 60%);
+  transition:
+    opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    scale 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    translate 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Each step slides in from the side it comes from. */
+@keyframes pkStepFwd {
+  from { opacity: 0; transform: translateX(32px); }
+}
+
+@keyframes pkStepBack {
+  from { opacity: 0; transform: translateX(-32px); }
+}
+
+.pk-step-fwd  { animation: pkStepFwd 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.pk-step-back { animation: pkStepBack 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* ── Bonus nudge: pops in whenever its message changes ───────────────────── */
+@keyframes pkPop {
+  0%   { opacity: 0; transform: translateY(8px) scale(0.96); }
+  60%  { opacity: 1; transform: translateY(-2px) scale(1.01); }
+  100% { opacity: 1; transform: none; }
+}
+
+.pk-pop { animation: pkPop 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* A won bonus glints once. */
+@keyframes pkWon {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+.pk-won { animation: pkWon 0.5s cubic-bezier(0.22, 1, 0.36, 1); }
+
+/* ── Amount slider ────────────────────────────────────────────────────────────
+   Native range input (touch, keyboard and screen readers for free), restyled:
+   a thick track filled up to the thumb (`--fill`), a big thumb for thumbs. */
+.pk-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 40px;
+  background: transparent;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+
+.pk-range:focus { outline: none; }
+
+.pk-range::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, var(--accent) var(--fill), color-mix(in srgb, var(--foreground) 12%, transparent) var(--fill));
+}
+
+.pk-range::-moz-range-track {
+  height: 8px;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--foreground) 12%, transparent);
+}
+
+.pk-range::-moz-range-progress {
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--accent);
+}
+
+.pk-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 30px;
+  height: 30px;
+  margin-top: -11px;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 30%, #fff8e6, var(--accent) 55%, var(--accent-deep));
+  border: 3px solid #120A0E;
+  box-shadow: 0 0 0 2px var(--accent), 0 4px 14px rgba(0, 0, 0, 0.45);
+  transition: transform 0.15s ease;
+}
+
+.pk-range::-moz-range-thumb {
+  width: 26px;
+  height: 26px;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 30%, #fff8e6, var(--accent) 55%, var(--accent-deep));
+  border: 3px solid #120A0E;
+  box-shadow: 0 0 0 2px var(--accent), 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+.pk-range:active::-webkit-slider-thumb { transform: scale(1.12); }
+.pk-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px color-mix(in srgb, var(--accent) 35%, transparent); }
+
+/* ── The dedication card: what they type, handwritten ────────────────────── */
+.pk-card-paper {
+  background:
+    radial-gradient(circle at 12% 18%, rgba(217, 180, 111, 0.16), transparent 40%),
+    linear-gradient(180deg, #FBF6EC, #F3E9D6);
+  color: #3B2A1A;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(156, 117, 53, 0.25);
+}
+
+.pk-hand { font-family: var(--font-caveat), "Segoe Print", cursive; }
+
+/* The review sheet (GiftSheet) is the booking modal's squared paper
+   (`.notes-*` in globals.css), written faster: it is read before the order
+   goes out, so ~2 s instead of ~4 s. Only timings change - under reduced
+   motion globals.css turns the transitions off and this has nothing to time. */
+.pk-notes-fast .notes-write {
+  transition-duration: 0.5s;
+  transition-delay: calc(0.15s + var(--w, 0) * 0.16s);
+}
+
+.pk-notes-fast .notes-draw {
+  --at: calc(0.15s + var(--w, 0) * 0.16s);
+  transition-duration: 0.6s, 0.01s;
+}
+
+/* No scrollbar on the quick-pick row - it is swiped. */
+.pk-noscroll { scrollbar-width: none; }
+.pk-noscroll::-webkit-scrollbar { display: none; }
+
+/* ── Success: a burst of gold confetti ─────────────────────────────────────── */
+@keyframes pkBurst {
+  0%   { opacity: 1; transform: translate(0, 0) rotate(0deg); }
+  100% { opacity: 0; transform: translate(var(--bx), var(--by)) rotate(var(--br)); }
+}
+
+.pk-confetti {
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  width: 7px;
+  height: 11px;
+  border-radius: 2px;
+  animation: pkBurst 1.3s cubic-bezier(0.15, 0.7, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pk-snow { display: none; }
+  .pk-twinkle, .pk-bokeh, .pk-box-lid, .pk-box-spill, .pk-box-float,
+  .pk-pop, .pk-won, .pk-confetti, .pk-step-fwd, .pk-step-back { animation: none !important; }
+  .pk-confetti { display: none; }
+  .pk-sheet { transition: opacity 0.2s linear; }
+}

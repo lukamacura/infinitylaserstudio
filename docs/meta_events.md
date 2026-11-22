@@ -19,6 +19,10 @@
  Where: BookingModal.tsx
  Trigger: User completes a booking
  ────────────────────────────────────────
+### Event: Purchase
+ Where: app/paketici/OrderForm.tsx
+ Trigger: A gift-box order (/paketici) is saved - value = total in RSD, eventID = paketic-<order no>
+ ────────────────────────────────────────
 ### Event: Contact
  Where: Footer.tsx
  Trigger: User clicks the contact button
